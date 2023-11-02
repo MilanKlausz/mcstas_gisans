@@ -113,6 +113,30 @@ def write_events(out_events):
         fh.write(header)
         savetxt(fh, out_events)
 
+def write_events_mcpl(out_events):
+    import np2mcpl
+    p, x, y, z, vx, vy, vz, t, sx, sy, sz = out_events.T
+
+    pdg_codes = full((len(out_events), 1), 2112) #2112 for neutrons
+
+    # Adjust dimensions for MCPL (m->cm, s->ms)
+    x = x * 100
+    y = y * 100
+    z = z * 100
+    t = t * 1e3
+
+    # Calculate the kinetic energy
+    VS2E = 5.22703725e-6 # Conversion factor from McStas (v[m/s])**2 to E[meV])
+    nrm = sqrt(vx**2 + vy**2 + vz**2)
+    e_kin = (nrm**2) / 1e9 * VS2E 
+    # Normalize the velocity vector
+    ux = vx / nrm
+    uy = vy / nrm
+    uz = vz / nrm
+
+    transformed_particles = column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, p, sx, sy, sz))
+    np2mcpl.save("test_events_scattered",transformed_particles)
+
 def main():
     print(f'Reading events from {EFILE}...')
     events = loadtxt(EFILE)
@@ -127,6 +151,7 @@ def main():
     out_events = run_events(events)
     print(f'Writing events to {OFILE}...')
     write_events(out_events)
+    write_events_mcpl(out_events)
 
 if __name__=='__main__':
     main()
