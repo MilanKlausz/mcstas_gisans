@@ -138,16 +138,13 @@ def write_events_mcpl(out_events):
     particles = column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, weights, sx, sy, sz))
 
     if deweight:
-      # Process particles with weights above 1 (save a full-weight particle for each )
+      # Process particles with weights above 1: save N full-weight(1) copies for each particle with weight N.x > 1.0 (e.g. 3 for w=3.2)
       high_weight_mask = weights >= 1.0 # Find particles with weights above 1
-      additional_surviving_particles = [] # List for particles surviving without Russian Roulette
-      for i in range(len(particles)):
-          if high_weight_mask[i]:
-              integer_weight = int(weights[i])
-              additional_surviving_particles.extend([particles[i]] * integer_weight) #weight of saved particle is treated later
-              weights[i] -= integer_weight
+      integer_weights = floor(weights[high_weight_mask]).astype(int)
+      additional_surviving_particles = repeat(particles[high_weight_mask], integer_weights, axis=0) #weight of saved particles is handled later
+      weights[high_weight_mask] -= integer_weights # Update the weights for the original high-weight particles -> all weihts are now below 1.0
 
-      # Determine which 'partial' (weight<1) particles survive Russian Roulette
+      # Determine which 'partial' (weight<1) particles survive the Russian Roulette
       surviving_mask = random.rand(len(weights)) <= weights
 
       # Concatenate the additional surviving particles with the surviving particles
