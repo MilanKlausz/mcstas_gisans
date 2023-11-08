@@ -20,6 +20,7 @@ ANGLE_RANGE=3 # degree scattering angle covered by detector
 V2L = 3956.034012 # m/s·Å
 xwidth=0.05 # [m] size of sample perpendicular to beam
 yheight=0.15 # [m] size of sample along the beam
+deweight = True #Ensure final weight of 1 using splitting and Russian Roulette
 
 def prop0(events):
     # propagate neutron events to y=0, the sample surface
@@ -115,7 +116,7 @@ def write_events(out_events):
 
 def write_events_mcpl(out_events):
     import np2mcpl
-    p, x, y, z, vx, vy, vz, t, sx, sy, sz = out_events.T
+    weights, x, y, z, vx, vy, vz, t, sx, sy, sz = out_events.T
 
     pdg_codes = full((len(out_events), 1), 2112) #2112 for neutrons
 
@@ -128,14 +129,34 @@ def write_events_mcpl(out_events):
     # Calculate the kinetic energy
     VS2E = 5.22703725e-6 # Conversion factor from McStas (v[m/s])**2 to E[meV])
     nrm = sqrt(vx**2 + vy**2 + vz**2)
-    e_kin = (nrm**2) / 1e9 * VS2E 
+    e_kin = (nrm**2) / 1e9 * VS2E
     # Normalize the velocity vector
     ux = vx / nrm
     uy = vy / nrm
     uz = vz / nrm
 
-    transformed_particles = column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, p, sx, sy, sz))
-    np2mcpl.save("test_events_scattered",transformed_particles)
+    particles = column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, weights, sx, sy, sz))
+
+    if deweight:
+      # Process particles with weights above 1 (save a full-weight particle for each )
+      high_weight_mask = weights >= 1.0 # Find particles with weights above 1
+      additional_surviving_particles = [] # List for particles surviving without Russian Roulette
+      for i in range(len(particles)):
+          if high_weight_mask[i]:
+              integer_weight = int(weights[i])
+              additional_surviving_particles.extend([particles[i]] * integer_weight) #weight of saved particle is treated later
+              weights[i] -= integer_weight
+
+      # Determine which 'partial' (weight<1) particles survive Russian Roulette
+      surviving_mask = random.rand(len(weights)) <= weights
+
+      # Concatenate the additional surviving particles with the surviving particles
+      deweighted_particles = concatenate([particles[surviving_mask], additional_surviving_particles], axis=0)
+      deweighted_particles[:, 9] = 1.0 #set all weights to 1
+
+      np2mcpl.save("test_events_scattered", deweighted_particles)
+    else:
+      np2mcpl.save("test_events_scattered_weighted", particles)
 
 def main():
     print(f'Reading events from {EFILE}...')
