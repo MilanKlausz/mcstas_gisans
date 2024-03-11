@@ -10,6 +10,8 @@ from numpy import *
 import bornagain as ba
 from bornagain import deg, angstrom, nm
 
+from neutron_utilities import VS2E, V2L
+
 EFILE = "" #"GISANS_events/test_events" # event file to be used
 OFILE = "test_events_scattered" # event file to be written
 MFILE = "models.hexagonal_spheres"
@@ -17,11 +19,8 @@ MFILE = "models.hexagonal_spheres"
 BINS=10 # number of pixels in x and y direction of the "detector"
 ANGLE_RANGE=3 # degree scattering angle covered by detector
 
-V2L = 3956.034012 # m/s·Å
-xwidth=0.05 # [m] size of sample perpendicular to beam
-yheight=0.15 # [m] size of sample along the beam
-deweight = True #Ensure final weight of 1 using splitting and Russian Roulette
-VS2E = 5.22703725e-6 # Conversion factor from McStas (v[m/s])**2 to E[meV])
+xwidth=0.1 # [m] size of sample perpendicular to beam
+yheight=0.005 # [m] size of sample along the beam
 
 def prop0(events):
     # propagate neutron events to z=0, the sample surface
@@ -115,45 +114,6 @@ def write_events(out_events):
         fh.write(header)
         savetxt(fh, out_events)
 
-def write_events_mcpl(out_events):
-    import np2mcpl
-    weights, x, y, z, vx, vy, vz, t, sx, sy, sz = out_events.T
-
-    pdg_codes = full((len(out_events), 1), 2112) #2112 for neutrons
-
-    # Adjust dimensions for MCPL (m->cm, s->ms)
-    x = x * 100
-    y = y * 100
-    z = z * 100
-    t = t * 1e3
-
-    # Calculate the kinetic energy
-    nrm = sqrt(vx**2 + vy**2 + vz**2)
-    e_kin = (nrm**2) / 1e9 * VS2E
-    # Normalize the velocity vector
-    ux = vx / nrm
-    uy = vy / nrm
-    uz = vz / nrm
-
-    particles = column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, weights, sx, sy, sz))
-
-    if deweight:
-      # Process particles with weights above 1: save N full-weight(1) copies for each particle with weight N.x > 1.0 (e.g. 3 for w=3.2)
-      high_weight_mask = weights >= 1.0 # Find particles with weights above 1
-      integer_weights = floor(weights[high_weight_mask]).astype(int)
-      additional_surviving_particles = repeat(particles[high_weight_mask], integer_weights, axis=0) #weight of saved particles is handled later
-      weights[high_weight_mask] -= integer_weights # Update the weights for the original high-weight particles -> all weihts are now below 1.0
-
-      # Determine which 'partial' (weight<1) particles survive the Russian Roulette
-      surviving_mask = random.rand(len(weights)) <= weights
-
-      # Concatenate the additional surviving particles with the surviving particles
-      deweighted_particles = concatenate([particles[surviving_mask], additional_surviving_particles], axis=0)
-      deweighted_particles[:, 9] = 1.0 #set all weights to 1
-
-      np2mcpl.save(OFILE, deweighted_particles)
-    else:
-      np2mcpl.save(OFILE+'_weighted', particles)
 
 def main():
     if len(sys.argv)>1:
@@ -163,7 +123,7 @@ def main():
     print(f'Reading events from {EFILE}...')
     if EFILE.endswith('.dat'):
       events = loadtxt(EFILE)
-      
+
     elif EFILE.endswith('.mcpl') or EFILE.endswith('.mcpl.gz'):
       import mcpl
       myfile = mcpl.MCPLFile(EFILE)
@@ -183,7 +143,9 @@ def main():
     out_events = run_events(events)
     print(f'Writing events to {OFILE}...')
     # write_events(out_events)
-    write_events_mcpl(out_events)
+    from output_mcpl import write_events_mcpl
+    deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
+    write_events_mcpl(out_events, OFILE, deweight)
 
 if __name__=='__main__':
     main()
