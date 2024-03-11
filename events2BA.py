@@ -97,9 +97,16 @@ def run_events(events):
             # calculate beam angle relative to coordinate system, including incident beam direction
             alpha_f = ANGLE_RANGE*(linspace(1., -1., BINS)+Ry/(BINS-1))
             phi_f = phi_i+ANGLE_RANGE*(linspace(-1., 1., BINS)+Rz/(BINS-1))
-            VX, VZ= meshgrid(tan(phi_f*pi/180.)*vy, tan(alpha_f*pi/180.)*vy)
-            for pouti, vxi, vzi in zip(pout.flatten(), VX.flatten(), VZ.flatten()):
-                out_events.append([pouti, x, y, z, vxi, vy, vzi, t, sx, sy, sz])
+            alpha_f_rad = alpha_f * pi/180.
+            phi_f_rad = phi_f * pi/180.
+            alpha_grid, phi_grid = meshgrid(alpha_f_rad, phi_f_rad)
+
+            VX_grid = v * cos(alpha_grid) * sin(phi_grid)
+            VY_grid = v * cos(alpha_grid) * cos(phi_grid)
+            VZ_grid = -v * sin(alpha_grid)
+
+            for pouti, vxi, vyi, vzi in zip(pout.T.flatten(), VX_grid.flatten(),  VY_grid.flatten(), VZ_grid.flatten()):
+                out_events.append([pouti, x, y, z, vxi, vyi, vzi, t, sx, sy, sz])
     print("misses:", misses)
     return array(out_events)
 
