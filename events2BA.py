@@ -24,14 +24,14 @@ deweight = True #Ensure final weight of 1 using splitting and Russian Roulette
 VS2E = 5.22703725e-6 # Conversion factor from McStas (v[m/s])**2 to E[meV])
 
 def prop0(events):
-    # propagate neutron events to y=0, the sample surface
+    # propagate neutron events to z=0, the sample surface
     p, x, y, z, vx, vy, vz, t, sx, sy, sz = events.T
-    t0 = -y/vy
+    t0 = -z/vz
     x += vx*t0
     y += vy*t0
     z += vz*t0
     t+=t0
-    return vstack([p, x, y, z-0.02, vx, vy, vz, t, sx, sy, sz]).T
+    return vstack([p, x, y, z, vx, vy, vz, t, sx, sy, sz]).T
 
 def get_simulation(sample, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
     """
