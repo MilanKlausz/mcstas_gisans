@@ -10,8 +10,8 @@ from numpy import *
 import bornagain as ba
 from bornagain import deg, angstrom, nm
 
-EFILE = "GISANS_events/test_events.dat" # event file to be used
-OFILE = "test_events_scattered.dat" # event file to be written
+EFILE = "" #"GISANS_events/test_events" # event file to be used
+OFILE = "test_events_scattered" # event file to be written
 MFILE = "models.hexagonal_spheres"
 
 BINS=10 # number of pixels in x and y direction of the "detector"
@@ -21,6 +21,7 @@ V2L = 3956.034012 # m/s·Å
 xwidth=0.05 # [m] size of sample perpendicular to beam
 yheight=0.15 # [m] size of sample along the beam
 deweight = True #Ensure final weight of 1 using splitting and Russian Roulette
+VS2E = 5.22703725e-6 # Conversion factor from McStas (v[m/s])**2 to E[meV])
 
 def prop0(events):
     # propagate neutron events to y=0, the sample surface
@@ -105,12 +106,12 @@ def run_events(events):
 
 def write_events(out_events):
     header = ''
-    with open(EFILE, 'r') as fh:
+    with open(EFILE+'.dat', 'r') as fh:
         line = fh.readline()
         while line.startswith('#'):
             header += line
             line = fh.readline()
-    with open(OFILE, 'w') as fh:
+    with open(OFILE+'.dat', 'w') as fh:
         fh.write(header)
         savetxt(fh, out_events)
 
@@ -127,7 +128,6 @@ def write_events_mcpl(out_events):
     t = t * 1e3
 
     # Calculate the kinetic energy
-    VS2E = 5.22703725e-6 # Conversion factor from McStas (v[m/s])**2 to E[meV])
     nrm = sqrt(vx**2 + vy**2 + vz**2)
     e_kin = (nrm**2) / 1e9 * VS2E
     # Normalize the velocity vector
@@ -151,24 +151,38 @@ def write_events_mcpl(out_events):
       deweighted_particles = concatenate([particles[surviving_mask], additional_surviving_particles], axis=0)
       deweighted_particles[:, 9] = 1.0 #set all weights to 1
 
-      np2mcpl.save("test_events_scattered", deweighted_particles)
+      np2mcpl.save(OFILE, deweighted_particles)
     else:
-      np2mcpl.save("test_events_scattered_weighted", particles)
+      np2mcpl.save(OFILE+'_weighted', particles)
 
 def main():
-    print(f'Reading events from {EFILE}...')
-    events = loadtxt(EFILE)
-    events = prop0(events)
-
     if len(sys.argv)>1:
-        MFILE='models.'+sys.argv[1]
+      MFILE='models.'+sys.argv[1]
+      EFILE=sys.argv[2] #TODO implement proper argparser?
+
+    print(f'Reading events from {EFILE}...')
+    if EFILE.endswith('.dat'):
+      events = loadtxt(EFILE)
+      
+    elif EFILE.endswith('.mcpl') or EFILE.endswith('.mcpl.gz'):
+      import mcpl
+      myfile = mcpl.MCPLFile(EFILE)
+      events = array([(p.weight, 
+                       p.x/100, p.y/100, p.z/100, #convert cm->m
+                       p.ux*sqrt(p.ekin*1e9/VS2E), p.uy*sqrt(p.ekin*1e9/VS2E), p.uz*sqrt(p.ekin*1e9/VS2E), #velocity vector from dir+ekin
+                       p.time*1e-3, #convert s->ms
+                       p.polx, p.poly, p.polz) for p in myfile.particles if p.weight>1e-5])
+    else:
+      sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
+
+    events = prop0(events)
     print(f'Running BornAgain simulations "{MFILE}" for each event...')
     global get_sample
     sim_module=import_module(MFILE)
     get_sample=sim_module.get_sample
     out_events = run_events(events)
     print(f'Writing events to {OFILE}...')
-    write_events(out_events)
+    # write_events(out_events)
     write_events_mcpl(out_events)
 
 if __name__=='__main__':
