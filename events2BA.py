@@ -10,7 +10,7 @@ from numpy import *
 import bornagain as ba
 from bornagain import deg, angstrom, nm
 
-from neutron_utilities import VS2E, V2L
+from neutron_utilities import VS2E, V2L, tofToLambda
 
 EFILE = "" #"GISANS_events/test_events" # event file to be used
 OFILE = "test_events_scattered" # event file to be written
@@ -60,6 +60,12 @@ def run_events(events):
     misses = 0
     total = len(events)
     out_events = []
+    q_events_real = [] #p,qx,qy,qz,t - calculated with lambda and proper incident and outgoing directions
+    q_events_no_incident_info = [] #p,qx,qy,qz,t - calculated with lambda but not using incident direction
+    alpha_inc = 0.3 *pi/180 #rad
+    v_in_alpha = array([0, cos(alpha_inc), sin(alpha_inc)])
+    q_events_calc = [] #p,qx,qy,qz,t - calculated from TOF at sample pos
+
     for in_ID, neutron in enumerate(events):
         if in_ID%200==0:
             print(f'{in_ID:10}/{total}')
@@ -68,6 +74,9 @@ def run_events(events):
         phi_i = arctan(vx/vy)*180./pi  # deg
         v = sqrt(vx**2+vy**2+vz**2)
         wavelength = V2L/v  # Å
+        qConvFactorFromLambda = 2*pi/(wavelength * 0.1)
+        qConvFactorFromTof = 2*pi/(tofToLambda(t)*0.1)
+        v_in = array([vx, vy, vz]) / v
 
         if abs(x)>xwidth or abs(z)>yheight:
             # beam has not hit the sample surface
@@ -82,10 +91,17 @@ def run_events(events):
             res = ssim.simulate()
             pref = p*res.array()[0]
             out_events.append([pref, x, y, z, vx, vy, -vz, t, sx, sy, sz])
+            v_out = array([vx, vy, -vz]) / v
+            q_events_real.append([pref, *(qConvFactorFromLambda * subtract(v_out, v_in)), t])
+            q_events_no_incident_info.append([pref, *(qConvFactorFromLambda * subtract(v_out, v_in_alpha)), t])
+            q_events_calc.append([pref, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
+            
             ptrans = (1.0-res.array()[0])*p
             if ptrans>1e-10:
                 out_events.append([ptrans, x, y, z, vx, vy, vz, t, sx, sy, sz])
-
+                q_events_real.append([ptrans, *(qConvFactorFromLambda * subtract(v_in, v_in)), t])
+                q_events_no_incident_info.append([ptrans, *(qConvFactorFromLambda * subtract(v_in, v_in_alpha)), t])
+                q_events_calc.append([ptrans, *(qConvFactorFromTof * subtract(v_in, v_in_alpha)), t])
             # calculate BINS² outgoing beams with a random angle within one pixel range
             Ry =  2*random.random()-1
             Rz =  2*random.random()-1
@@ -107,8 +123,12 @@ def run_events(events):
 
             for pouti, vxi, vyi, vzi in zip(pout.T.flatten(), VX_grid.flatten(),  VY_grid.flatten(), VZ_grid.flatten()):
                 out_events.append([pouti, x, y, z, vxi, vyi, vzi, t, sx, sy, sz])
+                v_out = array([vxi, vyi, vzi]) / v
+                q_events_real.append([pouti, *(qConvFactorFromLambda * subtract(v_out, v_in)), t])
+                q_events_no_incident_info.append([pouti, *(qConvFactorFromLambda * subtract(v_out, v_in_alpha)), t])
+                q_events_calc.append([pouti, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
     print("misses:", misses)
-    return array(out_events)
+    return array(out_events), array(q_events_real), array(q_events_no_incident_info), array(q_events_calc)
 
 def write_events(out_events):
     header = ''
@@ -150,7 +170,13 @@ def main():
     global get_sample
     sim_module=import_module(MFILE)
     get_sample=sim_module.get_sample
-    out_events = run_events(events)
+    out_events, q_events_real, q_events_no_incident_info, q_events_calc = run_events(events)
+
+    from plotting_utilities import createQPlot
+    createQPlot(q_events_real, 'realQ')
+    createQPlot(q_events_no_incident_info, 'noIncInfoQ')
+    createQPlot(q_events_calc, 'calcQ')
+
     print(f'Writing events to {OFILE}...')
     # write_events(out_events)
     from output_mcpl import write_events_mcpl
