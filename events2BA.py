@@ -127,9 +127,12 @@ def main():
     elif EFILE.endswith('.mcpl') or EFILE.endswith('.mcpl.gz'):
       import mcpl
       myfile = mcpl.MCPLFile(EFILE)
-      events = array([(p.weight, 
+      def velocity_from_dir(ux, uy, uz, ekin):
+         norm = sqrt(ekin*1e9/VS2E)
+         return [ux*norm, uy*norm, uz*norm]
+      events = array([(p.weight,
                        p.x/100, p.y/100, p.z/100, #convert cm->m
-                       p.ux*sqrt(p.ekin*1e9/VS2E), p.uy*sqrt(p.ekin*1e9/VS2E), p.uz*sqrt(p.ekin*1e9/VS2E), #velocity vector from dir+ekin
+                       *velocity_from_dir(p.ux, p.uy, p.uz, p.ekin),
                        p.time*1e-3, #convert s->ms
                        p.polx, p.poly, p.polz) for p in myfile.particles if p.weight>1e-5])
     else:
