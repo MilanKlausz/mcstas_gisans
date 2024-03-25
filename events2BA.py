@@ -19,8 +19,8 @@ MFILE = "models.hexagonal_spheres"
 BINS=10 # number of pixels in x and y direction of the "detector"
 ANGLE_RANGE=3 # degree scattering angle covered by detector
 
-xwidth=0.1 # [m] size of sample perpendicular to beam
-yheight=0.005 # [m] size of sample along the beam
+xwidth=0.01 # [m] size of sample perpendicular to beam
+yheight=0.03 # [m] size of sample along the beam
 
 def prop0(events):
     # propagate neutron events to z=0, the sample surface
@@ -78,7 +78,7 @@ def run_events(events):
         qConvFactorFromTof = 2*pi/(tofToLambda(t)*0.1)
         v_in = array([vx, vy, vz]) / v
 
-        if abs(x)>xwidth or abs(z)>yheight:
+        if abs(x)>xwidth or abs(y)>yheight:
             # beam has not hit the sample surface
             out_events.append(neutron)
             misses += 1
@@ -95,7 +95,7 @@ def run_events(events):
             q_events_real.append([pref, *(qConvFactorFromLambda * subtract(v_out, v_in)), t])
             q_events_no_incident_info.append([pref, *(qConvFactorFromLambda * subtract(v_out, v_in_alpha)), t])
             q_events_calc.append([pref, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
-            
+
             ptrans = (1.0-res.array()[0])*p
             if ptrans>1e-10:
                 out_events.append([ptrans, x, y, z, vx, vy, vz, t, sx, sy, sz])
