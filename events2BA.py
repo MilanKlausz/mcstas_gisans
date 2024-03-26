@@ -216,11 +216,10 @@ def main():
     get_sample=sim_module.get_sample
     out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
 
-    from plotting_utilities import createQPlot
-    createQPlot(q_events_real, 'realQ')
-    createQPlot(q_events_no_incident_info, 'noIncInfoQ')
-    createQPlot(q_events_calc, 'calcQ')
-    # createQPlot(q_events_calc_detector, 'calcQdet')#TODO adjust the tof->lambda!
+    savez_compressed("q_events_real.npz", q_events_real=q_events_real)
+    savez_compressed("q_events_no_incident_info.npz", q_events_no_incident_info=q_events_no_incident_info)
+    savez_compressed("q_events_calc_sample.npz", q_events_calc_sample=q_events_calc_sample)
+    savez_compressed("q_events_calc_detector.npz", q_events_calc_detector=q_events_calc_detector)
 
     print(f'Writing events to {OFILE}...')
     # write_events(out_events)
