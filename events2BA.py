@@ -22,6 +22,13 @@ ANGLE_RANGE=3 # degree scattering angle covered by detector
 xwidth=0.01 # [m] size of sample perpendicular to beam
 yheight=0.03 # [m] size of sample along the beam
 
+nominal_source_sample_distance = 23.6 #[m]
+sample_detector_distance = 5 #[m] along the y axis
+alpha_inc = 0.3 *pi/180 #rad
+#rotation matrix to compensate alpha_inc rotation from MCPL_output component in McStas model
+rot_matrix = array([[cos(alpha_inc), -sin(alpha_inc)],[sin(alpha_inc), cos(alpha_inc)]]) 
+rot_matrix_inverse = array([[cos(-alpha_inc), -sin(-alpha_inc)],[sin(-alpha_inc), cos(-alpha_inc)]]) 
+
 def prop0(events):
     # propagate neutron events to z=0, the sample surface
     p, x, y, z, vx, vy, vz, t, sx, sy, sz = events.T
@@ -55,6 +62,27 @@ def get_simulation_specular(sample, wavelength=6.0, alpha_i=0.2):
     scan.setWavelength(wavelength*angstrom)
     return ba.SpecularSimulation(scan, sample)
 
+def virtualPropagationToDetector(x, y, z, vx, vy, vz):
+  """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
+  #compensate coord system rotation
+  zRot, yRot = dot(rot_matrix, [z, y])
+  vzRot, vyRot = dot(rot_matrix, [vz, vy])
+
+  #propagate to detector surface perpendicular to the y-axis
+  t_propagate= (sample_detector_distance - yRot) / vyRot
+  xDet = x + vx * t_propagate
+  yDetRot = yRot + vyRot * t_propagate
+  zDetRot = zRot + vzRot * t_propagate
+
+  #rotate back to the original coordinate system
+  zDet, yDet = dot(rot_matrix_inverse, [zDetRot, yDetRot])
+
+  return xDet, yDet, zDet, t_propagate
+
+def qConvFactorFromTofAtDetector(sample_detector_path_length, tDet):
+    path_length = nominal_source_sample_distance + sample_detector_path_length
+    return 2*pi/(tofToLambda(tDet, path_length)*0.1)
+
 
 def run_events(events):
     misses = 0
@@ -62,9 +90,10 @@ def run_events(events):
     out_events = []
     q_events_real = [] #p,qx,qy,qz,t - calculated with lambda and proper incident and outgoing directions
     q_events_no_incident_info = [] #p,qx,qy,qz,t - calculated with lambda but not using incident direction
-    alpha_inc = 0.3 *pi/180 #rad
+
     v_in_alpha = array([0, cos(alpha_inc), sin(alpha_inc)])
-    q_events_calc = [] #p,qx,qy,qz,t - calculated from TOF at sample pos
+    q_events_calc_sample = [] #p,qx,qy,qz,t - calculated from TOF at sample position
+    q_events_calc_detector = [] #p,qx,qy,qz,t - calculated from TOF at the detector position
 
     for in_ID, neutron in enumerate(events):
         if in_ID%200==0:
@@ -75,7 +104,7 @@ def run_events(events):
         v = sqrt(vx**2+vy**2+vz**2)
         wavelength = V2L/v  # Å
         qConvFactorFromLambda = 2*pi/(wavelength * 0.1)
-        qConvFactorFromTof = 2*pi/(tofToLambda(t)*0.1)
+        qConvFactorFromTof = 2*pi/(tofToLambda(t)*0.1) #for an intermediate result
         v_in = array([vx, vy, vz]) / v
 
         if abs(x)>xwidth or abs(y)>yheight:
@@ -94,17 +123,26 @@ def run_events(events):
             v_out = array([vx, vy, -vz]) / v
             q_events_real.append([pref, *(qConvFactorFromLambda * subtract(v_out, v_in)), t])
             q_events_no_incident_info.append([pref, *(qConvFactorFromLambda * subtract(v_out, v_in_alpha)), t])
-            q_events_calc.append([pref, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
+            q_events_calc_sample.append([pref, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
+
+            xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
+            sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
+            v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+            q_events_calc_detector.append([pref, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
 
             ptrans = (1.0-res.array()[0])*p
             if ptrans>1e-10:
                 out_events.append([ptrans, x, y, z, vx, vy, vz, t, sx, sy, sz])
                 q_events_real.append([ptrans, *(qConvFactorFromLambda * subtract(v_in, v_in)), t])
                 q_events_no_incident_info.append([ptrans, *(qConvFactorFromLambda * subtract(v_in, v_in_alpha)), t])
-                q_events_calc.append([ptrans, *(qConvFactorFromTof * subtract(v_in, v_in_alpha)), t])
+                q_events_calc_sample.append([ptrans, *(qConvFactorFromTof * subtract(v_in, v_in_alpha)), t])
+                xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
+                sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
+                v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+                q_events_calc_detector.append([ptrans, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
             # calculate BINS² outgoing beams with a random angle within one pixel range
-            Ry =  2*random.random()-1
-            Rz =  2*random.random()-1
+            Ry = 2*random.random()-1
+            Rz = 2*random.random()-1
             sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
             sim.options().setUseAvgMaterials(True)
             res = sim.simulate()
@@ -126,9 +164,15 @@ def run_events(events):
                 v_out = array([vxi, vyi, vzi]) / v
                 q_events_real.append([pouti, *(qConvFactorFromLambda * subtract(v_out, v_in)), t])
                 q_events_no_incident_info.append([pouti, *(qConvFactorFromLambda * subtract(v_out, v_in_alpha)), t])
-                q_events_calc.append([pouti, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
+                q_events_calc_sample.append([pouti, *(qConvFactorFromTof * subtract(v_out, v_in_alpha)), t])
+
+                xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vxi, vyi, vzi)
+                sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
+                v_out_det = array([xDet, yDet, zDet]) / sample_detector_path_length
+                q_events_calc_detector.append([pouti, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
+
     print("misses:", misses)
-    return array(out_events), array(q_events_real), array(q_events_no_incident_info), array(q_events_calc)
+    return array(out_events), array(q_events_real), array(q_events_no_incident_info), array(q_events_calc_sample), array(q_events_calc_detector)
 
 def write_events(out_events):
     header = ''
@@ -170,12 +214,13 @@ def main():
     global get_sample
     sim_module=import_module(MFILE)
     get_sample=sim_module.get_sample
-    out_events, q_events_real, q_events_no_incident_info, q_events_calc = run_events(events)
+    out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
 
     from plotting_utilities import createQPlot
     createQPlot(q_events_real, 'realQ')
     createQPlot(q_events_no_incident_info, 'noIncInfoQ')
     createQPlot(q_events_calc, 'calcQ')
+    # createQPlot(q_events_calc_detector, 'calcQdet')#TODO adjust the tof->lambda!
 
     print(f'Writing events to {OFILE}...')
     # write_events(out_events)
