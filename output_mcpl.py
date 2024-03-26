@@ -28,8 +28,8 @@ def write_events_mcpl(out_events, filename, deweight=False):
     particles = np.column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, weights, sx, sy, sz))
 
     if deweight:
-      weights_above_1p5 = weights > 1.5
-      print(f'len: {len(weights)},sum: {sum(weights)}, min: {min(weights)}, max: {max(weights)}, w>1.5: {len(weights[weights_above_1p5])} ')
+      # weights_above_1p5 = weights > 1.5
+      # print(f'len: {len(weights)},sum: {sum(weights)}, min: {min(weights)}, max: {max(weights)}, w>1.5: {len(weights[weights_above_1p5])} ')
       # Process particles with weights above 1: save N full-weight(1) copies for each particle with weight N.x > 1.0 (e.g. 3 for w=3.2)
       high_weight_mask = weights >= 1.0 # Find particles with weights above 1
       integer_weights = np.floor(weights[high_weight_mask]).astype(int)
