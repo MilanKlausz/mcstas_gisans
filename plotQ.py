@@ -1,6 +1,6 @@
 import sys
 import numpy as np
-from plotting_utilities import plotSingleQ, logPlot2d#, createTofSliced2dQPlots
+from plotting_utilities import plotSingleQ, logPlot2d, create2dHistogram
 
 def unpackQEvents(qEvents):
     x = qEvents[:, 1]
@@ -27,6 +27,8 @@ def main():
     import matplotlib.pyplot as plt
 
     output='show' #'.png'
+    if 'noshow' in sys.argv:
+      output=None #'.png'
     if 'double' in sys.argv:
       _, (ax1, ax2) = plt.subplots(2, figsize=(6, 12))
       output = 'showAll'
@@ -35,12 +37,17 @@ def main():
 
     bins_hor=400
     bins_vert=400
+    hist, xedges, zedges, hist_error = create2dHistogram(x, z, weights, bins_hor, bins_vert)
     logPlot2d(x, z, weights, bins_hor, bins_vert, f"{key}_fullRange", ax=ax1, output=output)
+    logPlot2d(hist, xedges, zedges, f"{key}_fullRange", ax=ax1, output=output)
 
-    qz=0.11
+    qz=0.12
     bins_hor=150
     bins_vert=100
+    hist, xedges, zedges, hist_error = create2dHistogram(x, z, weights, bins_hor, bins_vert)
     plotSingleQ(qz, x, z, weights, bins_hor, bins_vert, titleText = key, ax=ax2, output=output)
+    plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = key, ax=ax2, output=output)
+
 
     if output == 'showAll':
       plt.show()

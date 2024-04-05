@@ -5,23 +5,14 @@ Plotting utilities
 import numpy as np
 from neutron_utilities import tofToLambda
 
-def logPlot2d(x, z, weights, bins_hor, bins_vert, titleText = None, ax=None, output='show'):
+def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, output='show'):
   import matplotlib.pyplot as plt
   import matplotlib.colors as colors
-  import matplotlib.colorbar as colorbar
 
   if ax is None:
     _, ax = plt.subplots()
 
-  x_range = [-0.55, 0.55]
-  z_range = [-0.5, 0.6]
-  # x_range = [x.min(), x.max()]
-  # z_range = [z.min(), z.max()]
-
-  hist, xedges, zedges = np.histogram2d(x, z, weights=weights, bins=[bins_hor, bins_vert], range=[x_range, z_range])
-  hist = hist.T
-
-  hist_min = hist.min().min()
+  # hist_min = hist.min().min()
   # intensity_min = hist_min if hist_min!=0 else 1e-10
   intensity_min = 1e-9
   quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensity_min, vmax=hist.max().max()), cmap='gist_ncar')
@@ -32,12 +23,9 @@ def logPlot2d(x, z, weights, bins_hor, bins_vert, titleText = None, ax=None, out
   ax.set_ylabel('Qz [1/nm]')
   ax.set_title(titleText)
 
-  # plt.colorbar(quadmesh)
   fig = ax.figure # Get the Figure object from the Axes object
-  # cbar = fig.colorbar(quadmesh, ax=ax) # Use the Figure object to create the colorbar
- 
   cax = fig.add_axes([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.02, ax.get_position().height])
-  cbar =  fig.colorbar(quadmesh, cax=cax)
+  cbar = fig.colorbar(quadmesh, cax=cax)
   # cbar.set_label('Intensity') # Optionally set the colorbar label
 
   if output == 'show':
@@ -46,20 +34,11 @@ def logPlot2d(x, z, weights, bins_hor, bins_vert, titleText = None, ax=None, out
     filename = titleText.replace('.','p')
     plt.savefig(filename+output, dpi=300)
 
-def plotSingleQ(qz, x, z, weights, bins_hor, bins_vert, titleText = None, ax=None, output='show'):
+def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = None, ax=None, output='show'):
   import matplotlib.pyplot as plt
 
   if ax is None:
     _, ax = plt.subplots()
-
-  x_range = [-0.55, 0.55]
-  z_range = [-0.5, 0.6]
-
-  hist, xedges, zedges = np.histogram2d(x, z, weights=weights, bins=[bins_hor, bins_vert], range=[x_range, z_range])
-  hist_weight2, _, _ = np.histogram2d(x, z, weights=weights**2, bins=[bins_hor, bins_vert], range=[x_range, z_range])
-  hist_error = np.sqrt(hist_weight2)
-  hist = hist.T
-  hist_error = hist_error.T
 
   qz_index = np.digitize(qz, zedges) - 1
   ax.errorbar(xedges[:-1], hist[qz_index,:] , yerr=hist_error[qz_index, :], fmt='o-', capsize=5, ecolor='red', color='blue')
@@ -92,3 +71,13 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
       titleText = f"lambdaMin={tofToLambda(tofRange[0]):.2f}_lambdaMax={tofToLambda(tofRange[1]):.2f}"
       logPlot2d(xtmp, ztmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
   logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
+
+def create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6]):
+  # x_range = [x.min(), x.max()]
+  # z_range = [z.min(), z.max()]
+  hist, xedges, zedges = np.histogram2d(x, z, weights=weights, bins=[bins_hor, bins_vert], range=[x_range, z_range])
+  hist_weight2, _, _ = np.histogram2d(x, z, weights=weights**2, bins=[bins_hor, bins_vert], range=[x_range, z_range])
+  hist_error = np.sqrt(hist_weight2)
+  hist = hist.T
+  hist_error = hist_error.T
+  return hist, xedges, zedges, hist_error
