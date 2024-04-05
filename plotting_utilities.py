@@ -72,6 +72,29 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
       logPlot2d(xtmp, ztmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
   logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
 
+def scaleToExperiment(hist, hist_error, time):
+  """Make simulated data comparable with a real experiment of a certain length
+  by scaling in time, and perturbing with a random number from a normal
+  distribution to increase the error to the experimentally expected sqrt(I)"""
+  from scipy.stats import norm
+
+  scaledHist = hist * time
+  scaledError = hist_error * time
+  expectedError = np.sqrt(scaledHist)
+  
+  lowerThanOne = np.where(scaledHist < 1)
+  print("lowerThanOne", len(lowerThanOne[0]), ' / ', (scaledHist.size))
+  #NOTE: I'm unsure about the validity of handling high statistical uncertainties this way
+  highErrorIndexes = np.where(scaledError > expectedError)
+  if len(highErrorIndexes[0]) != 0:
+   print("High error bin number: ", len(highErrorIndexes[0]))
+   scaledError[highErrorIndexes] = 0.9 * expectedError[highErrorIndexes]
+
+  missingError = np.sqrt(scaledHist-np.square(scaledError)) #np.square(expectedError)=scaledHist
+  # perturbedHist = scaledHist + norm.rvs(0, missingError)
+  perturbedHist = scaledHist + norm.rvs(0, missingError/10)
+  return perturbedHist, expectedError
+
 def create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6]):
   # x_range = [x.min(), x.max()]
   # z_range = [z.min(), z.max()]
