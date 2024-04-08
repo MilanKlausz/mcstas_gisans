@@ -83,16 +83,19 @@ def scaleToExperiment(hist, hist_error, time):
   expectedError = np.sqrt(scaledHist)
   
   lowerThanOne = np.where(scaledHist < 1)
-  print("lowerThanOne", len(lowerThanOne[0]), ' / ', (scaledHist.size))
+  print("Fewer than 1 hit in bin", len(lowerThanOne[0]), ' / ', (scaledHist.size))
   #NOTE: I'm unsure about the validity of handling high statistical uncertainties this way
   highErrorIndexes = np.where(scaledError > expectedError)
   if len(highErrorIndexes[0]) != 0:
-   print("High error bin number: ", len(highErrorIndexes[0]))
+   print("Higher than sqrt(N) error in bin: ", len(highErrorIndexes[0]), ' / ', (scaledHist.size))
    scaledError[highErrorIndexes] = 0.9 * expectedError[highErrorIndexes]
 
   missingError = np.sqrt(scaledHist-np.square(scaledError)) #np.square(expectedError)=scaledHist
   # perturbedHist = scaledHist + norm.rvs(0, missingError)
   perturbedHist = scaledHist + norm.rvs(0, missingError/10)
+  negativeValueIndexes = np.where(perturbedHist < 0)
+  perturbedHist[negativeValueIndexes] = 0
+  expectedError[negativeValueIndexes] = 0
   return perturbedHist, expectedError
 
 def create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6]):
