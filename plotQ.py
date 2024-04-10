@@ -4,7 +4,7 @@ from plotting_utilities import plotSingleQ, logPlot2d, create2dHistogram, scaleT
 
 def unpackQEvents(qEvents):
     x = qEvents[:, 1]
-    y = qEvents[:, 1]
+    y = qEvents[:, 2]
     z = -qEvents[:, 3] #NOTE inverting z (to point up instead of down)
     weights = qEvents[:, 0]
     time = np.array(qEvents[:, 4])
