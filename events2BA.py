@@ -6,6 +6,8 @@ to feed back to McStas.
 from importlib import import_module
 import sys
 from numpy import *
+from multiprocessing import Pool, cpu_count
+from tqdm import tqdm
 
 import bornagain as ba
 from bornagain import deg, angstrom, nm
@@ -14,7 +16,9 @@ from neutron_utilities import VS2E, V2L, tofToLambda
 
 EFILE = "" #"GISANS_events/test_events" # event file to be used
 OFILE = "test_events_scattered" # event file to be written
-MFILE = "models.hexagonal_spheres"
+MFILE = "models.silica_100nm_air"
+sim_module=import_module(MFILE)
+get_sample=sim_module.get_sample
 
 BINS=10 # number of pixels in x and y direction of the "detector"
 ANGLE_RANGE=3 # degree scattering angle covered by detector
@@ -198,70 +202,58 @@ def run_events(events):
     print("misses:", misses)
     return array(out_events), array(q_events_real), array(q_events_no_incident_info), array(q_events_calc_sample), array(q_events_calc_detector)
 
-def run_events_fast(events):
-    misses = 0
-    total = len(events)
-    q_events_calc_detector = [] #p,qx,qy,qz,t - calculated from TOF at the detector position
-    # q_events_calc_detector = [None, None, None, None, None]*(events*BINS*BINS) #p,qx,qy,qz,t - calculated from TOF at the detector position
+def processNeutron(neutron):
+  p, x, y, z, vx, vy, vz, t, _, _, _ = neutron
+  alpha_i = arctan(vz/vy)*180./pi  # deg
+  phi_i = arctan(vx/vy)*180./pi  # deg
+  v = sqrt(vx**2+vy**2+vz**2)
+  wavelength = V2L/v  # Å
 
-    for in_ID, neutron in enumerate(events):
-        if in_ID%200==0:
-            print(f'{in_ID:10}/{total}')
-        p, x, y, z, vx, vy, vz, t, _, _, _ = neutron
-        alpha_i = arctan(vz/vy)*180./pi  # deg
-        phi_i = arctan(vx/vy)*180./pi  # deg
-        v = sqrt(vx**2+vy**2+vz**2)
-        wavelength = V2L/v  # Å
+  if abs(x)>xwidth or abs(y)>yheight:
+    # beam has not hit the sample surface
+    return []
+  else:
+    # beam has hit the sample
+    sample = get_sample(phi_i)
 
-        if abs(x)>xwidth or abs(y)>yheight:
-            # beam has not hit the sample surface
-            misses += 1
-        else:
-            # beam has hit the sample
-            sample = get_sample(phi_i)
+    # Calculated reflected and transmitted (1-reflected) beams
+    # ssim = get_simulation_specular(sample, wavelength, alpha_i)
+    # res = ssim.simulate()
+    # pref = p*res.array()[0]
+    # xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
+    # sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
+    # v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+    # q_events_calc_detector.append([pref, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
 
-            # Calculated reflected and transmitted (1-reflected) beams
-            # ssim = get_simulation_specular(sample, wavelength, alpha_i)
-            # res = ssim.simulate()
-            # pref = p*res.array()[0]
-            # xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
-            # sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
-            # v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-            # q_events_calc_detector.append([pref, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
+    # ptrans = (1.0-res.array()[0])*p
+    # if ptrans>1e-10:
+    #     xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
+    #     sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
+    #     v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+    #     q_events_calc_detector.append([ptrans, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
+    # calculate BINS² outgoing beams with a random angle within one pixel range
+    Ry = 2*random.random()-1
+    Rz = 2*random.random()-1
+    sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
+    sim.options().setUseAvgMaterials(True)
+    res = sim.simulate()
+    # get probability (intensity) for all pixels
+    pout = res.array()
+    # calculate beam angle relative to coordinate system, including incident beam direction
+    alpha_f = ANGLE_RANGE*(linspace(1., -1., BINS)+Ry/(BINS-1))
+    phi_f = phi_i+ANGLE_RANGE*(linspace(-1., 1., BINS)+Rz/(BINS-1))
+    alpha_f_rad = alpha_f * pi/180.
+    phi_f_rad = phi_f * pi/180.
+    alpha_grid, phi_grid = meshgrid(alpha_f_rad, phi_f_rad)
 
-            # ptrans = (1.0-res.array()[0])*p
-            # if ptrans>1e-10:
-            #     xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
-            #     sample_detector_path_length = linalg.norm([xDet, yDet, zDet])
-            #     v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-            #     q_events_calc_detector.append([ptrans, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * subtract(v_out_det, v_in_alpha)), t])
-            # calculate BINS² outgoing beams with a random angle within one pixel range
-            Ry = 2*random.random()-1
-            Rz = 2*random.random()-1
-            sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
-            sim.options().setUseAvgMaterials(True)
-            res = sim.simulate()
-            # get probability (intensity) for all pixels
-            pout = res.array()
-            # calculate beam angle relative to coordinate system, including incident beam direction
-            alpha_f = ANGLE_RANGE*(linspace(1., -1., BINS)+Ry/(BINS-1))
-            phi_f = phi_i+ANGLE_RANGE*(linspace(-1., 1., BINS)+Rz/(BINS-1))
-            alpha_f_rad = alpha_f * pi/180.
-            phi_f_rad = phi_f * pi/180.
-            alpha_grid, phi_grid = meshgrid(alpha_f_rad, phi_f_rad)
+    VX_grid = v * cos(alpha_grid) * sin(phi_grid)
+    VY_grid = v * cos(alpha_grid) * cos(phi_grid)
+    VZ_grid = -v * sin(alpha_grid)
 
-            VX_grid = v * cos(alpha_grid) * sin(phi_grid)
-            VY_grid = v * cos(alpha_grid) * cos(phi_grid)
-            VZ_grid = -v * sin(alpha_grid)
+    # qArray, tDet = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
+    qArray, _ = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
 
-            # qArray, tDet = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
-            # q_events_calc_detector.extend(column_stack([pout.T.flatten(), qArray, tDet]))
-            qArray, _ = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
-            q_events_calc_detector.extend(column_stack([pout.T.flatten(), qArray]))
-
-
-    print("misses:", misses)
-    return array(q_events_calc_detector)
+    return column_stack([pout.T.flatten(), qArray])
 
 def write_events(out_events):
     header = ''
@@ -277,7 +269,7 @@ def write_events(out_events):
 
 def main():
     if len(sys.argv)>1:
-      MFILE='models.'+sys.argv[1]
+      # MFILE='models.'+sys.argv[1]
       EFILE=sys.argv[2] #TODO implement proper argparser?
 
     print(f'Reading events from {EFILE}...')
@@ -299,13 +291,31 @@ def main():
       sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
 
     events = prop0(events)
-    print(f'Running BornAgain simulations "{MFILE}" for each event...')
-    global get_sample
-    sim_module=import_module(MFILE)
-    get_sample=sim_module.get_sample
+    # print(f'Running BornAgain simulations "{MFILE}" for each event...')
+    # global get_sample
+    # sim_module=import_module(MFILE)
+    # get_sample=sim_module.get_sample
 
     if not 'all_q' in sys.argv:
-      q_events_calc_detector = run_events_fast(events)
+      if 'no_parallel' in sys.argv:
+        total=len(events)
+        q_events_calc_detector = []
+        for in_ID, neutron in enumerate(events):
+          if in_ID%200==0:
+            print(f'{in_ID:10}/{total}')
+          tmp = processNeutron(neutron)
+          q_events_calc_detector.extend(tmp)
+      else:
+        print('Number of events being processed: ', len(events))
+        # Determine the number of CPU cores
+        num_processes = cpu_count() - 2 # Leave one core free for other tasks
+        print('cpu_count: ', cpu_count(), ' num_processes:',num_processes)
+        with Pool(processes=num_processes) as pool:
+          # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
+          q_events = list(tqdm(pool.imap(processNeutron, events), total=len(events)))
+
+        q_events_calc_detector = [item for sublist in q_events for item in sublist]
+
       savez_compressed("q_events_calc_detector.npz", q_events_calc_detector=q_events_calc_detector)
     else:
       out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)

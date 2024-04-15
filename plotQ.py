@@ -7,9 +7,10 @@ def unpackQEvents(qEvents):
     y = qEvents[:, 2]
     z = -qEvents[:, 3] #NOTE inverting z (to point up instead of down)
     weights = qEvents[:, 0]
-    time = np.array(qEvents[:, 4])
+    # time = np.array(qEvents[:, 4])
 
-    return x, y, z, weights, time
+    # return x, y, z, weights, time
+    return x, y, z, weights
 
 
 def main():
@@ -22,7 +23,8 @@ def main():
   for key in data.files:
     q_events = data[key]
 
-    x, _, z, weights, _ = unpackQEvents(q_events)
+    # x, _, z, weights, _ = unpackQEvents(q_events)
+    x, _, z, weights = unpackQEvents(q_events)
 
     import matplotlib.pyplot as plt
 

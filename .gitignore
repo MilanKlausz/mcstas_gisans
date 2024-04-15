@@ -4,3 +4,8 @@
 *.zip
 *.c
 __pycache__
+
+*png
+*.npz
+
+GISANS_events*
