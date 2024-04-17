@@ -5,7 +5,7 @@ Plotting utilities
 import numpy as np
 from neutron_utilities import tofToLambda
 
-def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, output='show'):
+def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6], output='show'):
   import matplotlib.pyplot as plt
   import matplotlib.colors as colors
 
@@ -17,8 +17,8 @@ def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, output='show'):
   intensity_min = 1e-9
   quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensity_min, vmax=hist.max().max()), cmap='gist_ncar')
 
-  ax.set_xlim(-0.55, 0.55)
-  ax.set_ylim(-0.5, 0.6)
+  ax.set_xlim(x_range)
+  ax.set_ylim(z_range)
   ax.set_xlabel('Qx [1/nm]')
   ax.set_ylabel('Qz [1/nm]')
   ax.set_title(titleText)
@@ -34,7 +34,7 @@ def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, output='show'):
     filename = titleText.replace('.','p')
     plt.savefig(filename+output, dpi=300)
 
-def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = None, ax=None, output='show'):
+def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = None, ax=None, x_range=[-0.55, 0.55], output='show'):
   import matplotlib.pyplot as plt
 
   if ax is None:
@@ -48,7 +48,7 @@ def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = None, ax=None,
   qLimitText = f" Qz=[{zedges[qz_index]:.4f}nm, {zedges[qz_index+1]:.4f}nm]"
   ax.set_title(titleText+qLimitText)
   ax.set_yscale("log")
-  ax.set_xlim(-0.55, 0.55)
+  ax.set_xlim(x_range)
 
   if output == 'show':
     plt.show()

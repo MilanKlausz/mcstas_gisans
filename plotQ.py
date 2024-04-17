@@ -36,23 +36,22 @@ def main():
       output = 'showAll'
     else:
       ax1, ax2 = None, None
-
-    experimentTime = None #24*60*60 #sec 
-
+    x_range=[-0.55, 0.55]
+    z_range=[-0.5, 0.6]
     bins_hor=400
     bins_vert=400
-    hist, xedges, zedges, hist_error = create2dHistogram(x, z, weights, bins_hor, bins_vert)
+    hist, xedges, zedges, hist_error = create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=x_range, z_range=z_range)
     if experimentTime is not None:
       hist, _ = scaleToExperiment(hist, hist_error, experimentTime)
-    logPlot2d(hist, xedges, zedges, f"{key}_fullRange", ax=ax1, output=output)
+    logPlot2d(hist, xedges, zedges, f"{key}_fullRange", ax=ax1, x_range=x_range, z_range=z_range, output=output)
 
     qz=0.12
     bins_hor=150
     bins_vert=100
-    hist, xedges, zedges, hist_error = create2dHistogram(x, z, weights, bins_hor, bins_vert)
+    hist, xedges, zedges, hist_error = create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=x_range, z_range=z_range)
     if experimentTime is not None:
       hist, hist_error = scaleToExperiment(hist, hist_error, experimentTime)
-    plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = key, ax=ax2, output=output)
+    plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = key, ax=ax2, x_range=x_range, output=output)
 
     # bins_hor=100
     # bins_vert=150
