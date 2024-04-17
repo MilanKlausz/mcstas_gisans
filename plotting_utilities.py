@@ -3,6 +3,7 @@ Plotting utilities
 """
 
 import numpy as np
+import math as m
 from neutron_utilities import tofToLambda
 
 def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6], output='show'):
@@ -97,6 +98,37 @@ def scaleToExperiment(hist, hist_error, time):
   perturbedHist[negativeValueIndexes] = 0
   expectedError[negativeValueIndexes] = 0
   return perturbedHist, expectedError
+
+def findExperimentTimeMaximum(hist, hist_error):
+  tMaxArray = np.divide(hist, np.square(hist_error))
+  tMax = min(tMaxArray) #the maximum time for ALL bins is the minimum of the tMaxArray
+  # print('tMaxArray', tMaxArray)
+  print('tMax', tMax)
+  return tMax
+
+def findExperimentTimeMinimum(hist, minimumValue, requiredFulfillmentRatio = 1):
+  
+  #minimum time needed for each bin to reach the required minimum value(number of hits)
+  tMinArray =  np.divide(minimumValue, hist)
+  sortedIndexArray = np.argsort(tMinArray)
+  allowedToFail = (1 - requiredFulfillmentRatio) * hist.size
+  N = m.floor(allowedToFail)
+  nthLargest = tMinArray[sortedIndexArray[-N:]]
+  tMinNth = nthLargest[0]
+  
+  print('hist.size', hist.size)
+  print('allowedToFail', allowedToFail)
+  print('N', N)
+  print('tMinNth', tMinNth)
+
+
+  # tMinNth = np.partition(tMinArray, N-1)[N-1]
+
+  # tMin = max(tMinArray) #the minimum time for ALL bins is the maximum of tMinArray
+  # print('tMinArray', tMinArray)
+  # print('tMin', tMin)
+  # print('nth min', tMinNth)
+  return m.ceil(tMinNth)
 
 def create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6]):
   # x_range = [x.min(), x.max()]
