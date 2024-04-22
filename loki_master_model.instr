@@ -700,13 +700,13 @@ COMPONENT SamplePos = Arm()
 
 //  COMPONENT sample_out = Virtual_output(filename="test_events.dat")
 //  AT (0, 0, 0) RELATIVE SamplePos
-//  ROTATED (89.700,0,0) RELATIVE SamplePos
+//  ROTATED (89.650,0,0) RELATIVE SamplePos
 
 // SPLIT 10
 // COMPONENT sample_out = Virtual_output(filename="test_events.dat")
 COMPONENT mcpl_out = MCPL_output_noacc_russian_roulette(filename="test_events", intendedWeight=intendedWeight)
  AT (0, 0, 0) RELATIVE SamplePos
- ROTATED (89.700,0,0) RELATIVE SamplePos
+ ROTATED (89.650,0,0) RELATIVE SamplePos
 
 // // replace sample with simple aperture for trans run
 // COMPONENT Empty_sample = Slit(xwidth = 0.03, yheight = 0.03)

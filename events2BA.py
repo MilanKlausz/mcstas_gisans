@@ -26,9 +26,7 @@ ANGLE_RANGE=3 # degree scattering angle covered by detector
 xwidth=0.01 # [m] size of sample perpendicular to beam
 yheight=0.03 # [m] size of sample along the beam
 
-nominal_source_sample_distance = 23.6 #[m]
-sample_detector_distance = 5 #[m] along the y axis
-alpha_inc = 0.3 *pi/180 #rad
+alpha_inc = 0.35 *pi/180 #rad
 v_in_alpha = array([0, cos(alpha_inc), sin(alpha_inc)])
 #rotation matrix to compensate alpha_inc rotation from MCPL_output component in McStas model
 rot_matrix = array([[cos(alpha_inc), -sin(alpha_inc)],[sin(alpha_inc), cos(alpha_inc)]]) 
