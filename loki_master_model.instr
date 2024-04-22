@@ -29,6 +29,8 @@
 DEFINE INSTRUMENT Loki( double collen=3.0,
                         double l_min=3.0,
                         double l_max=11.5,
+                        double source_l_min=0.0,
+                        double source_l_max=0.0,
                         double sourceapx=0.030,
                         double sampleapx=0.010,
                         double sourceapy=0.025,
@@ -272,10 +274,20 @@ INITIALIZE
   samplepos = 23.5-opticsstart;
   sampleappos = samplepos-0.005; // position of sample aperture relative to sample
 
+
+  //Set source wavelength range if input value is set (>0.0), otherwise use:
   //Calculation based on leading edge of first chopper pair and trailing edge of second chopper pair
   //Need to feed a wider band from the source than just the penumbra to allow the choppers to chop.
-  l_min_source = 0.7*calclambda(2.86,l_min*(chopper1pos-diskoffset+opticsstart)/3.96,chopper1pos-diskoffset+opticsstart);
-  l_max_source = 1.5*calclambda(0, l_max*(chopper2pos+diskoffset+opticsstart)/3.96+2.86, chopper2pos+diskoffset+opticsstart);
+  if(source_l_min > 0.00001){
+    l_min_source = source_l_min;
+  } else{
+    l_min_source = 0.7*calclambda(2.86,l_min*(chopper1pos-diskoffset+opticsstart)/3.96,chopper1pos-diskoffset+opticsstart);
+  }
+  if(source_l_max > 0.00001){
+    l_max_source = source_l_max;
+  } else{
+    l_max_source = 1.5*calclambda(0, l_max*(chopper2pos+diskoffset+opticsstart)/3.96+2.86, chopper2pos+diskoffset+opticsstart);
+  }
   printf ("l_min_source = %g : l_max_source = %g\n",l_min_source,l_max_source);
 
   if(bs5 == 1){
