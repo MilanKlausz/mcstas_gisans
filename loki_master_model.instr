@@ -350,10 +350,6 @@ COMPONENT Source =  ESS_butterfly(
           yheight=0.03,
           focus_xw=guidewidth, focus_yh=guideheight)
 AT (0,0,0) RELATIVE Origin
-EXTEND %{
-  printf("TOF_butterfly = %g, energy=  %g \n",t, e);
-%}
-
 
 COMPONENT ISCS = Arm()
   AT (-0.04162,0,0.00977) RELATIVE Source
