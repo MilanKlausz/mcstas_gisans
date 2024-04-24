@@ -684,8 +684,8 @@ AT (0,0,0.0001) RELATIVE PREVIOUS
 
 COMPONENT PreSampleMonitor = Monitor_nD(
  xwidth=0.03, yheight=0.03,
- options="multiple, lambda bins=50 limits=[1.0,20.0], time limits=[0.0 0.11] bins=550",
-restore_neutron = 1
+ options="multiple, lambda bins=500 limits=[1.0,20.0], time limits=[0.0 0.11] bins=550",
+ restore_neutron = 1
 )
 AT (0, 0, 0.004) RELATIVE sampleaperture
 /// Sample /////////////////////////////////////////////////////////////////////
@@ -697,6 +697,14 @@ COMPONENT SamplePos = Arm()
 //  COMPONENT sample_out = Virtual_output(filename="test_events.dat")
 //  AT (0, 0, 0) RELATIVE SamplePos
 //  ROTATED (89.650,0,0) RELATIVE SamplePos
+
+COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
+ xwidth=0.03, yheight=0.03,
+ tmin=25000, tmax=50000, nt=200,
+ Lmin=4.0, Lmax=8.0, nL=50,
+ restore_neutron=1
+)
+AT (0, 0, 0) RELATIVE SamplePos
 
 // SPLIT 10
 // COMPONENT sample_out = Virtual_output(filename="test_events.dat")
