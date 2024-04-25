@@ -14,8 +14,6 @@ from bornagain import deg, angstrom, nm
 
 from neutron_utilities import VS2E, V2L, tofToLambda
 
-EFILE = "" #"GISANS_events/test_events" # event file to be used
-OFILE = "test_events_scattered" # event file to be written
 MFILE = "models.silica_100nm_air"
 sim_module=import_module(MFILE)
 get_sample=sim_module.get_sample
@@ -26,11 +24,17 @@ ANGLE_RANGE=3 # degree scattering angle covered by detector
 xwidth=0.01 # [m] size of sample perpendicular to beam
 yheight=0.03 # [m] size of sample along the beam
 
+nominal_source_sample_distance = 55.0 #[m]
+sample_detector_distance = 10 #[m] along the y axis
+# nominal_source_sample_distance = 23.6 #[m]
+# sample_detector_distance = 5 #[m] along the y axis
+# nominal_source_sample_distance = 61.28 #[m]
+# sample_detector_distance = 17.6 #[m] along the y axis
 alpha_inc = 0.35 *pi/180 #rad
 v_in_alpha = array([0, cos(alpha_inc), sin(alpha_inc)])
 #rotation matrix to compensate alpha_inc rotation from MCPL_output component in McStas model
-rot_matrix = array([[cos(alpha_inc), -sin(alpha_inc)],[sin(alpha_inc), cos(alpha_inc)]]) 
-rot_matrix_inverse = array([[cos(-alpha_inc), -sin(-alpha_inc)],[sin(-alpha_inc), cos(-alpha_inc)]]) 
+rot_matrix = array([[cos(alpha_inc), -sin(alpha_inc)],[sin(alpha_inc), cos(alpha_inc)]])
+rot_matrix_inverse = array([[cos(-alpha_inc), -sin(-alpha_inc)],[sin(-alpha_inc), cos(-alpha_inc)]])
 
 def prop0(events):
     # propagate neutron events to z=0, the sample surface
@@ -73,7 +77,7 @@ def virtualPropagationToDetector(x, y, z, vx, vy, vz):
 
   #propagate to detector surface perpendicular to the y-axis
   t_propagate= (sample_detector_distance - yRot) / vyRot
-  
+
   x = x + vx * t_propagate
   y = y + vy * t_propagate
   z = z + vz * t_propagate
@@ -92,10 +96,10 @@ def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ):
 
   #propagate to detector surface perpendicular to the y-axis
   t_propagate = (sample_detector_distance - yRot) / vyRot
-  
-  return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z) 
 
-def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ): 
+  return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
+
+def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ):
   sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ)
   posDetector = vstack((xDet, yDet, zDet)).T
   sample_detector_path_length = linalg.norm(posDetector, axis=1)
@@ -265,18 +269,14 @@ def write_events(out_events):
         savetxt(fh, out_events)
 
 
-def main():
-    if len(sys.argv)>1:
-      # MFILE='models.'+sys.argv[1]
-      EFILE=sys.argv[2] #TODO implement proper argparser?
+def main(args):
+    print(f'Reading events from {args.filename}...')
+    if args.filename.endswith('.dat'):
+      events = loadtxt(args.filename)
 
-    print(f'Reading events from {EFILE}...')
-    if EFILE.endswith('.dat'):
-      events = loadtxt(EFILE)
-
-    elif EFILE.endswith('.mcpl') or EFILE.endswith('.mcpl.gz'):
+    elif args.filename.endswith('.mcpl') or args.filename.endswith('.mcpl.gz'):
       import mcpl
-      myfile = mcpl.MCPLFile(EFILE)
+      myfile = mcpl.MCPLFile(args.filename)
       def velocity_from_dir(ux, uy, uz, ekin):
          norm = sqrt(ekin*1e9/VS2E)
          return [ux*norm, uy*norm, uz*norm]
@@ -294,8 +294,9 @@ def main():
     # sim_module=import_module(MFILE)
     # get_sample=sim_module.get_sample
 
-    if not 'all_q' in sys.argv:
-      if 'no_parallel' in sys.argv:
+    savenameAddition = '' if args.savename != '' else f"_{args.savename}"
+    if not args.all_q:
+      if args.no_parallel:
         total=len(events)
         q_events_calc_detector = []
         for in_ID, neutron in enumerate(events):
@@ -305,22 +306,21 @@ def main():
           q_events_calc_detector.extend(tmp)
       else:
         print('Number of events being processed: ', len(events))
-        # Determine the number of CPU cores
-        num_processes = cpu_count() - 2 # Leave one core free for other tasks
-        print('cpu_count: ', cpu_count(), ' num_processes:',num_processes)
+        num_processes = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+        print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
         with Pool(processes=num_processes) as pool:
           # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
           q_events = list(tqdm(pool.imap(processNeutron, events), total=len(events)))
 
         q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
-      savez_compressed("q_events_calc_detector.npz", q_events_calc_detector=q_events_calc_detector)
+      savez_compressed(f"q_events_calc_detector{savenameAddition}.npz", q_events_calc_detector=q_events_calc_detector)
     else:
       out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
-      savez_compressed("q_events_real.npz", q_events_real=q_events_real)
-      savez_compressed("q_events_no_incident_info.npz", q_events_no_incident_info=q_events_no_incident_info)
-      savez_compressed("q_events_calc_sample.npz", q_events_calc_sample=q_events_calc_sample)
-      savez_compressed("q_events_calc_detector.npz", q_events_calc_detector=q_events_calc_detector)
+      savez_compressed(f"q_events_real{savenameAddition}.npz", q_events_real=q_events_real)
+      savez_compressed(f"q_events_no_incident_info{savenameAddition}.npz", q_events_no_incident_info=q_events_no_incident_info)
+      savez_compressed(f"q_events_calc_sample{savenameAddition}.npz", q_events_calc_sample=q_events_calc_sample)
+      savez_compressed(f"q_events_calc_detector{savenameAddition}.npz", q_events_calc_detector=q_events_calc_detector)
       # print(f'Writing events to {OFILE}...')
       # write_events(out_events)
       # from output_mcpl import write_events_mcpl
@@ -328,4 +328,12 @@ def main():
       # write_events_mcpl(out_events, OFILE, deweight)
 
 if __name__=='__main__':
-    main()
+  import argparse
+  parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.')
+  parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
+  parser.add_argument('-s', '--savename', default='', required=False, help = 'Optional addition to the default output filename(s).')
+  parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
+  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
+  parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
+  args = parser.parse_args()
+  main(args)
