@@ -6,7 +6,7 @@ to feed back to McStas.
 from importlib import import_module
 import sys
 from numpy import *
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, shared_memory
 from tqdm import tqdm
 
 import bornagain as ba
@@ -14,23 +14,38 @@ from bornagain import deg, angstrom, nm
 
 from neutron_utilities import VS2E, V2L, tofToLambda
 
-MFILE = "models.silica_100nm_air"
-sim_module=import_module(MFILE)
-get_sample=sim_module.get_sample
-
-BINS=10 # number of pixels in x and y direction of the "detector"
+#TODO turn into input parameter
+BINS=2 # number of pixels in x and y direction of the "detector"
 ANGLE_RANGE=3 # degree scattering angle covered by detector
 
 xwidth=0.01 # [m] size of sample perpendicular to beam
 yheight=0.03 # [m] size of sample along the beam
 
-nominal_source_sample_distance = 55.0 #[m]
-sample_detector_distance = 10 #[m] along the y axis
-# nominal_source_sample_distance = 23.6 #[m]
-# sample_detector_distance = 5 #[m] along the y axis
-# nominal_source_sample_distance = 61.28 #[m]
-# sample_detector_distance = 17.6 #[m] along the y axis
-alpha_inc = 0.35 *pi/180 #rad
+sharedMemoryName = 'sharedProcessMemory'
+defaultSampleModel = "models.silica_100nm_air"
+sim_module=import_module(defaultSampleModel)
+sharedTemplate = array([
+   0.0,
+   0.0,
+   defaultSampleModel
+   ])
+
+instrumentParameters = {
+   'saga': {
+      'nominal_source_sample_distance' : 55.0, #[m]
+      'sample_detector_distance' : 10 #[m] along the y axis
+   },
+   'loki': {
+      'nominal_source_sample_distance' : 23.6,
+      'sample_detector_distance' : 5
+   },
+   'd22': {
+      'nominal_source_sample_distance' : 61.28,#TODO get actual value
+      'sample_detector_distance' : 17.6
+   }
+}
+
+alpha_inc = 0.35 *pi/180 #rad #TODO turn it into an input parameter, take care of the derived values below
 v_in_alpha = array([0, cos(alpha_inc), sin(alpha_inc)])
 #rotation matrix to compensate alpha_inc rotation from MCPL_output component in McStas model
 rot_matrix = array([[cos(alpha_inc), -sin(alpha_inc)],[sin(alpha_inc), cos(alpha_inc)]])
@@ -204,7 +219,23 @@ def run_events(events):
     print("misses:", misses)
     return array(out_events), array(q_events_real), array(q_events_no_incident_info), array(q_events_calc_sample), array(q_events_calc_detector)
 
+def addSharedMemoryValuesToGlobalSpace():
+  global nominal_source_sample_distance
+  global sample_detector_distance
+  global get_sample
+  # Access shared values
+  shm = shared_memory.SharedMemory(name=sharedMemoryName)
+  mem = ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf)
+  nominal_source_sample_distance = float(mem[0])
+  sample_detector_distance = float(mem[1])
+  sim_module_name = str(mem[2])
+  sim_module=import_module(sim_module_name)
+  get_sample=sim_module.get_sample
+  shm.close()
+
 def processNeutron(neutron):
+  addSharedMemoryValuesToGlobalSpace()
+
   p, x, y, z, vx, vy, vz, t, _, _, _ = neutron
   alpha_i = arctan(vz/vy)*180./pi  # deg
   phi_i = arctan(vx/vy)*180./pi  # deg
@@ -316,6 +347,9 @@ def main(args):
 
       savez_compressed(f"q_events_calc_detector{savenameAddition}.npz", q_events_calc_detector=q_events_calc_detector)
     else:
+      global get_sample
+      sim_module=import_module(sim_module_name)
+      get_sample=sim_module.get_sample
       out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
       savez_compressed(f"q_events_real{savenameAddition}.npz", q_events_real=q_events_real)
       savez_compressed(f"q_events_no_incident_info{savenameAddition}.npz", q_events_no_incident_info=q_events_no_incident_info)
@@ -335,5 +369,27 @@ if __name__=='__main__':
   parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
+  parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
+  parser.add_argument('-i','--instrument', default='loki', choices=list(instrumentParameters.keys()), help = 'Instrument.')
+  #add select instrument option
   args = parser.parse_args()
-  main(args)
+
+  # Definitions here are global, so they will be accessible for non-parallel processing simulation
+  nominal_source_sample_distance = instrumentParameters[args.instrument]['nominal_source_sample_distance']
+  sample_detector_distance = instrumentParameters[args.instrument]['sample_detector_distance']
+  sim_module_name = args.model
+  # Add globally constant parameters to a shared memory for -parallel processing simulation
+  shared = array([
+     nominal_source_sample_distance,
+     sample_detector_distance,
+     sim_module_name
+     ])
+  shm = shared_memory.SharedMemory(create=True, size=sharedTemplate.nbytes, name=sharedMemoryName)
+  mem = ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf) #Create a NumPy array backed by shared memory
+  mem[:] = shared[:] # Copy to the shared memory
+
+  try:
+    main(args)
+  finally:
+    shm.close()
+    shm.unlink()
