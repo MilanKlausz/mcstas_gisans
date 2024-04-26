@@ -2,11 +2,25 @@ from mcstas_reader import McSim
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import numpy as np
+import argparse
+import matplotlib
 
-# McSim('GISANS_events_allang_sourceapx10_sampleapx5_asd5_acc5_1e11_nosrclim_dmsc')['Mcpl_TOF_Lambda'].plot(cmap='gist_ncar', cbar=True)
+parser = argparse.ArgumentParser(description = 'Calculate and visualise the FWHM of the TOF distribution of neutrons with a certaing wavelength from a TOF_Lambda McStas monitor.')
+parser.add_argument('dirname', help = 'Directory name with the monitor dat file.')
+parser.add_argument('-m', '--monitor', default='Mcpl_TOF_Lambda', required=False, help = 'Directory name with the monitor dat file.')
+parser.add_argument('-w', '--wavelength', default=6.0, type=float, required=False, help = 'Neutron wavelength of interest.')
+parser.add_argument('-s', '--savename', default='fwhm', required=False, help = 'Output image filename.')
+parser.add_argument('--pdf', action = 'store_true', help = 'Export figure as pdf.')
+parser.add_argument('--png', action = 'store_true', help = 'Export figure as png.')
+args = parser.parse_args()
 
-data = np.array(McSim('GISANS_events_allang_sourceapx10_sampleapx5_asd5_acc5_1e11_nosrclim_dmsc')['Mcpl_TOF_Lambda'].data)
-info = McSim('GISANS_events_allang_sourceapx10_sampleapx5_asd5_acc5_1e11_nosrclim_dmsc')['Mcpl_TOF_Lambda'].info
+if(args.pdf or args.png):
+  matplotlib.use('agg')
+else:
+  matplotlib.use('TkAgg')
+
+data = np.array(McSim(args.dirname)[args.monitor].data)
+info = McSim(args.dirname)[args.monitor].info
 
 print('data.shape: ', data.shape)
 
@@ -18,7 +32,7 @@ lambdaBinNumber, tofBinNumber = data.shape
 
 lambdaRebinFactor = 2
 if lambdaRebinFactor != 1:
-  if(lambdaBinNumber % lambdaRebinFactor is not 0):
+  if(lambdaBinNumber % lambdaRebinFactor != 0):
     import sys
     sys.exit(f'Cannot rebin easily from {lambdaBinNumber} by a factor of {lambdaRebinFactor}')
   else:
@@ -27,8 +41,7 @@ if lambdaRebinFactor != 1:
     lambdaBinNumber = int(lambdaBinNumber/2)
 
 lambdaBinEdges = np.linspace(lambdaMin, lambdaMax, num=lambdaBinNumber+1, endpoint=True)
-lambdaCentre = 6.0
-lambdaIndex = np.digitize(lambdaCentre, lambdaBinEdges) - 1
+lambdaIndex = np.digitize(args.wavelength, lambdaBinEdges) - 1
 tofFor6Ang = data[lambdaIndex]
 
 _, (ax1, ax2) = plt.subplots(2, figsize=(12, 12))
@@ -37,7 +50,7 @@ tofBins = np.linspace(tofMin, tofMax, num=tofBinNumber)
 # plt.scatter(tofBins, tofFor6Ang, label='TOF around 6 ang')
 ax1.plot(tofBins, tofFor6Ang, marker='o', linestyle='-', label='TOF around 6 ang')
 ax1.set_xlabel(info['xlabel'])
-ax1.set_ylabel(f"Intensity around {lambdaCentre} ang")
+ax1.set_ylabel(f"Intensity around {args.wavelength} ang")
 ax1.set_xlim(tofMin, tofMax)
 
 def Gaussian(x, a, x0, sigma):
@@ -79,4 +92,9 @@ ax2.vlines(x=xHalfMaximumHigher, ymin=lambdaMin, ymax=lambdaMax, colors='green',
 ax2.set_xlabel(info['xlabel'])
 ax2.set_ylabel(info['ylabel'])
 
-plt.show()
+if(args.pdf):
+  plt.savefig(f"{args.savename}.pdf")
+elif(args.png):
+  plt.savefig(f"{args.savename}.png")
+else:
+  plt.show()
