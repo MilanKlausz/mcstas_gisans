@@ -14,20 +14,19 @@ from bornagain import deg, angstrom
 
 from neutron_utilities import VS2E, V2L, tofToLambda
 
-#TODO turn into input parameter
-BINS=2 # number of pixels in x and y direction of the "detector"
 ANGLE_RANGE=3 # degree scattering angle covered by detector
 
-xwidth=0.01 # [m] size of sample perpendicular to beam
-yheight=0.03 # [m] size of sample along the beam
+xwidth=0.06 # [m] size of sample perpendicular to beam
+yheight=0.08 # [m] size of sample along the beam
 
 sharedMemoryName = 'sharedProcessMemory'
 defaultSampleModel = "models.silica_100nm_air"
 sim_module=import_module(defaultSampleModel)
 sharedTemplate = np.array([
-   0.0,
-   0.0,
-   defaultSampleModel
+   0.0, # nominal_source_sample_distance
+   0.0, # sample_detector_distance
+   defaultSampleModel,
+   0 # BINS
    ])
 
 instrumentParameters = {
@@ -223,6 +222,7 @@ def addSharedMemoryValuesToGlobalSpace():
   global nominal_source_sample_distance
   global sample_detector_distance
   global get_sample
+  global BINS
   # Access shared values
   shm = shared_memory.SharedMemory(name=sharedMemoryName)
   mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf)
@@ -231,6 +231,7 @@ def addSharedMemoryValuesToGlobalSpace():
   sim_module_name = str(mem[2])
   sim_module=import_module(sim_module_name)
   get_sample=sim_module.get_sample
+  BINS = int(mem[3])
   shm.close()
 
 def processNeutron(neutron):
@@ -321,7 +322,7 @@ def main(args):
 
     events = prop0(events)
 
-    savenameAddition = '' if args.savename != '' else f"_{args.savename}"
+    savenameAddition = '' if args.savename == '' else f"_{args.savename}"
     if not args.all_q:
       if args.no_parallel:
         total=len(events)
@@ -341,7 +342,7 @@ def main(args):
 
         q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
-      np.savez_compressed(f"q_events_calc_detector{savenameAddition}.npz", q_events_calc_detector=q_events_calc_detector)
+      np.savez_compressed(f"q_events_calc_detector{savenameAddition}_bins{BINS}.npz", q_events_calc_detector=q_events_calc_detector)
     else:
       global get_sample
       sim_module=import_module(sim_module_name)
@@ -365,20 +366,22 @@ if __name__=='__main__':
   parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
+  parser.add_argument('-b','--bins', default=10, type=int, help = ' Number of pixels in x and y direction of the "detector"')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
   parser.add_argument('-i','--instrument', default='loki', choices=list(instrumentParameters.keys()), help = 'Instrument.')
-  #add select instrument option
   args = parser.parse_args()
 
   # Definitions here are global, so they will be accessible for non-parallel processing simulation
   nominal_source_sample_distance = instrumentParameters[args.instrument]['nominal_source_sample_distance']
   sample_detector_distance = instrumentParameters[args.instrument]['sample_detector_distance']
   sim_module_name = args.model
+  BINS = args.bins
   # Add globally constant parameters to a shared memory for -parallel processing simulation
   shared = np.array([
      nominal_source_sample_distance,
      sample_detector_distance,
-     sim_module_name
+     sim_module_name,
+     BINS
      ])
   shm = shared_memory.SharedMemory(create=True, size=sharedTemplate.nbytes, name=sharedMemoryName)
   mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf) #Create a NumPy array backed by shared memory
