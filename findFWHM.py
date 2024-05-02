@@ -10,6 +10,7 @@ parser.add_argument('dirname', help = 'Directory name with the monitor dat file.
 parser.add_argument('-m', '--monitor', default='Mcpl_TOF_Lambda', required=False, help = 'Directory name with the monitor dat file.')
 parser.add_argument('-w', '--wavelength', default=6.0, type=float, required=False, help = 'Neutron wavelength of interest.')
 parser.add_argument('-s', '--savename', default='fwhm', required=False, help = 'Output image filename.')
+parser.add_argument('-r', '--wavelength_rebin', default=1, type=int, required=False, help = 'Rebin along wavelength by the provided factor (only if no extrapolation is needed).')
 parser.add_argument('--pdf', action = 'store_true', help = 'Export figure as pdf.')
 parser.add_argument('--png', action = 'store_true', help = 'Export figure as png.')
 args = parser.parse_args()
@@ -30,15 +31,14 @@ lambdaBinNumber, tofBinNumber = data.shape
 # dTof = tofMax - tofMax / tofBinNumber
 # dLambda = lambdaMax - lambdaMin / lambdaBinNumber
 
-lambdaRebinFactor = 2
-if lambdaRebinFactor != 1:
-  if(lambdaBinNumber % lambdaRebinFactor != 0):
+if args.wavelength_rebin != 1:
+  if(lambdaBinNumber % args.wavelength_rebin != 0):
     import sys
-    sys.exit(f'Cannot rebin easily from {lambdaBinNumber} by a factor of {lambdaRebinFactor}')
+    sys.exit(f'Cannot rebin easily from {lambdaBinNumber} by a factor of {args.wavelength_rebin}')
   else:
-    reshaped_arr = data.reshape(int(lambdaBinNumber/lambdaRebinFactor), 2, int(tofBinNumber))
+    reshaped_arr = data.reshape(int(lambdaBinNumber/args.wavelength_rebin), args.wavelength_rebin, int(tofBinNumber))
     data = reshaped_arr.sum(axis=1)
-    lambdaBinNumber = int(lambdaBinNumber/2)
+    lambdaBinNumber, tofBinNumber = data.shape
 
 lambdaBinEdges = np.linspace(lambdaMin, lambdaMax, num=lambdaBinNumber+1, endpoint=True)
 lambdaIndex = np.digitize(args.wavelength, lambdaBinEdges) - 1
