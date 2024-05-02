@@ -315,8 +315,9 @@ def main(args):
       events = np.array([(p.weight,
                        p.x/100, p.y/100, p.z/100, #convert cm->m
                        *velocity_from_dir(p.ux, p.uy, p.uz, p.ekin),
-                       p.time*1e-3, #convert s->ms
-                       p.polx, p.poly, p.polz) for p in myfile.particles if p.weight>1e-5])
+                       p.time*1e-3, #convert ms->s
+                       p.polx, p.poly, p.polz) for p in myfile.particles 
+                       if (p.weight>1e-5 and args.tof_min < p.time and p.time < args.tof_max)])
     else:
       sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
 
@@ -342,7 +343,10 @@ def main(args):
 
         q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
-      np.savez_compressed(f"q_events_calc_detector{savenameAddition}_bins{BINS}.npz", q_events_calc_detector=q_events_calc_detector)
+      saveFilename = f"q_events_calc_detector{savenameAddition}_bins{BINS}.npz"
+      np.savez_compressed(saveFilename, q_events_calc_detector=q_events_calc_detector)
+      print(f"Created {saveFilename}")
+
     else:
       global get_sample
       sim_module=import_module(sim_module_name)
@@ -366,16 +370,18 @@ if __name__=='__main__':
   parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
-  parser.add_argument('-b','--bins', default=10, type=int, help = ' Number of pixels in x and y direction of the "detector"')
+  parser.add_argument('-b','--detector_bins', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
   parser.add_argument('-i','--instrument', default='loki', choices=list(instrumentParameters.keys()), help = 'Instrument.')
+  parser.add_argument('--tof_min', default=0, type=float, help = 'Lower TOF limit in microseconds for selecting neutrons from the input MCPL file.')
+  parser.add_argument('--tof_max', default=150, type=float, help = 'Upper TOF limit in microseconds for selecting neutrons from the input MCPL file')
   args = parser.parse_args()
 
   # Definitions here are global, so they will be accessible for non-parallel processing simulation
   nominal_source_sample_distance = instrumentParameters[args.instrument]['nominal_source_sample_distance']
   sample_detector_distance = instrumentParameters[args.instrument]['sample_detector_distance']
   sim_module_name = args.model
-  BINS = args.bins
+  BINS = args.detector_bins
   # Add globally constant parameters to a shared memory for -parallel processing simulation
   shared = np.array([
      nominal_source_sample_distance,
