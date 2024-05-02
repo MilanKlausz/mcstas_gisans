@@ -126,7 +126,7 @@ INITIALIZE
   sprintf (mcploutput_filename_frontmid, "%s_frontmid", mcploutput_filename_base);
   sprintf (mcploutput_filename_rear1, "%s_rear_5.0m", mcploutput_filename_base);
   sprintf (mcploutput_filename_rear2, "%s_rear_%.1fm", mcploutput_filename_base, reardet);
-  
+
   //replace dots to avoid MPI MCPL merge problem
   for (int i=0; mcploutput_filename_frontmid[i]; i++) {
     if (mcploutput_filename_frontmid[i]=='.') { mcploutput_filename_frontmid[i]='p'; }
@@ -691,7 +691,7 @@ AT (0, 0, 0.004) RELATIVE sampleaperture
 /// Sample /////////////////////////////////////////////////////////////////////
 
 COMPONENT SamplePos = Arm()
-//  AT (0, 0, 0.10) RELATIVE sampleaperture //10 cm between the final aperture and the sample 
+//  AT (0, 0, 0.10) RELATIVE sampleaperture //10 cm between the final aperture and the sample
  AT (0, 0, 0.05) RELATIVE sampleaperture //or maybe 5 cm //milan
 
 //  COMPONENT sample_out = Virtual_output(filename="test_events.dat")
@@ -701,7 +701,7 @@ COMPONENT SamplePos = Arm()
 COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
  xwidth=0.03, yheight=0.03,
  tmin=25000, tmax=50000, nt=200,
- Lmin=4.0, Lmax=8.0, nL=50,
+ Lmin=4.0, Lmax=8.0, nL=150,
  restore_neutron=1
 )
 AT (0, 0, 0) RELATIVE SamplePos
