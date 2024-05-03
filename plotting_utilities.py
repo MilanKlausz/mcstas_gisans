@@ -5,18 +5,22 @@ Plotting utilities
 import numpy as np
 import math as m
 from neutron_utilities import tofToLambda
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 
-def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6], output='show'):
-  import matplotlib.pyplot as plt
-  import matplotlib.colors as colors
+def showOrSave(output, filenameBase):
+  if output == 'show':
+    plt.show()
+  elif output != 'none':
+    filename = filenameBase + output
+    plt.savefig(filename, dpi=300)
+    print(f"Created {filename}")
 
+def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6], savename='plotQ', output='show'):
   if ax is None:
     _, ax = plt.subplots()
 
-  # hist_min = hist.min().min()
-  # intensity_min = hist_min if hist_min!=0 else 1e-10
-  intensity_min = 1e-9
-  quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensity_min, vmax=hist.max().max()), cmap='gist_ncar')
+  quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap='gist_ncar')
 
   ax.set_xlim(x_range)
   ax.set_ylim(z_range)
@@ -29,13 +33,9 @@ def logPlot2d(hist, xedges, zedges, titleText = None, ax=None, x_range=[-0.55, 0
   cbar = fig.colorbar(quadmesh, cax=cax)
   # cbar.set_label('Intensity') # Optionally set the colorbar label
 
-  if output == 'show':
-    plt.show()
-  elif output =='.pdf' or output == '.png':
-    filename = titleText.replace('.','p')
-    plt.savefig(filename+output, dpi=300)
+  showOrSave(output, savename+'_2D')
 
-def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = None, ax=None, x_range=[-0.55, 0.55], output='show'):
+def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText=None, ax=None, x_range=[-0.55, 0.55], savename='plotQ', output='show'):
   import matplotlib.pyplot as plt
 
   if ax is None:
@@ -51,11 +51,7 @@ def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText = None, ax=None,
   ax.set_yscale("log")
   ax.set_xlim(x_range)
 
-  if output == 'show':
-    plt.show()
-  elif output =='.pdf' or output == '.png':
-    filename = titleText.replace('.','p')
-    plt.savefig(filename+output, dpi=300)
+  showOrSave(output, savename+'_qSlice')
 
 def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=200):
   # tofLimits = [0.005, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.075]
@@ -71,64 +67,8 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
       # titleText = f"tofMin={tofRange[0]}_tofMax={tofRange[1]}"
       titleText = f"lambdaMin={tofToLambda(tofRange[0]):.2f}_lambdaMax={tofToLambda(tofRange[1]):.2f}"
       logPlot2d(xtmp, ztmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
-  logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
-
-def scaleToExperiment(hist, hist_error, time):
-  """Make simulated data comparable with a real experiment of a certain length
-  by scaling in time, and perturbing with a random number from a normal
-  distribution to increase the error to the experimentally expected sqrt(I)"""
-  from scipy.stats import norm
-
-  scaledHist = hist * time
-  scaledError = hist_error * time
-  expectedError = np.sqrt(scaledHist)
-  
-  lowerThanOne = np.where(scaledHist < 1)
-  print("Fewer than 1 hit in bin", len(lowerThanOne[0]), ' / ', (scaledHist.size))
-  #NOTE: I'm unsure about the validity of handling high statistical uncertainties this way
-  highErrorIndexes = np.where(scaledError > expectedError)
-  if len(highErrorIndexes[0]) != 0:
-   print("Higher than sqrt(N) error in bin: ", len(highErrorIndexes[0]), ' / ', (scaledHist.size))
-   scaledError[highErrorIndexes] = 0.9 * expectedError[highErrorIndexes]
-
-  missingError = np.sqrt(scaledHist-np.square(scaledError)) #np.square(expectedError)=scaledHist
-  # perturbedHist = scaledHist + norm.rvs(0, missingError)
-  perturbedHist = scaledHist + norm.rvs(0, missingError/10)
-  negativeValueIndexes = np.where(perturbedHist < 0)
-  perturbedHist[negativeValueIndexes] = 0
-  expectedError[negativeValueIndexes] = 0
-  return perturbedHist, expectedError
-
-def findExperimentTimeMaximum(hist, hist_error):
-  tMaxArray = np.divide(hist, np.square(hist_error))
-  tMax = min(tMaxArray) #the maximum time for ALL bins is the minimum of the tMaxArray
-  # print('tMaxArray', tMaxArray)
-  print('tMax', tMax)
-  return tMax
-
-def findExperimentTimeMinimum(hist, minimumValue, requiredFulfillmentRatio = 1):
-  
-  #minimum time needed for each bin to reach the required minimum value(number of hits)
-  tMinArray =  np.divide(minimumValue, hist)
-  sortedIndexArray = np.argsort(tMinArray)
-  allowedToFail = (1 - requiredFulfillmentRatio) * hist.size
-  N = m.floor(allowedToFail)
-  nthLargest = tMinArray[sortedIndexArray[-N:]]
-  tMinNth = nthLargest[0]
-  
-  print('hist.size', hist.size)
-  print('allowedToFail', allowedToFail)
-  print('N', N)
-  print('tMinNth', tMinNth)
-
-
-  # tMinNth = np.partition(tMinArray, N-1)[N-1]
-
-  # tMin = max(tMinArray) #the minimum time for ALL bins is the maximum of tMinArray
-  # print('tMinArray', tMinArray)
-  # print('tMin', tMin)
-  # print('nth min', tMinNth)
-  return m.ceil(tMinNth)
+  logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase)
+  # logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
 
 def create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6]):
   # x_range = [x.min(), x.max()]
