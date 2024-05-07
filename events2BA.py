@@ -170,30 +170,32 @@ def run_events(events):
             sample = get_sample(phi_i)
 
             # Calculated reflected and transmitted (1-reflected) beams
-            # ssim = get_simulation_specular(sample, wavelength, alpha_i)
-            # res = ssim.simulate()
-            # pref = p*res.array()[0]
-            # out_events.append([pref, x, y, z, vx, vy, -vz, t, sx, sy, sz])
-            # v_out = np.array([vx, vy, -vz]) / v
-            # q_events_real.append([pref, *(qConvFactorFromLambda * np.subtract(v_out, v_in)), t])
-            # q_events_no_incident_info.append([pref, *(qConvFactorFromLambda * np.subtract(v_out, v_in_alpha)), t])
-            # q_events_calc_sample.append([pref, *(qConvFactorFromTof * np.subtract(v_out, v_in_alpha)), t])
+            ssim = get_simulation_specular(sample, wavelength, alpha_i)
+            res = ssim.simulate()
+            pref = p*res.array()[0]
+            out_events.append([pref, x, y, z, vx, vy, -vz, t, sx, sy, sz])
+            v_out = np.array([vx, vy, -vz]) / v
+            q_events_real.append([pref, *(qConvFactorFromLambda * np.subtract(v_out, v_in)), t])
+            q_events_no_incident_info.append([pref, *(qConvFactorFromLambda * np.subtract(v_out, v_in_alpha)), t])
+            q_events_calc_sample.append([pref, *(qConvFactorFromTof * np.subtract(v_out, v_in_alpha)), t])
 
-            # xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
-            # sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-            # v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-            # q_events_calc_detector.append([pref, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * np.subtract(v_out_det, v_in_alpha)), t])
+            xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
+            sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
+            v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+            qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
+            q_events_calc_detector.append([pref, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
 
-            # ptrans = (1.0-res.array()[0])*p
-            # if ptrans>1e-10:
-            #     out_events.append([ptrans, x, y, z, vx, vy, vz, t, sx, sy, sz])
-            #     q_events_real.append([ptrans, *(qConvFactorFromLambda * np.subtract(v_in, v_in)), t])
-            #     q_events_no_incident_info.append([ptrans, *(qConvFactorFromLambda * np.subtract(v_in, v_in_alpha)), t])
-            #     q_events_calc_sample.append([ptrans, *(qConvFactorFromTof * np.subtract(v_in, v_in_alpha)), t])
-            #     xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
-            #     sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-            #     v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-            #     q_events_calc_detector.append([ptrans, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * np.subtract(v_out_det, v_in_alpha)), t])
+            ptrans = (1.0-res.array()[0])*p
+            if ptrans>1e-10:
+                out_events.append([ptrans, x, y, z, vx, vy, vz, t, sx, sy, sz])
+                q_events_real.append([ptrans, *(qConvFactorFromLambda * np.subtract(v_in, v_in)), t])
+                q_events_no_incident_info.append([ptrans, *(qConvFactorFromLambda * np.subtract(v_in, v_in_alpha)), t])
+                q_events_calc_sample.append([ptrans, *(qConvFactorFromTof * np.subtract(v_in, v_in_alpha)), t])
+                xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
+                sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
+                v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+                qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
+                q_events_calc_detector.append([ptrans, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
             #calculate BINS² outgoing beams with a random angle within one pixel range
             Ry = 2*np.random.random()-1
             Rz = 2*np.random.random()-1
@@ -270,20 +272,22 @@ def processNeutron(neutron):
     sample = get_sample(phi_i)
 
     # Calculated reflected and transmitted (1-reflected) beams
-    # ssim = get_simulation_specular(sample, wavelength, alpha_i)
-    # res = ssim.simulate()
-    # pref = p*res.array()[0]
-    # xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
-    # sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-    # v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-    # q_specularAndTrans = [pref, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * np.subtract(v_out_det, v_in_alpha)), t]
+    ssim = get_simulation_specular(sample, wavelength, alpha_i)
+    res = ssim.simulate()
+    pref = p*res.array()[0]
+    xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
+    sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
+    v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+    qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
+    q_specularAndTrans = [[pref, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha))]] #, t]
+    ptrans = (1.0-res.array()[0])*p
+    if ptrans>1e-10:
+      xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
+      sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
+      v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
+      qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
+      q_specularAndTrans.append([ptrans, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha))]) #, t])
 
-    # ptrans = (1.0-res.array()[0])*p
-    # if ptrans>1e-10:
-    #     xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
-    #     sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-    #     v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-    #     q_specularAndTrans.append([ptrans, *(qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof) * np.subtract(v_out_det, v_in_alpha)), t])
     # calculate BINS² outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
     Rz = 2*np.random.random()-1
@@ -306,7 +310,9 @@ def processNeutron(neutron):
     # qArray, tDet = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
     qArray, _ = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
 
-    return np.column_stack([pout.T.flatten(), qArray])
+    # q_scattered = np.column_stack([pout.T.flatten(), qArray])
+    return np.concatenate((np.column_stack([pout.T.flatten(), qArray]), np.array(q_specularAndTrans)))
+
 
 def write_events(out_events):
     header = ''
