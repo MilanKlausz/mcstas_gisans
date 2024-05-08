@@ -48,7 +48,7 @@ instrumentParameters = {
    }
 }
 
-alpha_inc = 0.35 *np.pi/180 #rad #TODO turn it into an input parameter, take care of the derived values below
+alpha_inc = 0.24 *np.pi/180 #rad #TODO turn it into an input parameter, take care of the derived values below
 v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
 #rotation matrix to compensate alpha_inc rotation from MCPL_output component in McStas model
 rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
