@@ -249,7 +249,7 @@ def addSharedMemoryValuesToGlobalSpace():
   get_sample=sim_module.get_sample
   BINS = int(mem[3])
 
-  wavelengthSelected = None if mem[4] is None else float(mem[4])
+  wavelengthSelected = None if mem[4] == 'None' else float(mem[4])
   notTOFInstrument = wavelengthSelected is not None
   qConvFactorFixed = None if wavelengthSelected is None else 2*np.pi/(wavelengthSelected*0.1)
 
