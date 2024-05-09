@@ -103,3 +103,33 @@ def findExperimentTimeMinimum(hist, minimumValue, requiredFulfillmentRatio = 1):
   # print('tMin', tMin)
   # print('nth min', tMinNth)
   return m.ceil(tMinNth)
+
+def handleExperimentTime(hist, hist_error, qz_index, experimentTime, findExperimentTime, minCountNr, minCountFraction, iterate, maxIterNr, verbose):
+  if findExperimentTime:
+    #Find experiment time that would give at least <args.minimum_count_number> hits in
+    #more than <minCountFraction> fraction of the bins
+    #TODO add option to control if the basis should be the full 2D histogram or just the q of interest
+    if verbose:
+      t_max = findExperimentTimeMaximum(hist[qz_index,:], hist_error[qz_index,:])
+      print(f"Maximum time the result can be correctly upscaled to: {t_max} sec")
+
+    t_min = findExperimentTimeMinimum(hist[qz_index,:], minCountNr, minCountFraction)
+    print(f"Minimum time the result should be upscaled to in order to get {minCountNr} counts in {minCountFraction*100} percent of the bins: {t_min} sec ({t_min/(60*60):.2f} hours). (This is the analytical result, without the effect of a Gaussian noise.)")
+    experimentTime = t_min
+
+    if iterate:
+      initialTime = t_min * 0.5 #TODO experimental value!
+      print(f"\nIteratively increasing the experiment time to find one where {minCountFraction*100} percent of the bins have more than {minCountNr} counts after adding Gaussian noise.")
+
+      hist, hist_error, experimentTime = scaleToExperimentWithIteratedTime(hist, hist_error, qz_index, minCountNr, minCountFraction, initialTime, maxIterNr, verbose=verbose)
+
+      print(f'\nIteratively found experiment time is: {experimentTime:.0f} sec ({experimentTime/(60*60):.2f} hours)')
+      checkBinCountCriterion(hist[qz_index,:], minCountNr, minCountFraction, verbose=True)
+
+  if (experimentTime is not None) and not iterate:
+    print(f'Upscaling to experiment time: {experimentTime:.0f} sec ({experimentTime/(60*60):.2f} hours)')
+    checkUpscalingError(hist[qz_index,:], hist_error[qz_index,:], experimentTime)
+    hist, hist_error = scaleToExperiment(hist, hist_error, experimentTime)
+    checkBinCountCriterion(hist[qz_index,:], minCountNr, minCountFraction, verbose=True)
+
+  return hist, hist_error

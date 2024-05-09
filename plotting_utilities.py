@@ -16,7 +16,7 @@ def showOrSave(output, filenameBase):
     plt.savefig(filename, dpi=300)
     print(f"Created {filename}")
 
-def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6], savename='plotQ', output='show'):
+def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', output='show'):
   if ax is None:
     _, ax = plt.subplots()
 
@@ -24,8 +24,8 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
   cmap.set_bad('k') # Handle empty bins giving error with LogNorm
   quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
 
-  ax.set_xlim(x_range)
-  ax.set_ylim(z_range)
+  ax.set_xlim(xRange)
+  ax.set_ylim(yRange)
   ax.set_xlabel('Qx [1/nm]')
   ax.set_ylabel('Qz [1/nm]')
   ax.set_title(titleText)
@@ -37,7 +37,7 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
 
   showOrSave(output, savename+'_2D')
 
-def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText=None, ax=None, x_range=[-0.55, 0.55], savename='plotQ', output='show'):
+def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText=None, ax=None, xRange=[-0.55, 0.55], savename='plotQ', output='show'):
   import matplotlib.pyplot as plt
 
   if ax is None:
@@ -51,7 +51,7 @@ def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText=None, ax=None, x
   qLimitText = f" Qz=[{zedges[qz_index]:.4f}nm, {zedges[qz_index+1]:.4f}nm]"
   ax.set_title(titleText+qLimitText)
   ax.set_yscale("log")
-  ax.set_xlim(x_range)
+  ax.set_xlim(xRange)
 
   showOrSave(output, savename+'_qSlice')
 
@@ -72,11 +72,11 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
   logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase)
   # logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
 
-def create2dHistogram(x, z, weights, bins_hor, bins_vert, x_range=[-0.55, 0.55], z_range=[-0.5, 0.6]):
-  # x_range = [x.min(), x.max()]
-  # z_range = [z.min(), z.max()]
-  hist, xedges, zedges = np.histogram2d(x, z, weights=weights, bins=[bins_hor, bins_vert], range=[x_range, z_range])
-  hist_weight2, _, _ = np.histogram2d(x, z, weights=weights**2, bins=[bins_hor, bins_vert], range=[x_range, z_range])
+def create2dHistogram(x, z, weights, bins_hor, bins_vert, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6]):
+  # xRange = [x.min(), x.max()]
+  # yRange = [z.min(), z.max()]
+  hist, xedges, zedges = np.histogram2d(x, z, weights=weights, bins=[bins_hor, bins_vert], range=[xRange, yRange])
+  hist_weight2, _, _ = np.histogram2d(x, z, weights=weights**2, bins=[bins_hor, bins_vert], range=[xRange, yRange])
   hist_error = np.sqrt(hist_weight2)
   hist = hist.T
   hist_error = hist_error.T
