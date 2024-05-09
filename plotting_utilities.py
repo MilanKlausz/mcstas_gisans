@@ -20,7 +20,9 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
   if ax is None:
     _, ax = plt.subplots()
 
-  quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap='gist_ncar')
+  cmap = plt.get_cmap('jet')
+  cmap.set_bad('k') # Handle empty bins giving error with LogNorm
+  quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
 
   ax.set_xlim(x_range)
   ax.set_ylim(z_range)
