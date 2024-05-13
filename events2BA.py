@@ -1,6 +1,6 @@
 """
 Load events from McStas to run a BornAgain simulation and create new neutron events from the results
-to feed back to McStas.
+to feed back to McStas and/or calculate and save Q values for each neutron for processing/plotting.
 """
 
 from importlib import import_module
@@ -13,8 +13,9 @@ import bornagain as ba
 from bornagain import deg, angstrom
 
 from neutron_utilities import VS2E, V2L, tofToLambda
+from instruments import instrumentParameters
 
-ANGLE_RANGE=3 # degree scattering angle covered by detector
+ANGLE_RANGE=2 # degree scattering angle covered by detector
 
 xwidth=0.06 # [m] size of sample perpendicular to beam
 yheight=0.08 # [m] size of sample along the beam
@@ -30,23 +31,6 @@ sharedTemplate = np.array([
    0.0                 # wavelength selected (for non-TOF instruments)
    ])
 
-instrumentParameters = {
-   'saga': {
-      'nominal_source_sample_distance' : 55.0, #[m]
-      'sample_detector_distance' : 10, #[m] along the y axis
-      'tof instrument' : True
-   },
-   'loki': {
-      'nominal_source_sample_distance' : 23.6,
-      'sample_detector_distance' : 5,
-      'tof instrument' : True
-   },
-   'd22': {
-      'nominal_source_sample_distance' : 61.28, #approximate value, but it is not really used
-      'sample_detector_distance' : 17.6,
-      'tof instrument' : False
-   }
-}
 
 alpha_inc = 0.24 *np.pi/180 #rad #TODO turn it into an input parameter, take care of the derived values below
 v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
@@ -397,7 +381,7 @@ if __name__=='__main__':
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('-b','--detector_bins', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
-  parser.add_argument('-i','--instrument', default='loki', choices=list(instrumentParameters.keys()), help = 'Instrument.')
+  parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument.')
   parser.add_argument('-w','--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--tof_min', default=0, type=float, help = 'Lower TOF limit in microseconds for selecting neutrons from the input MCPL file.')
   parser.add_argument('--tof_max', default=150, type=float, help = 'Upper TOF limit in microseconds for selecting neutrons from the input MCPL file')
