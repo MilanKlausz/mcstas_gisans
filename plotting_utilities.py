@@ -16,7 +16,7 @@ def showOrSave(output, filenameBase):
     plt.savefig(filename, dpi=300)
     print(f"Created {filename}")
 
-def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', output='show'):
+def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', matchXAxes=False, output='show'):
   if ax is None:
     _, ax = plt.subplots()
 
@@ -29,27 +29,30 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
   ax.set_xlabel('Qx [1/nm]')
   ax.set_ylabel('Qz [1/nm]')
   ax.set_title(titleText)
+  fig = ax.figure
 
-  fig = ax.figure # Get the Figure object from the Axes object
-  cax = fig.add_axes([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.02, ax.get_position().height])
-  cbar = fig.colorbar(quadmesh, cax=cax)
+  if not matchXAxes:
+    cbar = fig.colorbar(quadmesh, ax=ax, orientation='vertical')
+  else:
+    cax = fig.add_axes([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.02, ax.get_position().height])
+    cbar = fig.colorbar(quadmesh, cax=cax)
+
   # cbar.set_label('Intensity') # Optionally set the colorbar label
 
   showOrSave(output, savename+'_2D')
 
-def plotSingleQ(qz, hist, xedges, zedges, hist_error, titleText=None, ax=None, xRange=[-0.55, 0.55], savename='plotQ', output='show'):
+def plotQ1D(values, errors, xedges, zLimits, intensityMin=None, color='blue', titleText=None, label='', ax=None, xRange=[-0.55, 0.55], savename='plotQ', output='show'):
   import matplotlib.pyplot as plt
-
   if ax is None:
     _, ax = plt.subplots()
-
-  qz_index = np.digitize(qz, zedges) - 1
-  ax.errorbar(xedges[:-1], hist[qz_index,:] , yerr=hist_error[qz_index, :], fmt='o-', capsize=5, ecolor='red', color='blue')
+  
+  ax.errorbar(xedges, values, yerr=errors, fmt='o-', capsize=5, ecolor='red', color=color, label=label)
 
   ax.set_xlabel('Qx [1/nm]') # Set the x-axis title
   ax.set_ylabel('Intensity') # Set the y-axis title
-  qLimitText = f" Qz=[{zedges[qz_index]:.4f}nm, {zedges[qz_index+1]:.4f}nm]"
+  qLimitText = f" Qz=[{zLimits[0]:.4f}1/nm, {zLimits[1]:.4f}1/nm]"
   ax.set_title(titleText+qLimitText)
+  # ax.set_ylim(bottom=intensityMin)
   ax.set_yscale("log")
   ax.set_xlim(xRange)
 
