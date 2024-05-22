@@ -15,7 +15,7 @@ from bornagain import deg, angstrom
 from neutron_utilities import VS2E, V2L, tofToLambda
 from instruments import instrumentParameters
 
-ANGLE_RANGE=2 # degree scattering angle covered by detector
+ANGLE_RANGE=1.7 # degree scattering angle covered by detector
 
 xwidth=0.06 # [m] size of sample perpendicular to beam
 yheight=0.08 # [m] size of sample along the beam
@@ -66,11 +66,6 @@ def get_simulation(sample, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
 
     return ba.ScatteringSimulation(beam, sample, detector)
 
-def get_simulation_specular(sample, wavelength=6.0, alpha_i=0.2):
-    scan = ba.AlphaScan(2, alpha_i*deg, alpha_i*deg+1e-6)
-    scan.setWavelength(wavelength*angstrom)
-    return ba.SpecularSimulation(scan, sample)
-
 def virtualPropagationToDetector(x, y, z, vx, vy, vz):
   """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
   #compensate coord system rotation
@@ -117,7 +112,7 @@ def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ):
   else:
     qArray = (v_out_det - v_in_alpha) * qConvFactorFixed
 
-  return qArray, tDet
+  return qArray
 
 def run_events(events):
     misses = 0
@@ -151,40 +146,14 @@ def run_events(events):
             misses += 1
         else:
             # beam has hit the sample
-            sample = get_sample(phi_i)
+            sample = get_sample()
 
-            # Calculated reflected and transmitted (1-reflected) beams
-            ssim = get_simulation_specular(sample, wavelength, alpha_i)
-            res = ssim.simulate()
-            pref = p*res.array()[0]
-            out_events.append([pref, x, y, z, vx, vy, -vz, t, sx, sy, sz])
-            v_out = np.array([vx, vy, -vz]) / v
-            q_events_real.append([pref, *(qConvFactorFromLambda * np.subtract(v_out, v_in)), t])
-            q_events_no_incident_info.append([pref, *(qConvFactorFromLambda * np.subtract(v_out, v_in_alpha)), t])
-            q_events_calc_sample.append([pref, *(qConvFactorFromTof * np.subtract(v_out, v_in_alpha)), t])
-
-            xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
-            sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-            v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-            qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
-            q_events_calc_detector.append([pref, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
-
-            ptrans = (1.0-res.array()[0])*p
-            if ptrans>1e-10:
-                out_events.append([ptrans, x, y, z, vx, vy, vz, t, sx, sy, sz])
-                q_events_real.append([ptrans, *(qConvFactorFromLambda * np.subtract(v_in, v_in)), t])
-                q_events_no_incident_info.append([ptrans, *(qConvFactorFromLambda * np.subtract(v_in, v_in_alpha)), t])
-                q_events_calc_sample.append([ptrans, *(qConvFactorFromTof * np.subtract(v_in, v_in_alpha)), t])
-                xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
-                sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-                v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-                qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
-                q_events_calc_detector.append([ptrans, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
             #calculate BINS² outgoing beams with a random angle within one pixel range
             Ry = 2*np.random.random()-1
             Rz = 2*np.random.random()-1
             sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
             sim.options().setUseAvgMaterials(True)
+            sim.options().setIncludeSpecular(True)
             res = sim.simulate()
             # get probability (intensity) for all pixels
             pout = res.array()
@@ -253,30 +222,15 @@ def processNeutron(neutron):
     return []
   else:
     # beam has hit the sample
-    sample = get_sample(phi_i)
-
-    # Calculated reflected and transmitted (1-reflected) beams
-    ssim = get_simulation_specular(sample, wavelength, alpha_i)
-    res = ssim.simulate()
-    pref = p*res.array()[0]
-    xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, -vz)
-    sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-    v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-    qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
-    q_specularAndTrans = [[pref, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha))]] #, t]
-    ptrans = (1.0-res.array()[0])*p
-    if ptrans>1e-10:
-      xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vx, vy, vz)
-      sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-      v_out_det = [xDet, yDet, zDet] / sample_detector_path_length
-      qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
-      q_specularAndTrans.append([ptrans, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha))]) #, t])
+    sample = get_sample()
 
     # calculate BINS² outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
     Rz = 2*np.random.random()-1
     sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
     sim.options().setUseAvgMaterials(True)
+    sim.options().setIncludeSpecular(True)
+
     res = sim.simulate()
     # get probability (intensity) for all pixels
     pout = res.array()
@@ -291,11 +245,9 @@ def processNeutron(neutron):
     VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
     VZ_grid = -v * np.sin(alpha_grid)
 
-    # qArray, tDet = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
-    qArray, _ = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
+    qArray = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
 
-    # q_scattered = np.column_stack([pout.T.flatten(), qArray])
-    return np.concatenate((np.column_stack([pout.T.flatten(), qArray]), np.array(q_specularAndTrans)))
+    return  np.column_stack([pout.T.flatten(), qArray])
 
 
 def write_events(out_events):
