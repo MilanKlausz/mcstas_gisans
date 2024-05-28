@@ -23,10 +23,13 @@ yheight=0.08 # [m] size of sample along the beam
 sharedMemoryName = 'sharedProcessMemory'
 defaultSampleModel = "models.silica_100nm_air"
 sim_module=import_module(defaultSampleModel)
+silicaRadius = 53
+
 sharedTemplate = np.array([
    0.0,                # nominal_source_sample_distance
    0.0,                # sample_detector_distance
-   defaultSampleModel, # sample model
+   defaultSampleModel, # sample model,
+   silicaRadius,       # silica particle radius for 'Silica particles on Silicon measured in air' sample model
    0,                  # BINS (~detector resolution)
    0.0                 # wavelength selected (for non-TOF instruments)
    ])
@@ -146,7 +149,7 @@ def run_events(events):
             misses += 1
         else:
             # beam has hit the sample
-            sample = get_sample()
+            sample = get_sample(radius=args.silicaRadius)
 
             #calculate BINS² outgoing beams with a random angle within one pixel range
             Ry = 2*np.random.random()-1
@@ -187,7 +190,7 @@ def run_events(events):
 def addSharedMemoryValuesToGlobalSpace():
   global nominal_source_sample_distance
   global sample_detector_distance
-  global get_sample
+  global sample
   global BINS
   global wavelengthSelected
   global notTOFInstrument # just to make the code more readable later on
@@ -200,9 +203,12 @@ def addSharedMemoryValuesToGlobalSpace():
   sim_module_name = str(mem[2])
   sim_module=import_module(sim_module_name)
   get_sample=sim_module.get_sample
-  BINS = int(mem[3])
+  silicaRadius = float(mem[3])
+  sample = get_sample(radius=silicaRadius)
 
-  wavelengthSelected = None if mem[4] == 'None' else float(mem[4])
+  BINS = int(mem[4])
+
+  wavelengthSelected = None if mem[5] == 'None' else float(mem[5])
   notTOFInstrument = wavelengthSelected is not None
   qConvFactorFixed = None if wavelengthSelected is None else 2*np.pi/(wavelengthSelected*0.1)
 
@@ -222,7 +228,6 @@ def processNeutron(neutron):
     return []
   else:
     # beam has hit the sample
-    sample = get_sample()
 
     # calculate BINS² outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
@@ -333,6 +338,7 @@ if __name__=='__main__':
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('-b','--detector_bins', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
+  parser.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
   parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument.')
   parser.add_argument('-w','--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--tof_min', default=0, type=float, help = 'Lower TOF limit in microseconds for selecting neutrons from the input MCPL file.')
@@ -343,6 +349,7 @@ if __name__=='__main__':
   nominal_source_sample_distance = instrumentParameters[args.instrument]['nominal_source_sample_distance']
   sample_detector_distance = instrumentParameters[args.instrument]['sample_detector_distance']
   sim_module_name = args.model
+  silicaRadius = args.silicaRadius
   BINS = args.detector_bins
   wavelengthSelected = None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected
   # Add globally constant parameters to a shared memory for -parallel processing simulation
@@ -350,6 +357,7 @@ if __name__=='__main__':
      nominal_source_sample_distance,
      sample_detector_distance,
      sim_module_name,
+     silicaRadius,
      BINS,
      wavelengthSelected
      ])

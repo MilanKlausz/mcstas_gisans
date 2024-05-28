@@ -27,7 +27,7 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
   ax.set_xlim(xRange)
   ax.set_ylim(yRange)
   ax.set_xlabel('Qx [1/nm]')
-  ax.set_ylabel('Qz [1/nm]')
+  ax.set_ylabel('Qy [1/nm]')
   ax.set_title(titleText)
   fig = ax.figure
 
