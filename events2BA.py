@@ -289,7 +289,7 @@ def main(args):
 
     events = prop0(events)
 
-    savenameAddition = '' if args.savename == '' else f"_{args.savename}"
+    savename = f"q_events_bins{BINS}" if args.savename == '' else args.savename
     if not args.all_q:
       if args.no_parallel:
         total=len(events)
@@ -309,19 +309,18 @@ def main(args):
 
         q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
-      saveFilename = f"q_events_calc_detector{savenameAddition}_bins{BINS}.npz"
-      np.savez_compressed(saveFilename, q_events_calc_detector=q_events_calc_detector)
-      print(f"Created {saveFilename}")
+      np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
+      print(f"Created {savename}")
 
     else:
       global get_sample
       sim_module=import_module(sim_module_name)
       get_sample=sim_module.get_sample
-      out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
-      np.savez_compressed(f"q_events_real{savenameAddition}.npz", q_events_real=q_events_real)
-      np.savez_compressed(f"q_events_no_incident_info{savenameAddition}.npz", q_events_no_incident_info=q_events_no_incident_info)
-      np.savez_compressed(f"q_events_calc_sample{savenameAddition}.npz", q_events_calc_sample=q_events_calc_sample)
-      np.savez_compressed(f"q_events_calc_detector{savenameAddition}.npz", q_events_calc_detector=q_events_calc_detector)
+      _, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
+      np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
+      np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
+      np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
+      np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
       # print(f'Writing events to {OFILE}...')
       # write_events(out_events)
       # from output_mcpl import write_events_mcpl
@@ -332,7 +331,7 @@ if __name__=='__main__':
   import argparse
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.')
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
-  parser.add_argument('-s', '--savename', default='', required=False, help = 'Optional addition to the default output filename(s).')
+  parser.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
