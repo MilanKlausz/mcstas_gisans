@@ -310,7 +310,7 @@ def main(args):
         q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
       np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
-      print(f"Created {savename}")
+      print(f"Created {savename}.npz")
 
     else:
       global get_sample
