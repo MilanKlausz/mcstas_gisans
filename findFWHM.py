@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from mcstas_reader import McSim
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit

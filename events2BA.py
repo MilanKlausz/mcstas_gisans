@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Load events from McStas to run a BornAgain simulation and create new neutron events from the results
 to feed back to McStas and/or calculate and save Q values for each neutron for processing/plotting.
@@ -41,8 +43,16 @@ v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
 rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
 rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
 
-def prop0(events):
-    # propagate neutron events to z=0, the sample surface
+def coordTransformToSampleSystem(events):
+    """Apply coordinate transformation to express neutron parameters in a
+    coordinate system with the sample in the centre and being horisontal"""
+    p, x, y, z, vx, vy, vz, t, sx, sy, sz = events.T
+    zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
+    vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
+    return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t, sx, sy, sz]).T
+
+def propagateToSampleSurface(events):
+    """Propagate neutron events to z=0, the sample surface"""
     p, x, y, z, vx, vy, vz, t, sx, sy, sz = events.T
     t0 = -z/vz
     x += vx*t0
@@ -287,7 +297,8 @@ def main(args):
     else:
       sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
 
-    events = prop0(events)
+    events = coordTransformToSampleSystem(events)
+    events = propagateToSampleSurface(events)
 
     savename = f"q_events_bins{BINS}" if args.savename == '' else args.savename
     if not args.all_q:
