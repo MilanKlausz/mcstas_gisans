@@ -35,8 +35,8 @@ n_pulses = 2 // number of simulated source pulses
 
 DECLARE 
 %{
-double iscs_x = -5.04995; // X-coordinate of start of ISCS in McStas coordinates (in mm)
-double iscs_z = -226.659; // Z-coordinate of start of ISCS in McStas coordinates (in mm)
+double iscs_x = -38.681; // X-coordinate of start of ISCS in McStas coordinates (in mm)
+double iscs_z = 18.2148; // Z-coordinate of start of ISCS in McStas coordinates (in mm)
 %}
 
 INITIALIZE 
@@ -49,7 +49,7 @@ COMPONENT origin = Progress_bar()
 AT (0,0,0) ABSOLUTE
 
 COMPONENT source = ESS_butterfly(
- sector = "S", beamline = 4,
+ sector = "S", beamline = 5,
  yheight = 0.03, cold_frac = 0.5,
  target_index = 3, focus_xw = 0.03,
  focus_yh = 0.03, Lmin = 5,
@@ -57,7 +57,7 @@ COMPONENT source = ESS_butterfly(
  acc_power = 5)
 AT (0,0,0) RELATIVE origin
 // COMPONENT source = ESS_butterfly(
-//  sector = "S", beamline = 4,
+//  sector = "S", beamline = 5,
 //  yheight = 0.03, cold_frac = 0.5,
 //  target_index = 3, focus_xw = 0.03,
 //  focus_yh = 0.03, Lmin = Lmin,
