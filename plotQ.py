@@ -4,8 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram  #, createTofSliced2dQPlots
-from experiment_time_utilities import scaleToExperiment, handleExperimentTime
-# from readD22Data import getStoredData, storedDataParameters
+from experiment_time_utilities import handleExperimentTime
 from d22data import getStoredData
 
 def unpackQEvents(qEvents):
