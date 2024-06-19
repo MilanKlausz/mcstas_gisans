@@ -23,15 +23,10 @@ ANGLE_RANGE=1.7 # degree scattering angle covered by detector
 xwidth=0.06 # [m] size of sample perpendicular to beam
 yheight=0.08 # [m] size of sample along the beam
 
-alpha_inc = 0.24 *np.pi/180 #rad #TODO turn it into an input parameter, take care of the derived values below
-v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
-#rotation matrix to compensate alpha_inc rotation from MCPL_output component in McStas model
-rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
-rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
-
-def coordTransformToSampleSystem(events):
+def coordTransformToSampleSystem(events, alpha_inc):
     """Apply coordinate transformation to express neutron parameters in a
     coordinate system with the sample in the centre and being horisontal"""
+    rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
     p, x, y, z, vx, vy, vz, t = events.T
     zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
     vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
@@ -65,12 +60,9 @@ def get_simulation(sample, bins, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0
 
     return ba.ScatteringSimulation(beam, sample, detector)
 
-def qConvFactorFromTofAtDetector(sample_detector_path_length, tDet):
-    path_length = nominal_source_sample_distance + sample_detector_path_length
-    return 2*np.pi/(tofToLambda(tDet, path_length)*0.1)
-
-def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance):
+def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc):
   """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
+  rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
   #Calculate time until the detector surface with coord system rotation
   _, yRot = np.dot(rot_matrix, [z, y])
   _, vyRot = np.matmul(rot_matrix, np.vstack((VZ, VY))) # get [vz, vy]
@@ -80,15 +72,15 @@ def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_
 
   return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
 
-def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed):
-  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance)
+def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed):
+  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc)
   posDetector = np.vstack((xDet, yDet, zDet)).T
   sample_detector_path_length = np.linalg.norm(posDetector, axis=1)
 
   v_out_det = posDetector / sample_detector_path_length[:, np.newaxis]
 
   tDet = sample_detector_tof + t
-
+  v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
   if notTOFInstrument is False: #TOF instruments
     path_length = sample_detector_path_length + nominal_source_sample_distance
     qConvFactorFromTofAtDetector = 2*np.pi/(tofToLambda(tDet, path_length)*0.1)
@@ -99,14 +91,14 @@ def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ, nominal_source_sample_di
   return qArray
 
 def processNeutrons(neutron):
-  sv = getSharedMemoryValues()
+  sc = getSharedMemoryValues() #get shared constants from shared memory
 
-  sim_module = import_module(sv['sim_module_name'])
+  sim_module = import_module(sc['sim_module_name'])
   get_sample = sim_module.get_sample
-  sample = get_sample(radius=sv['silicaRadius'])
+  sample = get_sample(radius=sc['silicaRadius'])
 
-  notTOFInstrument = sv['wavelengthSelected'] is not None
-  qConvFactorFixed = None if sv['wavelengthSelected'] is None else 2*np.pi/(sv['wavelengthSelected']*0.1)
+  notTOFInstrument = sc['wavelengthSelected'] is not None
+  qConvFactorFixed = None if sc['wavelengthSelected'] is None else 2*np.pi/(sc['wavelengthSelected']*0.1)
 
   p, x, y, z, vx, vy, vz, t = neutron
   alpha_i = np.arctan(vz/vy)*180./np.pi  # deg
@@ -123,7 +115,7 @@ def processNeutrons(neutron):
     # calculate bins outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
     Rz = 2*np.random.random()-1
-    sim = get_simulation(sample, sv['bins'], wavelength, alpha_i, p, Ry, Rz)
+    sim = get_simulation(sample, sc['bins'], wavelength, alpha_i, p, Ry, Rz)
     sim.options().setUseAvgMaterials(True)
     sim.options().setIncludeSpecular(True)
 
@@ -131,8 +123,8 @@ def processNeutrons(neutron):
     # get probability (intensity) for all pixels
     pout = res.array()
     # calculate beam angle relative to coordinate system, including incident beam direction
-    alpha_f = ANGLE_RANGE*(np.linspace(1., -1., sv['bins'])+Ry/(sv['bins']-1))
-    phi_f = phi_i+ANGLE_RANGE*(np.linspace(-1., 1., sv['bins'])+Rz/(sv['bins']-1))
+    alpha_f = ANGLE_RANGE*(np.linspace(1., -1., sc['bins'])+Ry/(sc['bins']-1))
+    phi_f = phi_i+ANGLE_RANGE*(np.linspace(-1., 1., sc['bins'])+Rz/(sc['bins']-1))
     alpha_f_rad = alpha_f * np.pi/180.
     phi_f_rad = phi_f * np.pi/180.
     alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
@@ -141,51 +133,68 @@ def processNeutrons(neutron):
     VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
     VZ_grid = -v * np.sin(alpha_grid)
 
-    qArray = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sv['nominal_source_sample_distance'], sv['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
+    qArray = getQsAtDetector(x, y, z, t, sc['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sc['nominal_source_sample_distance'], sc['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
 
     return  np.column_stack([pout.T.flatten(), qArray])
 
 def main(args):
-    from inputOutput import getNeutronEvents
-    events = getNeutronEvents(args.filename, args.tof_min, args.tof_max)
-    events = coordTransformToSampleSystem(events)
-    events = propagateToSampleSurface(events)
+  #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
+  sharedConstants = {
+    'nominal_source_sample_distance': instrumentParameters[args.instrument]['nominal_source_sample_distance'],
+    'sample_detector_distance': instrumentParameters[args.instrument]['sample_detector_distance'],
+    'sim_module_name': args.model,
+    'silicaRadius': args.silicaRadius,
+    'bins': args.detector_bins,
+    'wavelengthSelected':  None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected,
+    'alpha_inc': args.alpha *np.pi/180
+  }
 
-    savename = f"q_events_bins{bins}" if args.savename == '' else args.savename
-    if not args.all_q:
-      if args.no_parallel:
-        total=len(events)
-        q_events_calc_detector = []
-        for in_ID, neutron in enumerate(events):
-          if in_ID%200==0:
-            print(f'{in_ID:10}/{total}')
-          tmp = processNeutrons(neutron)
-          q_events_calc_detector.extend(tmp)
-      else:
-        print('Number of events being processed: ', len(events))
-        num_processes = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
-        print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
+  from inputOutput import getNeutronEvents
+  events = getNeutronEvents(args.filename, args.tof_min, args.tof_max)
+  events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
+  events = propagateToSampleSurface(events)
+
+  savename = f"q_events_bins{sharedConstants['bins']}" if args.savename == '' else args.savename
+  if not args.all_q:
+    if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially
+      total=len(events)
+      q_events_calc_detector = []
+      for in_ID, neutron in enumerate(events):
+        if in_ID%200==0:
+          print(f'{in_ID:10}/{total}')
+        tmp = processNeutrons(neutron)
+        q_events_calc_detector.extend(tmp)
+    else:
+      print('Number of events being processed: ', len(events))
+      num_processes = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+      print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
+
+      try:
+        shm = createSharedMemory(sharedConstants) #using shared memory to pass in constants for the parallel processes
         with Pool(processes=num_processes) as pool:
           # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
           q_events = list(tqdm(pool.imap(processNeutrons, events), total=len(events)))
+      finally:
+        shm.close()
+        shm.unlink()
 
-        q_events_calc_detector = [item for sublist in q_events for item in sublist]
+      q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
-      np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
-      print(f"Created {savename}.npz")
+    np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
+    print(f"Created {savename}.npz")
 
-    else: #old, non-vectorised processing, resulting in multiple q values with different definitions
-      from oldProcessing import processNeutronsNonVectorised
-      out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, alpha_inc, xwidth, yheight, ANGLE_RANGE, bins, wavelengthSelected, silicaRadius, get_simulation, sample_detector_distance, qConvFactorFromTofAtDetector, sim_module_name)
-      np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
-      np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
-      np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
-      np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
-      saveOutgoingEvents = False
-      if saveOutgoingEvents:
-        from inputOutput import write_events_mcpl
-        deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
-        write_events_mcpl(out_events, savename, deweight)
+  else: #old, non-vectorised processing, resulting in multiple q values with different definitions
+    from oldProcessing import processNeutronsNonVectorised
+    out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, xwidth, yheight, ANGLE_RANGE, sharedConstants)
+    np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
+    np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
+    np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
+    np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
+    saveOutgoingEvents = False
+    if saveOutgoingEvents:
+      from inputOutput import write_events_mcpl
+      deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
+      write_events_mcpl(out_events, savename, deweight)
 
 if __name__=='__main__':
   import argparse
@@ -205,17 +214,5 @@ if __name__=='__main__':
   parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
   args = parser.parse_args()
 
-  # Definitions here are global, so they will be accessible for non-parallel processing simulation
-  nominal_source_sample_distance = instrumentParameters[args.instrument]['nominal_source_sample_distance']
-  sample_detector_distance = instrumentParameters[args.instrument]['sample_detector_distance']
-  sim_module_name = args.model
-  silicaRadius = args.silicaRadius
-  bins = args.detector_bins
-  wavelengthSelected = None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected
-  
-  shm = createSharedMemory(nominal_source_sample_distance, sample_detector_distance, sim_module_name, silicaRadius, bins, wavelengthSelected)
-  try:
-    main(args)
-  finally:
-    shm.close()
-    shm.unlink()
+  main(args)
+

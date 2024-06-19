@@ -14,23 +14,25 @@ sharedTemplate = np.array([
    defaultSampleModel, # sample model,
    0,                  # silica particle radius for 'Silica particles on Silicon measured in air' sample model
    0,                  # bins (~detector resolution)
-   0.0                 # wavelength selected (for non-TOF instruments)
+   0.0,                 # wavelength selected (for non-TOF instruments)
+   0.0                 # alpha_inc (incident angle)
    ])
 
-def createSharedMemory(nominal_source_sample_distance, sample_detector_distance, sim_module_name, silicaRadius, bins, wavelengthSelected):
-  '''Add parameters to a shared memory for parallel processing simulation'''
-  shared = np.array([
-     nominal_source_sample_distance,
-     sample_detector_distance,
-     sim_module_name,
-     silicaRadius,
-     bins,
-     wavelengthSelected
+def createSharedMemory(sc):
+  '''Add parameters (shared constants) to shared memory for parallel processing simulation'''
+  sharedArray = np.array([
+     sc['nominal_source_sample_distance'],
+     sc['sample_detector_distance'],
+     sc['sim_module_name'],
+     sc['silicaRadius'],
+     sc['bins'],
+     sc['wavelengthSelected'],
+     sc['alpha_inc']
     ])
 
   shm = shared_memory.SharedMemory(create=True, size=sharedTemplate.nbytes, name=sharedMemoryName)
   mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf) #Create a NumPy array backed by shared memory
-  mem[:] = shared[:] # Copy to the shared memory
+  mem[:] = sharedArray[:] # Copy to the shared memory
 
   return shm
 
@@ -45,6 +47,7 @@ def getSharedMemoryValues():
   sharedValues.update({'silicaRadius' : float(mem[3])})
   sharedValues.update({'bins' : int(mem[4])})
   sharedValues.update({'wavelengthSelected' : None if mem[5] == 'None' else float(mem[5])})
+  sharedValues.update({'alpha_inc' : float(mem[6])})
   shm.close()
 
   return sharedValues
