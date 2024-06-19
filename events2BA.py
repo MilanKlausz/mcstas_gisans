@@ -18,47 +18,53 @@ from instruments import instrumentParameters
 
 from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
 
-ANGLE_RANGE=1.7 # degree scattering angle covered by detector
-
-xwidth=0.06 # [m] size of sample perpendicular to beam
-yheight=0.08 # [m] size of sample along the beam
-
 def coordTransformToSampleSystem(events, alpha_inc):
-    """Apply coordinate transformation to express neutron parameters in a
-    coordinate system with the sample in the centre and being horisontal"""
-    rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
-    p, x, y, z, vx, vy, vz, t = events.T
-    zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
-    vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
-    return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
+  """Apply coordinate transformation to express neutron parameters in a
+  coordinate system with the sample in the centre and being horisontal"""
+  rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
+  p, x, y, z, vx, vy, vz, t = events.T
+  zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
+  vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
+  return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
 
-def propagateToSampleSurface(events):
-    """Propagate neutron events to z=0, the sample surface"""
-    p, x, y, z, vx, vy, vz, t= events.T
-    t0 = -z/vz
-    x += vx*t0
-    y += vy*t0
-    z += vz*t0
-    t+=t0
-    return np.vstack([p, x, y, z, vx, vy, vz, t]).T
+def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
+  """
+  Propagate neutron events to z=0, the sample surface.
+  Discard those which avoid the sample.
+  """
+  p, x, y, z, vx, vy, vz, t = events.T
+  t_propagate = -z/vz
+  x += vx * t_propagate
+  y += vy * t_propagate
+  z += vz * t_propagate
+  t += t_propagate
 
-def get_simulation(sample, bins, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
-    """
-    Create a simulation with bins pixels that cover an angular range of
-    ANGLE_RANGE degrees.
-    The Ry and Rz values are relative rotations of the detector within one pixel
-    to finely define the outgoing direction of events.
-    """
-    beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
+  # Create a boolean mask for neutrons to select those which hit the sample
+  hitSampleMask = (abs(x) < sample_xwidth) & (abs(y) < sample_yheight)
+  sampleHitEvents = np.vstack([p, x, y, z, vx, vy, vz, t]).T[hitSampleMask]
 
-    dRy = Ry*ANGLE_RANGE*deg/(bins-1)
-    dRz = Rz*ANGLE_RANGE*deg/(bins-1)
+  eventNr = len(events)
+  sampleHitEventNr = len(sampleHitEvents)
+  if sampleHitEventNr != eventNr:
+    print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} neutrons avoided the sample!")
+  return sampleHitEvents
 
-    # Define detector
-    detector = ba.SphericalDetector(bins, -ANGLE_RANGE*deg+dRz, ANGLE_RANGE*deg+dRz,
-                                    bins, -ANGLE_RANGE*deg+dRy, ANGLE_RANGE*deg+dRy)
+def get_simulation(sample, bins, angle_range, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
+  """
+  Create a simulation with bins pixels that cover an angular range of angle_range degrees.
+  The Ry and Rz values are relative rotations of the detector within one pixel
+  to finely define the outgoing direction of events.
+  """
+  beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-    return ba.ScatteringSimulation(beam, sample, detector)
+  dRy = Ry*angle_range*deg/(bins-1)
+  dRz = Rz*angle_range*deg/(bins-1)
+
+  # Define detector
+  detector = ba.SphericalDetector(bins, -angle_range*deg+dRz, angle_range*deg+dRz,
+                                  bins, -angle_range*deg+dRy, angle_range*deg+dRy)
+
+  return ba.ScatteringSimulation(beam, sample, detector)
 
 def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc):
   """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
@@ -90,8 +96,9 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
 
   return qArray
 
-def processNeutrons(neutron):
-  sc = getSharedMemoryValues() #get shared constants from shared memory
+def processNeutrons(neutron, sc=None):
+  if sc is None:
+    sc = getSharedMemoryValues() #get shared constants from shared memory
 
   sim_module = import_module(sc['sim_module_name'])
   get_sample = sim_module.get_sample
@@ -106,36 +113,31 @@ def processNeutrons(neutron):
   v = np.sqrt(vx**2+vy**2+vz**2)
   wavelength = V2L/v  # Å
 
-  if abs(x)>xwidth or abs(y)>yheight:
-    # beam has not hit the sample surface
-    return []
-  else:
-    # beam has hit the sample
 
-    # calculate bins outgoing beams with a random angle within one pixel range
-    Ry = 2*np.random.random()-1
-    Rz = 2*np.random.random()-1
-    sim = get_simulation(sample, sc['bins'], wavelength, alpha_i, p, Ry, Rz)
-    sim.options().setUseAvgMaterials(True)
-    sim.options().setIncludeSpecular(True)
+  # calculate bins outgoing beams with a random angle within one pixel range
+  Ry = 2*np.random.random()-1
+  Rz = 2*np.random.random()-1
+  sim = get_simulation(sample, sc['bins'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+  sim.options().setUseAvgMaterials(True)
+  sim.options().setIncludeSpecular(True)
 
-    res = sim.simulate()
-    # get probability (intensity) for all pixels
-    pout = res.array()
-    # calculate beam angle relative to coordinate system, including incident beam direction
-    alpha_f = ANGLE_RANGE*(np.linspace(1., -1., sc['bins'])+Ry/(sc['bins']-1))
-    phi_f = phi_i+ANGLE_RANGE*(np.linspace(-1., 1., sc['bins'])+Rz/(sc['bins']-1))
-    alpha_f_rad = alpha_f * np.pi/180.
-    phi_f_rad = phi_f * np.pi/180.
-    alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
+  res = sim.simulate()
+  # get probability (intensity) for all pixels
+  pout = res.array()
+  # calculate beam angle relative to coordinate system, including incident beam direction
+  alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['bins'])+Ry/(sc['bins']-1))
+  phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['bins'])+Rz/(sc['bins']-1))
+  alpha_f_rad = alpha_f * np.pi/180.
+  phi_f_rad = phi_f * np.pi/180.
+  alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
 
-    VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid)
-    VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
-    VZ_grid = -v * np.sin(alpha_grid)
+  VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid)
+  VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
+  VZ_grid = -v * np.sin(alpha_grid)
 
-    qArray = getQsAtDetector(x, y, z, t, sc['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sc['nominal_source_sample_distance'], sc['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
+  qArray = getQsAtDetector(x, y, z, t, sc['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sc['nominal_source_sample_distance'], sc['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
 
-    return  np.column_stack([pout.T.flatten(), qArray])
+  return  np.column_stack([pout.T.flatten(), qArray])
 
 def main(args):
   #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
@@ -146,13 +148,14 @@ def main(args):
     'silicaRadius': args.silicaRadius,
     'bins': args.detector_bins,
     'wavelengthSelected':  None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected,
-    'alpha_inc': args.alpha *np.pi/180
+    'alpha_inc': args.alpha *np.pi/180,
+    'angle_range': args.angle_range
   }
 
   from inputOutput import getNeutronEvents
   events = getNeutronEvents(args.filename, args.tof_min, args.tof_max)
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
-  events = propagateToSampleSurface(events)
+  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
 
   savename = f"q_events_bins{sharedConstants['bins']}" if args.savename == '' else args.savename
   if not args.all_q:
@@ -162,7 +165,7 @@ def main(args):
       for in_ID, neutron in enumerate(events):
         if in_ID%200==0:
           print(f'{in_ID:10}/{total}')
-        tmp = processNeutrons(neutron)
+        tmp = processNeutrons(neutron, sharedConstants)
         q_events_calc_detector.extend(tmp)
     else:
       print('Number of events being processed: ', len(events))
@@ -183,9 +186,9 @@ def main(args):
     np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
     print(f"Created {savename}.npz")
 
-  else: #old, non-vectorised processing, resulting in multiple q values with different definitions
+  else: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
     from oldProcessing import processNeutronsNonVectorised
-    out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, xwidth, yheight, ANGLE_RANGE, sharedConstants)
+    out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, sharedConstants)
     np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
     np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
     np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
@@ -211,7 +214,11 @@ if __name__=='__main__':
   parser.add_argument('-w','--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--tof_min', default=0, type=float, help = 'Lower TOF limit in microseconds for selecting neutrons from the input MCPL file.')
   parser.add_argument('--tof_max', default=150, type=float, help = 'Upper TOF limit in microseconds for selecting neutrons from the input MCPL file')
-  parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
+  parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
+  parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
+  parser.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
+  parser.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
+
   args = parser.parse_args()
 
   main(args)

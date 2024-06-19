@@ -14,8 +14,9 @@ sharedTemplate = np.array([
    defaultSampleModel, # sample model,
    0,                  # silica particle radius for 'Silica particles on Silicon measured in air' sample model
    0,                  # bins (~detector resolution)
-   0.0,                 # wavelength selected (for non-TOF instruments)
-   0.0                 # alpha_inc (incident angle)
+   0.0,                # wavelength selected (for non-TOF instruments)
+   0.0,                # alpha_inc (incident angle)
+   0.0                 # angle_range (outgoing angle covered by the simulation)
    ])
 
 def createSharedMemory(sc):
@@ -27,7 +28,8 @@ def createSharedMemory(sc):
      sc['silicaRadius'],
      sc['bins'],
      sc['wavelengthSelected'],
-     sc['alpha_inc']
+     sc['alpha_inc'],
+     sc['angle_range']
     ])
 
   shm = shared_memory.SharedMemory(create=True, size=sharedTemplate.nbytes, name=sharedMemoryName)
@@ -48,6 +50,7 @@ def getSharedMemoryValues():
   sharedValues.update({'bins' : int(mem[4])})
   sharedValues.update({'wavelengthSelected' : None if mem[5] == 'None' else float(mem[5])})
   sharedValues.update({'alpha_inc' : float(mem[6])})
+  sharedValues.update({'angle_range' : float(mem[7])})
   shm.close()
 
   return sharedValues
