@@ -27,7 +27,7 @@ def main(args):
     hist, histError, xEdges, zEdges = getStoredData(args.nxs)
     xDataRange = [xEdges[0], xEdges[-1]]
     yDataRange = [zEdges[0], zEdges[-1]]
-    label = 'D22 measurement'
+    label = 'D22 measurement (3 hours)' #{iterativeExperimentTime/(60*60):.2f} hours
     datasets.append((hist, histError, xEdges, zEdges, label))
     # if args.overlay:
     #   hist_exp, histError_exp, xEdges_exp, zEdges_exp = hist, histError, xEdges, zEdges
@@ -44,6 +44,18 @@ def main(args):
     qzIndex = np.digitize(args.q_min, zEdges) - 1
 
     experimentTime = args.experiment_time
+    # MANUAL form Neutron day plotting #TODO just TEMP FIXME
+    if 'saga' in filename:  
+      # experimentTime = 8 * args.experiment_time
+      experimentTime = 1.5 * args.experiment_time
+      label = label + f" ({experimentTime/(60*60):.1f} hours)"
+    elif 'loki' in filename:  
+      experimentTime = 2.5 * args.experiment_time
+      label = label + f" ({experimentTime/(60*60):.1f} hours)"
+    else:
+      label = label + f" ({experimentTime/(60*60):.0f} hours)"
+    # label = label + f" ({experimentTime/(60*60):.0f} hours)"
+    # # # MANUAL form Neutron day plotting #TODO just TEMP FIXME
     hist, histError = handleExperimentTime(hist, histError, qzIndex, experimentTime, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
     datasets.append((hist, histError, xEdges, zEdges, label))
 
@@ -105,7 +117,7 @@ def main(args):
   yPlotRange = getRangeDefaultOrOverride(yDataRange, args.y_min, args.y_max)
 
   if args.overlay:
-    lineColors = ['blue', 'green', 'orange','cyan']
+    lineColors = ['blue', 'green', 'orange','purple']
     plot2DAxesList = [ax1, ax3, ax3, ax3]
     plot1DAxes = ax2
     for datasetIndex, dataset in enumerate(datasets):
@@ -120,6 +132,19 @@ def main(args):
       plotQ1D(values, errors, xEdges1D, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=plot1DAxes, xRange=xPlotRange, savename=args.savename, output='none')
       plot2DAxes.axhline(zEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
       plot2DAxes.axhline(zEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
+
+      # ### TEMP manual work  
+      # xFirstPeakMin = 0.04 #TODO
+      # xFirstPeakMax = 0.085 #TODO
+      # qFirstPeakMinIndex = np.digitize(xFirstPeakMin, xEdges1D) - 1
+      # qFirstPeakMaxIndex = np.digitize(xFirstPeakMax, xEdges1D)
+      # plot1DAxes.axvline(xEdges1D[qFirstPeakMinIndex], color='magenta', linestyle='--')
+      # plot1DAxes.axvline(xEdges1D[qFirstPeakMaxIndex], color='magenta', linestyle='--')
+
+      # firstPeakSumIntensity = sum(values[qFirstPeakMinIndex:qFirstPeakMaxIndex])
+      # print(f"{label} - {qFirstPeakMinIndex=}, {qFirstPeakMaxIndex=}")
+      # print(f"{label} - first peak sum intensity: {firstPeakSumIntensity}")
+      # ### TEMP manual work
 
     plot1DAxes.set_ylim(bottom=intensityMin)
     plot1DAxes.grid()
