@@ -6,36 +6,22 @@ to feed back to McStas and/or calculate and save Q values for each neutron for p
 """
 
 from importlib import import_module
-import sys
 import numpy as np
-from multiprocessing import Pool, cpu_count, shared_memory
+from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from neutron_utilities import VS2E, V2L, tofToLambda
+from neutron_utilities import V2L, tofToLambda
 from instruments import instrumentParameters
+
+from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
 
 ANGLE_RANGE=1.7 # degree scattering angle covered by detector
 
 xwidth=0.06 # [m] size of sample perpendicular to beam
 yheight=0.08 # [m] size of sample along the beam
-
-sharedMemoryName = 'sharedProcessMemory'
-defaultSampleModel = "models.silica_100nm_air"
-sim_module=import_module(defaultSampleModel)
-silicaRadius = 53
-
-sharedTemplate = np.array([
-   0.0,                # nominal_source_sample_distance
-   0.0,                # sample_detector_distance
-   defaultSampleModel, # sample model,
-   silicaRadius,       # silica particle radius for 'Silica particles on Silicon measured in air' sample model
-   0,                  # BINS (~detector resolution)
-   0.0                 # wavelength selected (for non-TOF instruments)
-   ])
-
 
 alpha_inc = 0.24 *np.pi/180 #rad #TODO turn it into an input parameter, take care of the derived values below
 v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
@@ -46,59 +32,44 @@ rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin
 def coordTransformToSampleSystem(events):
     """Apply coordinate transformation to express neutron parameters in a
     coordinate system with the sample in the centre and being horisontal"""
-    p, x, y, z, vx, vy, vz, t, sx, sy, sz = events.T
+    p, x, y, z, vx, vy, vz, t = events.T
     zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
     vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
-    return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t, sx, sy, sz]).T
+    return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
 
 def propagateToSampleSurface(events):
     """Propagate neutron events to z=0, the sample surface"""
-    p, x, y, z, vx, vy, vz, t, sx, sy, sz = events.T
+    p, x, y, z, vx, vy, vz, t= events.T
     t0 = -z/vz
     x += vx*t0
     y += vy*t0
     z += vz*t0
     t+=t0
-    return np.vstack([p, x, y, z, vx, vy, vz, t, sx, sy, sz]).T
+    return np.vstack([p, x, y, z, vx, vy, vz, t]).T
 
-def get_simulation(sample, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
+def get_simulation(sample, bins, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
     """
-    Create a simulation with BINS² pixels that cover an angular range of
+    Create a simulation with bins pixels that cover an angular range of
     ANGLE_RANGE degrees.
     The Ry and Rz values are relative rotations of the detector within one pixel
     to finely define the outgoing direction of events.
     """
     beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-    dRy = Ry*ANGLE_RANGE*deg/(BINS-1)
-    dRz = Rz*ANGLE_RANGE*deg/(BINS-1)
+    dRy = Ry*ANGLE_RANGE*deg/(bins-1)
+    dRz = Rz*ANGLE_RANGE*deg/(bins-1)
 
     # Define detector
-    detector = ba.SphericalDetector(BINS, -ANGLE_RANGE*deg+dRz, ANGLE_RANGE*deg+dRz,
-                                    BINS, -ANGLE_RANGE*deg+dRy, ANGLE_RANGE*deg+dRy)
+    detector = ba.SphericalDetector(bins, -ANGLE_RANGE*deg+dRz, ANGLE_RANGE*deg+dRz,
+                                    bins, -ANGLE_RANGE*deg+dRy, ANGLE_RANGE*deg+dRy)
 
     return ba.ScatteringSimulation(beam, sample, detector)
-
-def virtualPropagationToDetector(x, y, z, vx, vy, vz):
-  """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
-  #compensate coord system rotation
-  _, yRot = np.dot(rot_matrix, [z, y])
-  _, vyRot = np.dot(rot_matrix, [vz, vy])
-
-  #propagate to detector surface perpendicular to the y-axis
-  t_propagate= (sample_detector_distance - yRot) / vyRot
-
-  x = x + vx * t_propagate
-  y = y + vy * t_propagate
-  z = z + vz * t_propagate
-
-  return x, y, z, t_propagate
 
 def qConvFactorFromTofAtDetector(sample_detector_path_length, tDet):
     path_length = nominal_source_sample_distance + sample_detector_path_length
     return 2*np.pi/(tofToLambda(tDet, path_length)*0.1)
 
-def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ):
+def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance):
   """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
   #Calculate time until the detector surface with coord system rotation
   _, yRot = np.dot(rot_matrix, [z, y])
@@ -109,8 +80,8 @@ def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ):
 
   return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
 
-def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ):
-  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ)
+def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed):
+  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance)
   posDetector = np.vstack((xDet, yDet, zDet)).T
   sample_detector_path_length = np.linalg.norm(posDetector, axis=1)
 
@@ -127,107 +98,17 @@ def getQsAtDetector(x, y, z, t, v_in_alpha, VX, VY, VZ):
 
   return qArray
 
-def run_events(events):
-    misses = 0
-    total = len(events)
-    out_events = []
-    q_events_real = [] #p,qx,qy,qz,t - calculated with lambda and proper incident and outgoing directions
-    q_events_no_incident_info = [] #p,qx,qy,qz,t - calculated with lambda but not using incident direction
+def processNeutrons(neutron):
+  sv = getSharedMemoryValues()
 
-    v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
-    q_events_calc_sample = [] #p,qx,qy,qz,t - calculated from TOF at sample position
-    q_events_calc_detector = [] #p,qx,qy,qz,t - calculated from TOF at the detector position
+  sim_module = import_module(sv['sim_module_name'])
+  get_sample = sim_module.get_sample
+  sample = get_sample(radius=sv['silicaRadius'])
 
-    notTOFInstrument = wavelengthSelected is not None # just to make the code more readable later on
-    qConvFactorFixed = None if notTOFInstrument is False else 2*np.pi/(wavelengthSelected*0.1)
+  notTOFInstrument = sv['wavelengthSelected'] is not None
+  qConvFactorFixed = None if sv['wavelengthSelected'] is None else 2*np.pi/(sv['wavelengthSelected']*0.1)
 
-    for in_ID, neutron in enumerate(events):
-        if in_ID%200==0:
-            print(f'{in_ID:10}/{total}')
-        p, x, y, z, vx, vy, vz, t, sx, sy, sz = neutron
-        alpha_i = np.arctan(vz/vy)*180./np.pi  # deg
-        phi_i = np.arctan(vx/vy)*180./np.pi  # deg
-        v = np.sqrt(vx**2+vy**2+vz**2)
-        wavelength = V2L/v  # Å
-        qConvFactorFromLambda = 2*np.pi/(wavelength * 0.1)
-        qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else 2*np.pi/(tofToLambda(t)*0.1) #for an intermediate result
-        v_in = np.array([vx, vy, vz]) / v
-
-        if abs(x)>xwidth or abs(y)>yheight:
-            # beam has not hit the sample surface
-            out_events.append(neutron)
-            misses += 1
-        else:
-            # beam has hit the sample
-            sample = get_sample(radius=args.silicaRadius)
-
-            #calculate BINS² outgoing beams with a random angle within one pixel range
-            Ry = 2*np.random.random()-1
-            Rz = 2*np.random.random()-1
-            sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
-            sim.options().setUseAvgMaterials(True)
-            sim.options().setIncludeSpecular(True)
-            res = sim.simulate()
-            # get probability (intensity) for all pixels
-            pout = res.array()
-            # calculate beam angle relative to coordinate system, including incident beam direction
-            alpha_f = ANGLE_RANGE*(np.linspace(1., -1., BINS)+Ry/(BINS-1))
-            phi_f = phi_i+ANGLE_RANGE*(np.linspace(-1., 1., BINS)+Rz/(BINS-1))
-            alpha_f_rad = alpha_f * np.pi/180.
-            phi_f_rad = phi_f * np.pi/180.
-            alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
-
-            VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid)
-            VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
-            VZ_grid = -v * np.sin(alpha_grid)
-
-            for pouti, vxi, vyi, vzi in zip(pout.T.flatten(), VX_grid.flatten(),  VY_grid.flatten(), VZ_grid.flatten()):
-                out_events.append([pouti, x, y, z, vxi, vyi, vzi, t, sx, sy, sz])
-                v_out = np.array([vxi, vyi, vzi]) / v
-                q_events_real.append([pouti, *(qConvFactorFromLambda * np.subtract(v_out, v_in)), t])
-                q_events_no_incident_info.append([pouti, *(qConvFactorFromLambda * np.subtract(v_out, v_in_alpha)), t])
-                q_events_calc_sample.append([pouti, *(qConvFactorFromTof * np.subtract(v_out, v_in_alpha)), t])
-
-                xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vxi, vyi, vzi)
-                sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
-                v_out_det = np.array([xDet, yDet, zDet]) / sample_detector_path_length
-                qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, t+sample_detector_tof)
-                q_events_calc_detector.append([pouti, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
-
-    print("misses:", misses)
-    return np.array(out_events), np.array(q_events_real), np.array(q_events_no_incident_info), np.array(q_events_calc_sample), np.array(q_events_calc_detector)
-
-def addSharedMemoryValuesToGlobalSpace():
-  global nominal_source_sample_distance
-  global sample_detector_distance
-  global sample
-  global BINS
-  global wavelengthSelected
-  global notTOFInstrument # just to make the code more readable later on
-  global qConvFactorFixed
-  # Access shared values
-  shm = shared_memory.SharedMemory(name=sharedMemoryName)
-  mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf)
-  nominal_source_sample_distance = float(mem[0])
-  sample_detector_distance = float(mem[1])
-  sim_module_name = str(mem[2])
-  sim_module=import_module(sim_module_name)
-  get_sample=sim_module.get_sample
-  silicaRadius = float(mem[3])
-  sample = get_sample(radius=silicaRadius)
-
-  BINS = int(mem[4])
-
-  wavelengthSelected = None if mem[5] == 'None' else float(mem[5])
-  notTOFInstrument = wavelengthSelected is not None
-  qConvFactorFixed = None if wavelengthSelected is None else 2*np.pi/(wavelengthSelected*0.1)
-
-  shm.close()
-
-def processNeutron(neutron):
-  addSharedMemoryValuesToGlobalSpace()
-
-  p, x, y, z, vx, vy, vz, t, _, _, _ = neutron
+  p, x, y, z, vx, vy, vz, t = neutron
   alpha_i = np.arctan(vz/vy)*180./np.pi  # deg
   phi_i = np.arctan(vx/vy)*180./np.pi  # deg
   v = np.sqrt(vx**2+vy**2+vz**2)
@@ -239,10 +120,10 @@ def processNeutron(neutron):
   else:
     # beam has hit the sample
 
-    # calculate BINS² outgoing beams with a random angle within one pixel range
+    # calculate bins outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
     Rz = 2*np.random.random()-1
-    sim = get_simulation(sample, wavelength, alpha_i, p, Ry, Rz)
+    sim = get_simulation(sample, sv['bins'], wavelength, alpha_i, p, Ry, Rz)
     sim.options().setUseAvgMaterials(True)
     sim.options().setIncludeSpecular(True)
 
@@ -250,8 +131,8 @@ def processNeutron(neutron):
     # get probability (intensity) for all pixels
     pout = res.array()
     # calculate beam angle relative to coordinate system, including incident beam direction
-    alpha_f = ANGLE_RANGE*(np.linspace(1., -1., BINS)+Ry/(BINS-1))
-    phi_f = phi_i+ANGLE_RANGE*(np.linspace(-1., 1., BINS)+Rz/(BINS-1))
+    alpha_f = ANGLE_RANGE*(np.linspace(1., -1., sv['bins'])+Ry/(sv['bins']-1))
+    phi_f = phi_i+ANGLE_RANGE*(np.linspace(-1., 1., sv['bins'])+Rz/(sv['bins']-1))
     alpha_f_rad = alpha_f * np.pi/180.
     phi_f_rad = phi_f * np.pi/180.
     alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
@@ -260,47 +141,17 @@ def processNeutron(neutron):
     VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
     VZ_grid = -v * np.sin(alpha_grid)
 
-    qArray = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
+    qArray = getQsAtDetector(x, y, z, t, v_in_alpha, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sv['nominal_source_sample_distance'], sv['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
 
     return  np.column_stack([pout.T.flatten(), qArray])
 
-
-def write_events(out_events):
-    header = ''
-    with open(EFILE+'.dat', 'r') as fh:
-        line = fh.readline()
-        while line.startswith('#'):
-            header += line
-            line = fh.readline()
-    with open(OFILE+'.dat', 'w') as fh:
-        fh.write(header)
-        savetxt(fh, out_events)
-
-
 def main(args):
-    print(f'Reading events from {args.filename}...')
-    if args.filename.endswith('.dat'):
-      events = loadtxt(args.filename)
-
-    elif args.filename.endswith('.mcpl') or args.filename.endswith('.mcpl.gz'):
-      import mcpl
-      myfile = mcpl.MCPLFile(args.filename)
-      def velocity_from_dir(ux, uy, uz, ekin):
-         norm = np.sqrt(ekin*1e9/VS2E)
-         return [ux*norm, uy*norm, uz*norm]
-      events = np.array([(p.weight,
-                       p.x/100, p.y/100, p.z/100, #convert cm->m
-                       *velocity_from_dir(p.ux, p.uy, p.uz, p.ekin),
-                       p.time*1e-3, #convert ms->s
-                       p.polx, p.poly, p.polz) for p in myfile.particles
-                       if (p.weight>1e-5 and args.tof_min < p.time and p.time < args.tof_max)])
-    else:
-      sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
-
+    from inputOutput import getNeutronEvents
+    events = getNeutronEvents(args.filename, args.tof_min, args.tof_max)
     events = coordTransformToSampleSystem(events)
     events = propagateToSampleSurface(events)
 
-    savename = f"q_events_bins{BINS}" if args.savename == '' else args.savename
+    savename = f"q_events_bins{bins}" if args.savename == '' else args.savename
     if not args.all_q:
       if args.no_parallel:
         total=len(events)
@@ -308,7 +159,7 @@ def main(args):
         for in_ID, neutron in enumerate(events):
           if in_ID%200==0:
             print(f'{in_ID:10}/{total}')
-          tmp = processNeutron(neutron)
+          tmp = processNeutrons(neutron)
           q_events_calc_detector.extend(tmp)
       else:
         print('Number of events being processed: ', len(events))
@@ -316,27 +167,25 @@ def main(args):
         print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
         with Pool(processes=num_processes) as pool:
           # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
-          q_events = list(tqdm(pool.imap(processNeutron, events), total=len(events)))
+          q_events = list(tqdm(pool.imap(processNeutrons, events), total=len(events)))
 
         q_events_calc_detector = [item for sublist in q_events for item in sublist]
 
       np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
       print(f"Created {savename}.npz")
 
-    else:
-      global get_sample
-      sim_module=import_module(sim_module_name)
-      get_sample=sim_module.get_sample
-      _, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = run_events(events)
+    else: #old, non-vectorised processing, resulting in multiple q values with different definitions
+      from oldProcessing import processNeutronsNonVectorised
+      out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, alpha_inc, xwidth, yheight, ANGLE_RANGE, bins, wavelengthSelected, silicaRadius, get_simulation, sample_detector_distance, qConvFactorFromTofAtDetector, sim_module_name)
       np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
       np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
       np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
       np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
-      # print(f'Writing events to {OFILE}...')
-      # write_events(out_events)
-      # from output_mcpl import write_events_mcpl
-      # deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
-      # write_events_mcpl(out_events, OFILE, deweight)
+      saveOutgoingEvents = False
+      if saveOutgoingEvents:
+        from inputOutput import write_events_mcpl
+        deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
+        write_events_mcpl(out_events, savename, deweight)
 
 if __name__=='__main__':
   import argparse
@@ -353,6 +202,7 @@ if __name__=='__main__':
   parser.add_argument('-w','--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--tof_min', default=0, type=float, help = 'Lower TOF limit in microseconds for selecting neutrons from the input MCPL file.')
   parser.add_argument('--tof_max', default=150, type=float, help = 'Upper TOF limit in microseconds for selecting neutrons from the input MCPL file')
+  parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
   args = parser.parse_args()
 
   # Definitions here are global, so they will be accessible for non-parallel processing simulation
@@ -360,21 +210,10 @@ if __name__=='__main__':
   sample_detector_distance = instrumentParameters[args.instrument]['sample_detector_distance']
   sim_module_name = args.model
   silicaRadius = args.silicaRadius
-  BINS = args.detector_bins
+  bins = args.detector_bins
   wavelengthSelected = None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected
-  # Add globally constant parameters to a shared memory for -parallel processing simulation
-  shared = np.array([
-     nominal_source_sample_distance,
-     sample_detector_distance,
-     sim_module_name,
-     silicaRadius,
-     BINS,
-     wavelengthSelected
-     ])
-  shm = shared_memory.SharedMemory(create=True, size=sharedTemplate.nbytes, name=sharedMemoryName)
-  mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf) #Create a NumPy array backed by shared memory
-  mem[:] = shared[:] # Copy to the shared memory
-
+  
+  shm = createSharedMemory(nominal_source_sample_distance, sample_detector_distance, sim_module_name, silicaRadius, bins, wavelengthSelected)
   try:
     main(args)
   finally:

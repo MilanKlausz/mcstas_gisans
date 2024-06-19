@@ -1,13 +1,37 @@
 """
+Read particles from MCPL files (or .dat file)
 Output particles into an MCPL file using np2mcpl
 """
 
+import sys
 import numpy as np
 from neutron_utilities import VS2E
+import mcpl
+
+def velocity_from_dir(ux, uy, uz, ekin):
+  norm = np.sqrt(ekin * 1e9 / VS2E)
+  return [ux*norm, uy*norm, uz*norm]
+
+def getNeutronEvents(filename, tofMin, tofMax):
+    print(f'Reading events from {filename}...')
+    if filename.endswith('.dat'):
+      events = np.loadtxt(filename)
+    elif filename.endswith('.mcpl') or filename.endswith('.mcpl.gz'):
+      with mcpl.MCPLFile(filename) as myfile:
+        events = np.array(
+          [(p.weight,
+            p.x/100, p.y/100, p.z/100, #convert cm->m
+            *velocity_from_dir(p.ux, p.uy, p.uz, p.ekin),
+            p.time*1e-3 #convert ms->s
+            ) for p in myfile.particles if (p.weight>1e-5 and tofMin < p.time and p.time < tofMax)]
+          )
+    else:
+      sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
+    return events
 
 def write_events_mcpl(out_events, filename, deweight=False):
     import np2mcpl
-    weights, x, y, z, vx, vy, vz, t, sx, sy, sz = out_events.T
+    weights, x, y, z, vx, vy, vz, t = out_events.T
 
     pdg_codes = np.full((len(out_events), 1), 2112) #2112 for neutrons
 
@@ -25,6 +49,7 @@ def write_events_mcpl(out_events, filename, deweight=False):
     uy = vy / nrm
     uz = vz / nrm
 
+    sx, sy, sz = (0, 0, 0)
     particles = np.column_stack((pdg_codes, x, y, z, ux, uy, uz, t, e_kin, weights, sx, sy, sz))
 
     if deweight:
