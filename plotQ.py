@@ -120,7 +120,6 @@ def main(args):
       plotQ1D(values, errors, xEdges1D, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=plot1DAxes, xRange=xPlotRange, savename=args.savename, output='none')
       plot2DAxes.axhline(zEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
       plot2DAxes.axhline(zEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
-  logPlot2d(hist, xEdges, zEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xRange, yRange=zRange, savename=args.savename, output=plotOutput)
 
     plot1DAxes.set_ylim(bottom=intensityMin)
     plot1DAxes.grid()
@@ -198,7 +197,6 @@ if __name__=='__main__':
   findTimeParamGroup.add_argument('--minimum_count_fraction', type=zeroToOne, default=0.8, help = 'The fraction of bins that are required to fulfill the minimum count number criterion. [0,1]')
 
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
-  # storedDataParamGroup.add_argument('--dataId', default=None, choices=list(storedDataParameters.keys()), help = 'Stored data id.')
   storedDataParamGroup.add_argument('--nxs', help = 'Full path to the D22 Nexus file.')
   storedDataParamGroup.add_argument('--plotStoredData',  action='store_true', help = 'Plot stored data.')
   storedDataParamGroup.add_argument('--overlay',  action='store_true', help = 'Overlay stored data with simulated data.')

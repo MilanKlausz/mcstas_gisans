@@ -56,18 +56,18 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
 
     sample = get_sample(radius=sc['silicaRadius'])
 
-    #calculate bins² outgoing beams with a random angle within one pixel range
+    #calculate pixelNr² outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
     Rz = 2*np.random.random()-1
-    sim = get_simulation(sample, sc['bins'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+    sim = get_simulation(sample, sc['pixelNr'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
     sim.options().setUseAvgMaterials(True)
     sim.options().setIncludeSpecular(True)
     res = sim.simulate()
     # get probability (intensity) for all pixels
     pout = res.array()
     # calculate beam angle relative to coordinate system, including incident beam direction
-    alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['bins'])+Ry/(sc['bins']-1))
-    phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['bins'])+Rz/(sc['bins']-1))
+    alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['pixelNr'])+Ry/(sc['pixelNr']-1))
+    phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['pixelNr'])+Rz/(sc['pixelNr']-1))
     alpha_f_rad = alpha_f * np.pi/180.
     phi_f_rad = phi_f * np.pi/180.
     alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)

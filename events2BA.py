@@ -49,20 +49,20 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
     print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} neutrons avoided the sample!")
   return sampleHitEvents
 
-def get_simulation(sample, bins, angle_range, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
+def get_simulation(sample, pixelNr, angle_range, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
   """
-  Create a simulation with bins pixels that cover an angular range of angle_range degrees.
+  Create a simulation with pixelNr pixels that cover an angular range of angle_range degrees.
   The Ry and Rz values are relative rotations of the detector within one pixel
   to finely define the outgoing direction of events.
   """
   beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-  dRy = Ry*angle_range*deg/(bins-1)
-  dRz = Rz*angle_range*deg/(bins-1)
+  dRy = Ry*angle_range*deg/(pixelNr-1)
+  dRz = Rz*angle_range*deg/(pixelNr-1)
 
   # Define detector
-  detector = ba.SphericalDetector(bins, -angle_range*deg+dRz, angle_range*deg+dRz,
-                                  bins, -angle_range*deg+dRy, angle_range*deg+dRy)
+  detector = ba.SphericalDetector(pixelNr, -angle_range*deg+dRz, angle_range*deg+dRz,
+                                  pixelNr, -angle_range*deg+dRy, angle_range*deg+dRy)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
@@ -114,10 +114,10 @@ def processNeutrons(neutron, sc=None):
   wavelength = V2L/v  # Å
 
 
-  # calculate bins outgoing beams with a random angle within one pixel range
+  # calculate pixelNr outgoing beams with a random angle within one pixel range
   Ry = 2*np.random.random()-1
   Rz = 2*np.random.random()-1
-  sim = get_simulation(sample, sc['bins'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+  sim = get_simulation(sample, sc['pixelNr'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
   sim.options().setUseAvgMaterials(True)
   sim.options().setIncludeSpecular(True)
 
@@ -125,8 +125,8 @@ def processNeutrons(neutron, sc=None):
   # get probability (intensity) for all pixels
   pout = res.array()
   # calculate beam angle relative to coordinate system, including incident beam direction
-  alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['bins'])+Ry/(sc['bins']-1))
-  phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['bins'])+Rz/(sc['bins']-1))
+  alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['pixelNr'])+Ry/(sc['pixelNr']-1))
+  phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['pixelNr'])+Rz/(sc['pixelNr']-1))
   alpha_f_rad = alpha_f * np.pi/180.
   phi_f_rad = phi_f * np.pi/180.
   alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
@@ -146,7 +146,7 @@ def main(args):
     'sample_detector_distance': instrumentParameters[args.instrument]['sample_detector_distance'],
     'sim_module_name': args.model,
     'silicaRadius': args.silicaRadius,
-    'bins': args.detector_bins,
+    'pixelNr': args.pixel_number,
     'wavelengthSelected':  None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected,
     'alpha_inc': args.alpha *np.pi/180,
     'angle_range': args.angle_range
@@ -157,7 +157,7 @@ def main(args):
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
 
-  savename = f"q_events_bins{sharedConstants['bins']}" if args.savename == '' else args.savename
+  savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
   if not args.all_q:
     if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially
       total=len(events)
@@ -207,7 +207,7 @@ if __name__=='__main__':
   parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
-  parser.add_argument('-b','--detector_bins', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
+  parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
   parser.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
   parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument.')
