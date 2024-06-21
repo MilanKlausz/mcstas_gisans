@@ -1,6 +1,6 @@
 
 import numpy as np
-from neutron_utilities import V2L, tofToLambda
+from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from importlib import import_module
 
 def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detector_distance):
@@ -10,17 +10,13 @@ def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detecto
   _, vyRot = np.dot(rot_matrix, [vz, vy])
 
   #propagate to detector surface perpendicular to the y-axis
-  t_propagate= (sample_detector_distance - yRot) / vyRot
+  t_propagate = (sample_detector_distance - yRot) / vyRot
 
   x = x + vx * t_propagate
   y = y + vy * t_propagate
   z = z + vz * t_propagate
 
   return x, y, z, t_propagate
-
-def qConvFactorFromTofAtDetector(sample_detector_path_length, nominal_source_sample_distance, tDet):
-  path_length = nominal_source_sample_distance + sample_detector_path_length
-  return 2*np.pi/(tofToLambda(tDet, path_length)*0.1)
 
 def processNeutronsNonVectorised(events, get_simulation, sc):
   sim_module=import_module(sc['sim_module_name'])
@@ -40,19 +36,19 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
   v_in_alpha = np.array([0, np.cos(sc['alpha_inc']), np.sin(sc['alpha_inc'])])
 
   notTOFInstrument = sc['wavelengthSelected'] is not None # just to make the code more readable later on
-  qConvFactorFixed = None if notTOFInstrument is False else 2*np.pi/(sc['wavelengthSelected']*0.1)
+  qConvFactorFixed = None if notTOFInstrument is False else qConvFactor(sc['wavelengthSelected'])
 
   for in_ID, neutron in enumerate(events):
     if in_ID%200==0:
       print(f'{in_ID:10}/{total}')
     p, x, y, z, vx, vy, vz, t = neutron
-    alpha_i = np.arctan(vz/vy)*180./np.pi  # deg
+    alpha_i = np.rad2deg(np.arctan(vz/vy)) #deg
     average_alpha_i += alpha_i
-    phi_i = np.arctan(vx/vy)*180./np.pi  # deg
+    phi_i = np.rad2deg(np.arctan(vx/vy)) #deg
     v = np.sqrt(vx**2+vy**2+vz**2)
-    wavelength = V2L/v  # Å
-    qConvFactorFromLambda = 2*np.pi/(wavelength * 0.1)
-    qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else 2*np.pi/(tofToLambda(t, sc['nominal_source_sample_distance'])*0.1) #for an intermediate result
+    wavelength = velocityToWavelength(v) #angstrom
+    qConvFactorFromLambda = qConvFactor(wavelength)
+    qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else qConvFactor(calcWavelength(t, sc['nominal_source_sample_distance'])) #for an intermediate result
     v_in = np.array([vx, vy, vz]) / v
 
     sample = get_sample(radius=sc['silicaRadius'])
@@ -69,9 +65,7 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
     # calculate beam angle relative to coordinate system, including incident beam direction
     alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['pixelNr'])+Ry/(sc['pixelNr']-1))
     phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['pixelNr'])+Rz/(sc['pixelNr']-1))
-    alpha_f_rad = alpha_f * np.pi/180.
-    phi_f_rad = phi_f * np.pi/180.
-    alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
+    alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
     VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid)
     VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
@@ -90,7 +84,9 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
       xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vxi, vyi, vzi, rot_matrix, sc['sample_detector_distance'])
       sample_detector_path_length = np.linalg.norm([xDet, yDet, zDet])
       v_out_det = np.array([xDet, yDet, zDet]) / sample_detector_path_length
-      qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactorFromTofAtDetector(sample_detector_path_length, sc['nominal_source_sample_distance'], t+sample_detector_tof)
+
+      wavelengthDet = calcWavelength(t+sample_detector_tof, sample_detector_path_length+sc['nominal_source_sample_distance'])
+      qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactor(wavelengthDet)
       q_events_calc_detector.append([pouti, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
 
   print("misses:", misses)

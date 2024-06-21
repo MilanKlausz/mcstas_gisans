@@ -4,7 +4,7 @@ Plotting utilities
 
 import numpy as np
 import math as m
-from neutron_utilities import tofToLambda
+from neutron_utilities import calcWavelength
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
@@ -70,7 +70,7 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
     # print(time[tofRange[0]<time])
     if(len(xtmp)>0):
       titleText = f"tofMin={tofRange[0]}_tofMax={tofRange[1]}"
-      # titleText = f"lambdaMin={tofToLambda(tofRange[0]):.2f}_lambdaMax={tofToLambda(tofRange[1]):.2f}" #FIXME pathLength is not known for all instruments at this point
+      # titleText = f"lambdaMin={calcWavelength(tofRange[0]):.2f}_lambdaMax={calcWavelength(tofRange[1]):.2f}" #FIXME pathLength is not known for all instruments at this point
       logPlot2d(xtmp, ztmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
   logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase)
   # logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')

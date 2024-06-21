@@ -13,7 +13,7 @@ from tqdm import tqdm
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from neutron_utilities import V2L, tofToLambda
+from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters
 
 from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
@@ -85,11 +85,10 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
 
   v_out_det = posDetector / sample_detector_path_length[:, np.newaxis]
 
-  tDet = sample_detector_tof + t
   v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
   if notTOFInstrument is False: #TOF instruments
-    path_length = sample_detector_path_length + nominal_source_sample_distance
-    qConvFactorFromTofAtDetector = 2*np.pi/(tofToLambda(tDet, path_length)*0.1)
+    wavelengthDet = calcWavelength(t+sample_detector_tof, nominal_source_sample_distance+sample_detector_path_length)
+    qConvFactorFromTofAtDetector = qConvFactor(wavelengthDet)
     qArray = (v_out_det - v_in_alpha) * qConvFactorFromTofAtDetector[:, np.newaxis]
   else:
     qArray = (v_out_det - v_in_alpha) * qConvFactorFixed
@@ -105,13 +104,13 @@ def processNeutrons(neutron, sc=None):
   sample = get_sample(radius=sc['silicaRadius'])
 
   notTOFInstrument = sc['wavelengthSelected'] is not None
-  qConvFactorFixed = None if sc['wavelengthSelected'] is None else 2*np.pi/(sc['wavelengthSelected']*0.1)
+  qConvFactorFixed = None if sc['wavelengthSelected'] is None else qConvFactor(sc['wavelengthSelected'])
 
   p, x, y, z, vx, vy, vz, t = neutron
-  alpha_i = np.arctan(vz/vy)*180./np.pi  # deg
-  phi_i = np.arctan(vx/vy)*180./np.pi  # deg
+  alpha_i = np.rad2deg(np.arctan(vz/vy)) #deg
+  phi_i = np.rad2deg(np.arctan(vx/vy)) #deg
   v = np.sqrt(vx**2+vy**2+vz**2)
-  wavelength = V2L/v  # Å
+  wavelength = velocityToWavelength(v) #angstrom
 
 
   # calculate pixelNr outgoing beams with a random angle within one pixel range
@@ -128,9 +127,7 @@ def processNeutrons(neutron, sc=None):
   # calculate beam angle relative to coordinate system, including incident beam direction
   alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['pixelNr'])+Ry/(sc['pixelNr']-1))
   phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['pixelNr'])+Rz/(sc['pixelNr']-1))
-  alpha_f_rad = alpha_f * np.pi/180.
-  phi_f_rad = phi_f * np.pi/180.
-  alpha_grid, phi_grid = np.meshgrid(alpha_f_rad, phi_f_rad)
+  alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
   VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid)
   VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
@@ -149,7 +146,7 @@ def main(args):
     'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
     'wavelengthSelected':  None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected,
-    'alpha_inc': args.alpha *np.pi/180,
+    'alpha_inc': np.deg2rad(args.alpha),
     'angle_range': args.angle_range
   }
 
