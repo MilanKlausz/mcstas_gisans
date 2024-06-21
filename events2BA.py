@@ -188,9 +188,10 @@ def main(args):
 
   else: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
     from oldProcessing import processNeutronsNonVectorised
-    out_events, q_events_real, q_events_no_incident_info, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, sharedConstants)
+    out_events, q_events_real, q_events_no_incident_info, q_events_calc_lambda, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, sharedConstants)
     np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
     np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
+    np.savez_compressed(f"{savename}_q_events_calc_lambda", q_events_calc_lambda=q_events_calc_lambda)
     np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
     np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
     saveOutgoingEvents = False

@@ -30,13 +30,14 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
   average_alpha_i = 0 #sanity check
   total = len(events)
   out_events = []
-  q_events_real = [] #p,qx,qy,qz,t - calculated with lambda and proper incident and outgoing directions
+  q_events_real = [] #p,qx,qy,qz,t - calculated with lambda and true incident and outgoing directions
   q_events_no_incident_info = [] #p,qx,qy,qz,t - calculated with lambda but not using incident direction
+  q_events_calc_lambda = [] #p,qx,qy,qz,t - calculated from TOF but using true incident direction
+  q_events_calc_sample = [] #p,qx,qy,qz,t - calculated from TOF at sample position
+  q_events_calc_detector = [] #p,qx,qy,qz,t - calculated from TOF at the detector position
 
   rot_matrix = np.array([[np.cos(sc['alpha_inc']), -np.sin(sc['alpha_inc'])],[np.sin(sc['alpha_inc']), np.cos(sc['alpha_inc'])]])
   v_in_alpha = np.array([0, np.cos(sc['alpha_inc']), np.sin(sc['alpha_inc'])])
-  q_events_calc_sample = [] #p,qx,qy,qz,t - calculated from TOF at sample position
-  q_events_calc_detector = [] #p,qx,qy,qz,t - calculated from TOF at the detector position
 
   notTOFInstrument = sc['wavelengthSelected'] is not None # just to make the code more readable later on
   qConvFactorFixed = None if notTOFInstrument is False else 2*np.pi/(sc['wavelengthSelected']*0.1)
@@ -80,7 +81,10 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
       out_events.append([pouti, x, y, z, vxi, vyi, vzi, t])
       v_out = np.array([vxi, vyi, vzi]) / v
       q_events_real.append([pouti, *(qConvFactorFromLambda * np.subtract(v_out, v_in)), t])
+
       q_events_no_incident_info.append([pouti, *(qConvFactorFromLambda * np.subtract(v_out, v_in_alpha)), t])
+      q_events_calc_lambda.append([pouti, *(qConvFactorFromTof * np.subtract(v_out, v_in)), t])
+
       q_events_calc_sample.append([pouti, *(qConvFactorFromTof * np.subtract(v_out, v_in_alpha)), t])
 
       xDet, yDet, zDet, sample_detector_tof = virtualPropagationToDetector(x, y, z, vxi, vyi, vzi, rot_matrix, sc['sample_detector_distance'])
@@ -91,4 +95,4 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
 
   print("misses:", misses)
   print(f"average_alpha_i: {average_alpha_i/len(events)}")
-  return np.array(out_events), np.array(q_events_real), np.array(q_events_no_incident_info), np.array(q_events_calc_sample), np.array(q_events_calc_detector)
+  return np.array(out_events), np.array(q_events_real), np.array(q_events_no_incident_info), np.array(q_events_calc_lambda), np.array(q_events_calc_sample), np.array(q_events_calc_detector)
