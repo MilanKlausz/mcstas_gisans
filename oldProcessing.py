@@ -51,7 +51,7 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
     v = np.sqrt(vx**2+vy**2+vz**2)
     wavelength = V2L/v  # Å
     qConvFactorFromLambda = 2*np.pi/(wavelength * 0.1)
-    qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else 2*np.pi/(tofToLambda(t)*0.1) #for an intermediate result
+    qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else 2*np.pi/(tofToLambda(t, sc['nominal_source_sample_distance'])*0.1) #for an intermediate result
     v_in = np.array([vx, vy, vz]) / v
 
     sample = get_sample(radius=sc['silicaRadius'])
