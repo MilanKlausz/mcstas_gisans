@@ -40,7 +40,7 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
   t += t_propagate
 
   # Create a boolean mask for neutrons to select those which hit the sample
-  hitSampleMask = (abs(x) < sample_xwidth) & (abs(y) < sample_yheight)
+  hitSampleMask = (abs(x) < sample_xwidth*0.5) & (abs(y) < sample_yheight*0.5)
   sampleHitEvents = np.vstack([p, x, y, z, vx, vy, vz, t]).T[hitSampleMask]
 
   eventNr = len(events)
@@ -120,6 +120,7 @@ def processNeutrons(neutron, sc=None):
   sim = get_simulation(sample, sc['pixelNr'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
   sim.options().setUseAvgMaterials(True)
   sim.options().setIncludeSpecular(True)
+  # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
 
   res = sim.simulate()
   # get probability (intensity) for all pixels
