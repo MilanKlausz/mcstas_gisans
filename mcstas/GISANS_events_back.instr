@@ -33,7 +33,7 @@ COMPONENT sample = GISANS_samp (rhosapph=5.773e-6)
 // COMPONENT sample_in = Virtual_input(filename="test_events_scattered.dat", smooth=0)
 COMPONENT sample_in = MCPL_input(filename="test_events_scattered.mcpl.gz")
 AT (0.0, 0.0, 100.077) RELATIVE arm
-ROTATED (89.760,0,0) RELATIVE arm
+ROTATED (90.0,0,0) RELATIVE arm
 
 /*
 rhosapph=5.773e-6

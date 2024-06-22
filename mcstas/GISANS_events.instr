@@ -32,7 +32,7 @@ COMPONENT sample = GISANS_samp (rhosapph=5.773e-6)
 COMPONENT sample_out = Virtual_output(filename="test_events.dat")
 //COMPONENT sample_in = Virtual_input(filename="test_events_scattered.dat")
 AT (0.0, 0.0, 100.077) RELATIVE arm
-ROTATED (89.700,0,0) RELATIVE arm
+ROTATED (90.0,0,0) RELATIVE arm
 
 
 /*
