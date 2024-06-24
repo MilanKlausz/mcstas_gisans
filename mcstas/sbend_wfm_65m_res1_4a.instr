@@ -1,0 +1,1026 @@
+/********************************************************************************
+* 
+* McStas, neutron ray-tracing package
+*         Copyright (C) 1997-2008, All rights reserved
+*         Risoe National Laboratory, Roskilde, Denmark
+*         Institut Laue Langevin, Grenoble, France
+* 
+* This file was written by McStasScript, which is a 
+* python based McStas instrument generator written by 
+* Mads Bertelsen in 2019 while employed at the 
+* European Spallation Source Data Management and 
+* Software Centre
+* 
+* Instrument sbend_wfm_65m_res1_4a
+* 
+* %Identification
+* Written by: Sebastian Köhler
+* Date: 16:58:32 on June 20, 2024
+* Origin: LINXS
+* %INSTRUMENT_SITE: Generated_instruments
+* 
+* 
+* %Parameters
+* 
+* %End 
+********************************************************************************/
+
+DEFINE INSTRUMENT sbend_wfm_65m_res1_4a (
+Lmin = 0.1, // Minimum wavelength in AA
+Lmax = 200, // Maximum wavelength in AA
+guidetilt = 0, // vertical starting angle (pos=downward)
+insertangle = 0.5, // horizontal starting angle(pos=?)
+n_pulses = 2 // number of simulated source pulses
+)
+
+DECLARE 
+%{
+double iscs_x = -38.68; // X-coordinate of start of ISCS in McStas coordinates (in mm)
+double iscs_z = 18.21; // Z-coordinate of start of ISCS in McStas coordinates (in mm)
+%}
+
+INITIALIZE 
+%{
+// Start of initialize for generated sbend_wfm_65m_res1_4a
+%}
+
+TRACE 
+COMPONENT origin = Progress_bar()
+AT (0,0,0) ABSOLUTE
+
+COMPONENT source = ESS_butterfly(
+ sector = "S", beamline = 5,
+ yheight = 0.03, cold_frac = 0.5,
+ target_index = 7, focus_xw = 0.03,
+ focus_yh = 0.03, Lmin = Lmin,
+ Lmax = Lmax, n_pulses = n_pulses,
+ acc_power = 5)
+AT (0,0,0) RELATIVE origin
+
+COMPONENT iscs = Arm()
+AT (iscs_x/1000.0,0,iscs_z/1000.0) RELATIVE source
+
+COMPONENT instrument_arm = Arm()
+AT (0,0,0) RELATIVE iscs
+ROTATED (guidetilt,insertangle,0) RELATIVE iscs
+
+COMPONENT toflambdasource = TOFLambda_monitor(
+ nL = 300, nt = 300,
+ tmin = 0, tmax = 100000,
+ filename = "toflambdasource", xwidth = 0.2,
+ yheight = 0.2, Lmin = 0,
+ Lmax = 120, restore_neutron = 1)
+AT (0,0,1.996) RELATIVE instrument_arm
+
+COMPONENT psdsource = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdsource", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,1.997) RELATIVE instrument_arm
+
+COMPONENT tofsource = TOF_monitor(
+ nt = 100, filename = "tofsource",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 100000,
+ restore_neutron = 1)
+AT (0,0,1.998) RELATIVE instrument_arm
+
+COMPONENT lamsource = L_monitor(
+ nL = 100, filename = "lamsource",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,1.999) RELATIVE instrument_arm
+
+COMPONENT divsource = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divsource", xwidth = 0.2,
+ yheight = 0.2, maxdiv_h = 5,
+ maxdiv_v = 5, restore_neutron = 1)
+AT (0,0,1.9995) RELATIVE instrument_arm
+
+COMPONENT divlambdasource = DivLambda_monitor(
+ nL = 90, nh = 90,
+ filename = "divlambdasource", xwidth = 0.2,
+ yheight = 0.2, maxdiv_h = 5,
+ Lmin = 0.5, Lmax = 8,
+ restore_neutron = 1)
+AT (0,0,1.9995) RELATIVE instrument_arm
+
+COMPONENT guide1a_arm = Arm()
+AT (0,0,2.0) RELATIVE instrument_arm
+
+COMPONENT guide1a1 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0) RELATIVE guide1a_arm
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a_arm
+
+COMPONENT guide1a2 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a1
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a1
+
+COMPONENT guide1a3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a2
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a2
+
+COMPONENT guide1a4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a3
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a3
+
+COMPONENT guide1a5 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a4
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a4
+
+COMPONENT guide1a6 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a5
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a5
+
+COMPONENT guide1a7 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a6
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a6
+
+COMPONENT guide1a8 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.549, m = 3)
+AT (0,0,0.55) RELATIVE guide1a7
+ROTATED (0.09337089994724528,0,0) RELATIVE guide1a7
+
+COMPONENT lambeforewbc1 = L_monitor(
+ nL = 100, filename = "lambeforewbc1",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.647) RELATIVE PREVIOUS
+
+COMPONENT tofbeforewbc1 = TOF_monitor(
+ nt = 100, filename = "tofbeforewbc1",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 100000,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE PREVIOUS
+
+COMPONENT psdbeforewbc1 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdbeforewbc1", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.001) RELATIVE PREVIOUS
+
+COMPONENT wbc1 = DiskChopper(
+ theta_0 = 45.2288, radius = 0.5,
+ yheight = 0, nu = 14,
+ nslit = 1, delay = 0.011708)
+AT (0,0,0.65) RELATIVE guide1a8
+
+COMPONENT lamafterwbc1 = L_monitor(
+ nL = 300, filename = "lamafterwbc1",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wbc1
+
+COMPONENT tofafterwbc1 = TOF_monitor(
+ nt = 100, filename = "tofafterwbc1",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 100000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wbc1
+
+COMPONENT psdafterwbc1 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwbc1", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wbc1
+
+COMPONENT divafterwbc1 = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divafterwbc1", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.004) RELATIVE wbc1
+
+COMPONENT guide1b_arm = Arm()
+AT (0,0,0.75) RELATIVE guide1a8
+ROTATED (0.20643457151972755,0,0) RELATIVE guide1a8
+
+COMPONENT guide1b = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 1.216, m = 3)
+AT (0,0,0) RELATIVE guide1b_arm
+
+COMPONENT wfmc11 = DiskChopper(
+ theta_0 = 14.6792, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0109164)
+AT (0,0,1.3159999999999992) RELATIVE guide1b_arm
+GROUP wfmc1
+
+COMPONENT wfmc12 = DiskChopper(
+ theta_0 = 17.0812, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0129441)
+AT (0,0,1.3159999999999992) RELATIVE guide1b_arm
+GROUP wfmc1
+
+COMPONENT wfmc13 = DiskChopper(
+ theta_0 = 18.9857, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0148277)
+AT (0,0,1.3159999999999992) RELATIVE guide1b_arm
+GROUP wfmc1
+
+COMPONENT wfmc14 = DiskChopper(
+ theta_0 = 20.8036, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0165862)
+AT (0,0,1.3159999999999992) RELATIVE guide1b_arm
+GROUP wfmc1
+
+COMPONENT tofafterwfmc1 = TOF_monitor(
+ nt = 500, filename = "tofafterwfmc1",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 50000,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wfmc11
+
+COMPONENT guide1c_arm = Arm()
+AT (0,0,1.415999999999999) RELATIVE guide1b_arm
+ROTATED (0.062473620328338746,0,0) RELATIVE guide1b_arm
+
+COMPONENT guide1ca = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.184, m = 3)
+AT (0,0,0) RELATIVE guide1c_arm
+
+
+// THE MONITOR IN THE MIDDLE BETWEEN THE 2 WAVELENGTH FRAME MULTIPLICATION CHOPPERS!
+COMPONENT toflambdawfmc = TOFLambda_monitor(
+ nL = 300, nt = 300,
+ tmin = 10000, tmax = 20000,
+ filename = "toflambdawfmc", xwidth = 0.2,
+ yheight = 0.2, Lmin = 3,
+ Lmax = 9, restore_neutron = 1)
+AT (0,0,0.18400000000000027) RELATIVE guide1c_arm
+
+COMPONENT guide1cb = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.184, m = 3)
+AT (0,0,0.18400000000000027) RELATIVE guide1c_arm
+
+COMPONENT tofbeforewfmc2 = TOF_monitor(
+ nt = 500, filename = "tofbeforewfmc2",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 50000,
+ restore_neutron = 1)
+AT (0,0,0.4660000000000005) RELATIVE guide1c_arm
+
+COMPONENT wfmc21 = DiskChopper(
+ theta_0 = 14.6792, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0116671)
+AT (0,0,0.4680000000000005) RELATIVE guide1c_arm
+GROUP wfmc2
+
+COMPONENT wfmc22 = DiskChopper(
+ theta_0 = 17.0812, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.013836)
+AT (0,0,0.4680000000000005) RELATIVE guide1c_arm
+GROUP wfmc2
+
+COMPONENT wfmc23 = DiskChopper(
+ theta_0 = 18.9857, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0158513)
+AT (0,0,0.4680000000000005) RELATIVE guide1c_arm
+GROUP wfmc2
+
+COMPONENT wfmc24 = DiskChopper(
+ theta_0 = 20.8036, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0177328)
+AT (0,0,0.4680000000000005) RELATIVE guide1c_arm
+GROUP wfmc2
+
+COMPONENT lamafterwfmc2 = L_monitor(
+ nL = 300, filename = "lamafterwfmc2",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wfmc21
+
+COMPONENT tofafterwfmc2 = TOF_monitor(
+ nt = 500, filename = "tofafterwfmc2",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 50000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wfmc21
+
+COMPONENT psdafterwfmc2 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwfmc2", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wfmc21
+
+COMPONENT guide1d_arm = Arm()
+AT (0,0,0.5680000000000005) RELATIVE guide1c_arm
+
+COMPONENT guide1d1 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.328, m = 3)
+AT (0,0,0) RELATIVE guide1d_arm
+ROTATED (0.0558527746957158,0,0) RELATIVE guide1d_arm
+
+COMPONENT guide1d2 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.328, m = 3)
+AT (0,0,0.32899999999999996) RELATIVE guide1d1
+ROTATED (0.0558527746957158,0,0) RELATIVE guide1d1
+
+COMPONENT guide1d3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.328, m = 3)
+AT (0,0,0.32899999999999996) RELATIVE guide1d2
+ROTATED (0.0558527746957158,0,0) RELATIVE guide1d2
+
+COMPONENT guide1d4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.328, m = 3)
+AT (0,0,0.32899999999999996) RELATIVE guide1d3
+ROTATED (0.0558527746957158,0,0) RELATIVE guide1d3
+
+COMPONENT wbc21 = DiskChopper(
+ theta_0 = 21.415, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0134337)
+AT (0,0,0.42899999999999994) RELATIVE guide1d4
+GROUP wbc2
+
+COMPONENT wbc22 = DiskChopper(
+ theta_0 = 23.021, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0159868)
+AT (0,0,0.42899999999999994) RELATIVE guide1d4
+GROUP wbc2
+
+COMPONENT wbc23 = DiskChopper(
+ theta_0 = 21.6267, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0182973)
+AT (0,0,0.42899999999999994) RELATIVE guide1d4
+GROUP wbc2
+
+COMPONENT wbc24 = DiskChopper(
+ theta_0 = 23.1897, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0205241)
+AT (0,0,0.42899999999999994) RELATIVE guide1d4
+GROUP wbc2
+
+COMPONENT lamafterwbc2 = L_monitor(
+ nL = 300, filename = "lamafterwbc2",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wbc21
+
+COMPONENT tofafterwbc2 = TOF_monitor(
+ nt = 500, filename = "tofafterwbc2",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 50000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wbc21
+
+COMPONENT psdafterwbc2 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwbc2", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wbc21
+
+COMPONENT guide1e_arm = Arm()
+AT (0,0,0.5289999999999999) RELATIVE guide1d4
+
+COMPONENT guide1e1 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.224, m = 3)
+AT (0,0,0) RELATIVE guide1e_arm
+ROTATED (0.038197186342054885,0,0) RELATIVE guide1e_arm
+
+COMPONENT guide1e2 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.224, m = 3)
+AT (0,0,0.22500000000000003) RELATIVE guide1e1
+ROTATED (0.038197186342054885,0,0) RELATIVE guide1e1
+
+COMPONENT guide1e3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.224, m = 3)
+AT (0,0,0.22500000000000003) RELATIVE guide1e2
+ROTATED (0.038197186342054885,0,0) RELATIVE guide1e2
+
+COMPONENT guide1e4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.224, m = 3)
+AT (0,0,0.22500000000000003) RELATIVE guide1e3
+ROTATED (0.038197186342054885,0,0) RELATIVE guide1e3
+
+COMPONENT guide2a_arm = Arm()
+AT (0,0,0.22500000000000003) RELATIVE guide1e4
+
+COMPONENT guide2a1 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.724, m = 3)
+AT (0,0,0) RELATIVE guide2a_arm
+ROTATED (-0.06923240024497447,0,0) RELATIVE guide2a_arm
+
+COMPONENT guide2a2 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.724, m = 3)
+AT (0,0,0.725) RELATIVE guide2a1
+ROTATED (-0.06923240024497447,0,0) RELATIVE guide2a1
+
+COMPONENT guide2a3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.724, m = 3)
+AT (0,0,0.725) RELATIVE guide2a2
+ROTATED (-0.06923240024497447,0,0) RELATIVE guide2a2
+
+COMPONENT guide2a4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.724, m = 3)
+AT (0,0,0.725) RELATIVE guide2a3
+ROTATED (-0.06923240024497447,0,0) RELATIVE guide2a3
+
+COMPONENT wbc31 = DiskChopper(
+ theta_0 = 40.2884, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0181222)
+AT (0,0,0.825) RELATIVE guide2a4
+GROUP wbc3
+
+COMPONENT wbc32 = DiskChopper(
+ theta_0 = 36.5025, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0216075)
+AT (0,0,0.825) RELATIVE guide2a4
+GROUP wbc3
+
+COMPONENT wbc33 = DiskChopper(
+ theta_0 = 31.5747, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0248248)
+AT (0,0,0.825) RELATIVE guide2a4
+GROUP wbc3
+
+COMPONENT wbc34 = DiskChopper(
+ theta_0 = 34.9168, radius = 0.5,
+ yheight = 0, nu = 56,
+ nslit = 1, delay = 0.0280237)
+AT (0,0,0.825) RELATIVE guide2a4
+GROUP wbc3
+
+COMPONENT lamafterwbc3 = L_monitor(
+ nL = 300, filename = "lamafterwbc3",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wbc31
+
+COMPONENT tofafterwbc3 = TOF_monitor(
+ nt = 500, filename = "tofafterwbc3",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 85000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wbc31
+
+COMPONENT psdafterwbc3 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwbc3", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wbc31
+
+COMPONENT divafterwbc3 = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divafterwbc3", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.004) RELATIVE wbc31
+
+COMPONENT guide2b_arm = Arm()
+AT (0,0,0.925) RELATIVE guide2a4
+
+COMPONENT guide2b1 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0) RELATIVE guide2b_arm
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b_arm
+
+COMPONENT guide2b2 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b1
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b1
+
+COMPONENT guide2b3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b2
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b2
+
+COMPONENT guide2b4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b3
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b3
+
+COMPONENT guide2b5 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b4
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b4
+
+COMPONENT guide2b6 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b5
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b5
+
+COMPONENT guide2b7 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b6
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b6
+
+COMPONENT guide2b8 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b7
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b7
+
+COMPONENT guide2b9 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b8
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b8
+
+COMPONENT guide2b10 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.329, m = 3)
+AT (0,0,0.32999999999999996) RELATIVE guide2b9
+ROTATED (-0.03151267873219527,0,0) RELATIVE guide2b9
+
+COMPONENT wbc41 = DiskChopper(
+ theta_0 = 28.605, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0222816)
+AT (0,0,0.42999999999999994) RELATIVE guide2b10
+GROUP wbc4
+
+COMPONENT wbc42 = DiskChopper(
+ theta_0 = 26.5319, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0266906)
+AT (0,0,0.42999999999999994) RELATIVE guide2b10
+GROUP wbc4
+
+COMPONENT wbc43 = DiskChopper(
+ theta_0 = 25.7488, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0308615)
+AT (0,0,0.42999999999999994) RELATIVE guide2b10
+GROUP wbc4
+
+COMPONENT wbc44 = DiskChopper(
+ theta_0 = 25.6076, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0347824)
+AT (0,0,0.42999999999999994) RELATIVE guide2b10
+GROUP wbc4
+
+COMPONENT lamafterwbc4 = L_monitor(
+ nL = 300, filename = "lamafterwbc4",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wbc41
+
+COMPONENT tofafterwbc4 = TOF_monitor(
+ nt = 500, filename = "tofafterwbc4",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 85000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wbc41
+
+COMPONENT psdafterwbc4 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwbc4", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wbc41
+
+COMPONENT guide2c_arm = Arm()
+AT (0,0,0.53) RELATIVE guide2b10
+
+COMPONENT guide2c1 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0) RELATIVE guide2c_arm
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c_arm
+
+COMPONENT guide2c2 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c1
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c1
+
+COMPONENT guide2c3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c2
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c2
+
+COMPONENT guide2c4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c3
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c3
+
+COMPONENT guide2c5 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c4
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c4
+
+COMPONENT guide2c6 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c5
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c5
+
+COMPONENT guide2c7 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c6
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c6
+
+COMPONENT guide2c8 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c7
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c7
+
+COMPONENT guide2c9 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c8
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c8
+
+COMPONENT guide2c10 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.539, m = 3)
+AT (0,0,0.54) RELATIVE guide2c9
+ROTATED (-0.0515662015617741,0,0) RELATIVE guide2c9
+
+COMPONENT guide3_arm = Arm()
+AT (0,0,0.54) RELATIVE guide2c10
+
+COMPONENT guide3 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 0.9, m = 2)
+AT (0,0,0) RELATIVE guide3_arm
+
+COMPONENT wbc51 = DiskChopper(
+ theta_0 = 38.4089, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0296261)
+AT (0,0,1.0000000000000029) RELATIVE guide3_arm
+GROUP wbc5
+
+COMPONENT wbc52 = DiskChopper(
+ theta_0 = 38.3004, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0358646)
+AT (0,0,1.0000000000000029) RELATIVE guide3_arm
+GROUP wbc5
+
+COMPONENT wbc53 = DiskChopper(
+ theta_0 = 37.2803, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0416398)
+AT (0,0,1.0000000000000029) RELATIVE guide3_arm
+GROUP wbc5
+
+COMPONENT wbc54 = DiskChopper(
+ theta_0 = 34.512, radius = 0.65,
+ yheight = 0, nu = 28,
+ nslit = 1, delay = 0.0469382)
+AT (0,0,1.0000000000000029) RELATIVE guide3_arm
+GROUP wbc5
+
+COMPONENT lamafterwbc5 = L_monitor(
+ nL = 300, filename = "lamafterwbc5",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wbc51
+
+COMPONENT tofafterwbc5 = TOF_monitor(
+ nt = 500, filename = "tofafterwbc5",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 85000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wbc51
+
+COMPONENT psdafterwbc5 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwbc5", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wbc51
+
+COMPONENT divafterwbc4 = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divafterwbc4", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.004) RELATIVE wbc51
+
+COMPONENT guide4_arm = Arm()
+AT (0,0,1.1000000000000028) RELATIVE guide3_arm
+
+COMPONENT guide4 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 9.8, m = 2)
+AT (0,0,0) RELATIVE guide4_arm
+
+COMPONENT wbc61 = DiskChopper(
+ theta_0 = 30.4408, radius = 0.65,
+ yheight = 0, nu = 14,
+ nslit = 1, delay = 0.0414295)
+AT (0,0,9.900000000000002) RELATIVE guide4_arm
+GROUP wbc6
+
+COMPONENT wbc62 = DiskChopper(
+ theta_0 = 29.1748, radius = 0.65,
+ yheight = 0, nu = 14,
+ nslit = 1, delay = 0.0502124)
+AT (0,0,9.900000000000002) RELATIVE guide4_arm
+GROUP wbc6
+
+COMPONENT wbc63 = DiskChopper(
+ theta_0 = 27.2938, radius = 0.65,
+ yheight = 0, nu = 14,
+ nslit = 1, delay = 0.0583379)
+AT (0,0,9.900000000000002) RELATIVE guide4_arm
+GROUP wbc6
+
+COMPONENT wbc64 = DiskChopper(
+ theta_0 = 25.5469, radius = 0.65,
+ yheight = 0, nu = 14,
+ nslit = 1, delay = 0.0659201)
+AT (0,0,9.900000000000002) RELATIVE guide4_arm
+GROUP wbc6
+
+COMPONENT lamafterwbc6 = L_monitor(
+ nL = 300, filename = "lamafterwbc6",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE wbc61
+
+COMPONENT tofafterwbc6 = TOF_monitor(
+ nt = 500, filename = "tofafterwbc6",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 85000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE wbc61
+
+COMPONENT psdafterwbc6 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterwbc6", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE wbc61
+
+COMPONENT toflambdaafterwbc6 = TOFLambda_monitor(
+ nL = 300, nt = 300,
+ tmin = 0, tmax = 85000,
+ filename = "toflambdaafterwbc6", xwidth = 0.2,
+ yheight = 0.2, Lmin = 3,
+ Lmax = 9, restore_neutron = 1)
+AT (0,0,0.004) RELATIVE wbc61
+
+COMPONENT guide5_arm = Arm()
+AT (0,0,10.000000000000002) RELATIVE guide4_arm
+
+COMPONENT guide5 = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 10.55, m = 2)
+AT (0,0,0) RELATIVE guide5_arm
+
+COMPONENT slit1_arm = Arm()
+AT (0,0,10.64999999999999) RELATIVE guide5_arm
+
+COMPONENT slit1 = Slit(
+ xmin = -0.005, xmax = 0.005,
+ ymin = -0.015, ymax = 0.015)
+AT (0,0,0) RELATIVE slit1_arm
+
+COMPONENT lamafterslit1 = L_monitor(
+ nL = 300, filename = "lamafterslit1",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,0.001) RELATIVE slit1_arm
+
+COMPONENT tofafterslit1 = TOF_monitor(
+ nt = 500, filename = "tofafterslit1",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 150000,
+ restore_neutron = 1)
+AT (0,0,0.002) RELATIVE slit1_arm
+
+COMPONENT psdafterslit1 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdafterslit1", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.003) RELATIVE slit1_arm
+
+COMPONENT divafterslit1 = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divafterslit1", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.004) RELATIVE slit1_arm
+
+COMPONENT guidecoll_arm = Arm()
+AT (0,0,0.1) RELATIVE slit1_arm
+
+COMPONENT guidecoll = Guide_gravity(
+ w1 = 0.03, h1 = 0.03,
+ w2 = 0.03, h2 = 0.03,
+ l = 6.3, mleft = 0,
+ mright = 0, mtop = 2,
+ mbottom = 2)
+AT (0,0,0) RELATIVE guidecoll_arm
+
+COMPONENT lambeforeslit2 = L_monitor(
+ nL = 300, filename = "lambeforeslit2",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = Lmax,
+ restore_neutron = 1)
+AT (0,0,6.396999999999999) RELATIVE guidecoll_arm
+
+COMPONENT tofbeforeslit2 = TOF_monitor(
+ nt = 500, filename = "tofbeforeslit2",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 0, tmax = 150000,
+ restore_neutron = 1)
+AT (0,0,6.398) RELATIVE guidecoll_arm
+
+COMPONENT psdbeforeslit2 = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdbeforeslit2", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,6.398999999999999) RELATIVE guidecoll_arm
+
+COMPONENT divbeforeslit2 = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divbeforeslit2", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,6.3995) RELATIVE guidecoll_arm
+
+COMPONENT slit2_arm = Arm()
+AT (0,0,6.3999999999999995) RELATIVE guidecoll_arm
+
+COMPONENT slit2 = Slit(
+ xmin = -0.005, xmax = 0.005,
+ ymin = -0.000109086, ymax = 0.000109086)
+AT (0,0,0) RELATIVE slit2_arm
+
+COMPONENT slit3_arm = Arm()
+AT (0,0,3.4) RELATIVE slit2_arm
+
+COMPONENT slit3 = Slit(
+ xmin = -0.005, xmax = 0.005,
+ ymin = -0.000196347, ymax = 0.000196347)
+AT (0,0,0) RELATIVE slit3_arm
+
+COMPONENT psdcoll = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdcoll", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.001) RELATIVE slit3_arm
+
+COMPONENT divcoll = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divcoll", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,0.002) RELATIVE slit3_arm
+
+COMPONENT sample_arm = Arm()
+AT (0,0,0.25) RELATIVE slit3_arm
+
+COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
+ xwidth=0.03, yheight=0.03,
+ tmin = 70000, tmax = 100000, nt=240,
+ Lmin=4.0, Lmax=8.0, nL=150,
+ restore_neutron=1
+)
+AT (0, 0, 0) RELATIVE sample_arm
+
+COMPONENT mcpl_out = MCPL_output_noacc_russian_roulette(filename="test_events", intendedWeight=0.0)
+ AT (0, 0, 0) RELATIVE sample_arm
+ ROTATED (90.0,0,0) RELATIVE sample_arm
+
+COMPONENT lamend = L_monitor(
+ nL = 1000, filename = "lamend",
+ xwidth = 0.2, yheight = 0.2,
+ Lmin = Lmin, Lmax = 120,
+ restore_neutron = 1)
+AT (0,0,10) RELATIVE sample_arm
+
+COMPONENT tofend = TOF_monitor(
+ nt = 8000, filename = "tofend",
+ xwidth = 0.2, yheight = 0.2,
+ tmin = 25000, tmax = 420000,
+ restore_neutron = 1)
+AT (0,0,10) RELATIVE sample_arm
+
+COMPONENT psdend = PSD_monitor(
+ nx = 90, ny = 90,
+ filename = "psdend", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,10) RELATIVE sample_arm
+
+COMPONENT toflambdaend = TOFLambda_monitor(
+ nL = 300, nt = 300,
+ tmin = 50000, tmax = 150000,
+ filename = "toflambdaend", xwidth = 0.2,
+ yheight = 0.2, Lmin = 3,
+ Lmax = 9, restore_neutron = 1)
+AT (0,0,10) RELATIVE sample_arm
+
+COMPONENT divend = Divergence_monitor(
+ nh = 90, nv = 90,
+ filename = "divend", xwidth = 0.2,
+ yheight = 0.2, restore_neutron = 1)
+AT (0,0,10) RELATIVE sample_arm
+
+FINALLY 
+%{
+// Start of finally for generated sbend_wfm_65m_res1_4a
+%}
+
+END
