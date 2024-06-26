@@ -18,8 +18,8 @@ def fitGaussian(x,y):
 
 
 def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, verbose=False, createPlots=False):
-  data = np.array(McSim(dirname)[monitor].data)
-  info = McSim(dirname)[monitor].info
+  data = np.array(McSim(str(dirname))[monitor].data)
+  info = McSim(str(dirname))[monitor].info
 
   limits=list(map(float, info['xylimits'].split()))
   tofMin, tofMax, lambdaMin, lambdaMax = limits
@@ -55,7 +55,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
     tofLimits[0] = tofMin
   if tofLimits[1] is None:
     tofLimits[1] = tofMax
-  tofLimitMask = (tofLimits[0] <= tofBins) & (tofBins <= tofLimits[1])
+  tofLimitMask = (float(tofLimits[0]) <= tofBins) & (tofBins <= float(tofLimits[1]))
 
   popt, mean, sigma = fitGaussian(tofBins[tofLimitMask], tofForSelectedWavelength[tofLimitMask])
   a, x0, sigma = popt

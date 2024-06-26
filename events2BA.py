@@ -9,13 +9,13 @@ from importlib import import_module
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+from pathlib import Path
 
 import bornagain as ba
 from bornagain import deg, angstrom
 
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters
-
 from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
 
 def coordTransformToSampleSystem(events, alpha_inc):
@@ -48,6 +48,25 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
   if sampleHitEventNr != eventNr:
     print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} neutrons avoided the sample!")
   return sampleHitEvents
+
+def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavelength=None, tofLimits=[None,None], rebin=1):
+  """
+  Apply t0 TOF correction for all neutrons. A fixed tCorrection value can be given to be subtracted, or
+  a McStas TOF-Wavelength monitor can be provided with a selected wavelength, in which case tCorrection
+  is retrieved as the mean value from fitting a Gaussian function to the TOF distribution. By default
+  the fitting is done for the full TOF range of a single wavelength bin including selected wavelength,
+  but optionally the TOF range can be limited, and rebinning can be applied along the wavelength axis.
+  WARNING: the TOF axis is assumed to have microsecond units!
+  """
+  if t0correction == 0:
+    from mcstasMonitorFitting import fitGaussianToMcstasMonitor
+    mean, _ = fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=tofLimits, wavelength_rebin=rebin)
+    t0correction = mean * 1e-6
+    print(f"  t0correction: {t0correction} second")
+
+  p, x, y, z, vx, vy, vz, t = events.T
+  t -= t0correction
+  return np.vstack([p, x, y, z, vx, vy, vz, t]).T
 
 def get_simulation(sample, pixelNr, angle_range, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
   """
@@ -139,13 +158,14 @@ def processNeutrons(neutron, sc=None):
 
 def main(args):
   #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
+  pars = instrumentParameters[args.instrument]
   sharedConstants = {
-    'nominal_source_sample_distance': instrumentParameters[args.instrument]['nominal_source_sample_distance'],
-    'sample_detector_distance': instrumentParameters[args.instrument]['sample_detector_distance'],
+    'nominal_source_sample_distance': pars['nominal_source_sample_distance'] - (0 if not args.wfm else pars['wfm_virtual_source_distance']),
+    'sample_detector_distance': pars['sample_detector_distance'],
     'sim_module_name': args.model,
     'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
-    'wavelengthSelected':  None if instrumentParameters[args.instrument]['tof instrument'] else args.wavelengthSelected,
+    'wavelengthSelected':  None if pars['tof instrument'] else args.wavelengthSelected,
     'alpha_inc': np.deg2rad(args.alpha),
     'angle_range': args.angle_range
   }
@@ -154,6 +174,19 @@ def main(args):
   events = getNeutronEvents(args.filename, args.tof_min, args.tof_max)
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
+
+  if args.t0correction:
+    if abs(float(args.t0fixed)) > 1e-5: #T0 correction with fixed input value
+      events = applyT0Correction(events, float(args.t0fixed))
+    else: #T0 correction based on McStas (TOFLambda) monitor
+      mcstasDir = Path(args.filename).resolve().parent
+      if not args.wfm:
+        tofLimits = [None, None]
+        t0monitor = pars['t0_monitor_name']
+      else:
+        tofLimits = [12000, 14400] #hard-coded SAGA second pulse FIXME
+        t0monitor = pars['wfm_t0_monitor_name']
+      events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.rebin)
 
   savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
   if not args.all_q:
@@ -218,7 +251,17 @@ if __name__=='__main__':
   parser.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   parser.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
+  t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction.')
+  t0correctionGroup.add_argument('--no-t0correction', action='store_false', dest='t0correction', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
+  t0correctionGroup.add_argument('--t0fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
+  t0correctionGroup.add_argument('--wavelength', default=6.0, help = 'Central wavelength of the simulation. (This is currently only used for t0 correction.)')
+  t0correctionGroup.add_argument('--rebin', default=1, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
+  t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
+
   args = parser.parse_args()
+
+  if args.wfm and any(key not in instrumentParameters[args.instrument] for key in instrumentParameters['wfm_required_keys']):
+    parser.error(f"wfm option is not enabled for the {args.instrument} instrument! Set the required instrument parameters in instruments.py!")
 
   main(args)
 
