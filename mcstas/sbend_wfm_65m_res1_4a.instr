@@ -51,11 +51,19 @@ AT (0,0,0) ABSOLUTE
 COMPONENT source = ESS_butterfly(
  sector = "S", beamline = 5,
  yheight = 0.03, cold_frac = 0.5,
- target_index = 7, focus_xw = 0.03,
+ target_index = 8, focus_xw = 0.03,
  focus_yh = 0.03, Lmin = Lmin,
  Lmax = Lmax, n_pulses = n_pulses,
  acc_power = 5)
 AT (0,0,0) RELATIVE origin
+
+COMPONENT Source_TOF_Lambda = TOFLambda_monitor(
+ xwidth=1, yheight=1,
+ tmin=0, tmax=10000, nt=1000,
+ Lmin=0.0, Lmax=11.0, nL=100,
+ restore_neutron=1
+)
+AT (0, 0, 0) RELATIVE origin
 
 COMPONENT iscs = Arm()
 AT (iscs_x/1000.0,0,iscs_z/1000.0) RELATIVE source
