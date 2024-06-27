@@ -57,20 +57,20 @@ COMPONENT source = ESS_butterfly(
  acc_power = 5)
 AT (0,0,0) RELATIVE origin
 
-COMPONENT Source_TOF_Lambda = TOFLambda_monitor(
- xwidth=1, yheight=1,
- tmin=0, tmax=10000, nt=1000,
- Lmin=0.0, Lmax=11.0, nL=100,
- restore_neutron=1
-)
-AT (0, 0, 0) RELATIVE origin
-
 COMPONENT iscs = Arm()
 AT (iscs_x/1000.0,0,iscs_z/1000.0) RELATIVE source
 
 COMPONENT instrument_arm = Arm()
 AT (0,0,0) RELATIVE iscs
 ROTATED (guidetilt,insertangle,0) RELATIVE iscs
+
+COMPONENT Source_TOF_Lambda = TOFLambda_monitor(
+ xwidth=1, yheight=1,
+ tmin=0, tmax=10000, nt=1000,
+ Lmin=0.0, Lmax=12.0, nL=100,
+ restore_neutron=1
+)
+AT (0,0,0) RELATIVE instrument_arm
 
 COMPONENT toflambdasource = TOFLambda_monitor(
  nL = 300, nt = 300,
