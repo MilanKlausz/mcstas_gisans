@@ -17,7 +17,7 @@ def fitGaussian(x,y):
   return popt
 
 
-def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, figureOutput=None):
+def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, figureOutput=None, tofRangeFactor=1):
   data = np.array(McSim(str(dirname))[monitor].data)
   info = McSim(str(dirname))[monitor].info
 
@@ -45,19 +45,6 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   tofForSelectedWavelength = data[wavelengthIndex]
 
   tofBins = np.linspace(tofMin, tofMax, num=tofBinNumber)
-  if(figureOutput is not None):
-    if figureOutput == 'show':
-      matplotlib.use('TkAgg')
-    else:
-      matplotlib.use('agg')
-
-    _, (ax1, ax2) = plt.subplots(2, figsize=(12, 12))
-    # plt.scatter(tofBins, tofFor6Ang, label='TOF around 6 ang')
-    ax1.plot(tofBins, tofForSelectedWavelength, marker='o', linestyle='-', label='TOF around 6 ang')
-    ax1.set_xlabel(info['xlabel'])
-    ax1.set_ylabel(f"Intensity around {wavelength} ang")
-    ax1.set_xlim(tofMin, tofMax)
-
   # Create an index mask to allow fitting on a limited range (that defaults to the full range)
   if tofLimits[0] is None:
     tofLimits[0] = tofMin
@@ -68,9 +55,6 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   popt = fitGaussian(tofBins[tofLimitMask], tofForSelectedWavelength[tofLimitMask])
   a, mean, sigma = popt
   halfMaximum = a / 2.0
-  if(figureOutput is not None):
-    ax1.plot(tofBins[tofLimitMask], Gaussian(tofBins[tofLimitMask], *popt), 'r-', label='Gaussian fit')
-    ax1.axhline(y=halfMaximum, color='green', linestyle='dotted', linewidth=3, label='Half-maximum')
 
   # Calculate the x-values where the Gaussian curve reaches the half-maximum value
   fwhm = 2 * sigma * np.sqrt(2 * np.log(2))
@@ -78,18 +62,51 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   xHalfMaximumHigher = mean + fwhm * 0.5
 
   if(figureOutput is not None):
-    # Plot the FWHM and mean value
-    ylim = ax1.get_ylim()
-    ax1.vlines(x=xHalfMaximumLower, ymin=ylim[0], ymax=ylim[1], colors='green', linestyles='dotted', linewidth=3, label='FWHM')
-    ax1.vlines(x=xHalfMaximumHigher, ymin=ylim[0], ymax=ylim[1], colors='green', linestyles='dotted', linewidth=3)
-    ax1.vlines(x=mean, ymin=ylim[0], ymax=ylim[1], colors='purple', linestyles='dotted', linewidth=3, label='Mean')
+    if figureOutput == 'show':
+      matplotlib.use('TkAgg')
+    else:
+      matplotlib.use('agg')
+    plt.rcParams.update({'font.size': 15})
 
-    img=ax2.imshow(data, origin='lower', extent=limits, aspect='auto', cmap='jet')
-    ax2.vlines(x=xHalfMaximumLower, ymin=lambdaMin, ymax=lambdaMax, colors='green', linestyles='dotted', linewidth=3, label='FWHM')
-    ax2.vlines(x=xHalfMaximumHigher, ymin=lambdaMin, ymax=lambdaMax, colors='green', linestyles='dotted', linewidth=3)
-    ax2.set_xlabel(info['xlabel'])
-    ax2.set_ylabel(info['ylabel'])
+    _, (ax1, ax2) = plt.subplots(2, figsize=(12, 12), sharex=True)
 
+    ## Plot the 2D McStas monitor data
+    ax1.imshow(data, origin='lower', extent=limits, aspect='auto', cmap='jet')
+
+    ## Plot a single slice of the 2D data (the TOF of the neutrons of the selected wavelength)
+    ax2.plot(tofBins, tofForSelectedWavelength, marker='o', linestyle='-', label=f'Slice at {wavelength} $\AA$')
+    ax2.set_xlabel(info['xlabel'].replace('[\\gms]', f'[$\mu$s]'))
+    ax2.set_ylabel(f"Intensity at {wavelength} $\AA$")
+    ax2.set_xlim(tofMin, tofMax)
+
+    ## Plot fitted Gaussian and related lines (mean, FHWM, intensity at the half of maxium)
+    ax2.plot(tofBins[tofLimitMask], Gaussian(tofBins[tofLimitMask], *popt), 'r-', label='Gaussian fit')
+    ax2.axhline(y=halfMaximum, color='darkgreen', linestyle='dotted', linewidth=3, alpha=.7, label='Half of maximum')
+
+    ylim = ax2.get_ylim()
+    ax2.vlines(x=xHalfMaximumLower, ymin=ylim[0], ymax=ylim[1], colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7, label='FWHM')
+    ax2.vlines(x=xHalfMaximumHigher, ymin=ylim[0], ymax=ylim[1], colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7)
+    ax2.vlines(x=mean, ymin=ylim[0], ymax=ylim[1], colors='purple', linestyles='dotted', linewidth=3, alpha=.7, label='Mean TOF')
+
+    ax1.vlines(x=xHalfMaximumLower, ymin=lambdaMin, ymax=lambdaMax, colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7, label='FWHM')
+    ax1.vlines(x=xHalfMaximumHigher, ymin=lambdaMin, ymax=lambdaMax, colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7)
+    ax1.set_xlabel(info['xlabel'].replace('[\\gms]', f'[$\mu$s]'))
+    ax1.tick_params()
+    ax1.tick_params(axis='x', labelbottom=True)
+    ax1.set_ylabel(info['ylabel'].replace('[AA]', f'[$\AA$]'))
+
+    ## Add extra lines for the TOF limits if they are not the same as the FWHM lines
+    if tofRangeFactor != 1:
+      tofLimitMin = mean - fwhm * 0.5 * tofRangeFactor
+      tofLimitfMax = mean + fwhm * 0.5 * tofRangeFactor
+      ax2.vlines(x=tofLimitMin, ymin=ylim[0], ymax=ylim[1], colors='magenta', linestyles='dotted', linewidth=3, alpha=.7, label='TOF limits')
+      ax2.vlines(x=tofLimitfMax, ymin=ylim[0], ymax=ylim[1], colors='magenta', linestyles='dotted', linewidth=3, alpha=.7)
+      ax1.vlines(x=tofLimitMin, ymin=lambdaMin, ymax=lambdaMax, colors='magenta', linestyles='dotted', linewidth=3, alpha=.7, label='TOF limits')
+      ax1.vlines(x=tofLimitfMax, ymin=lambdaMin, ymax=lambdaMax, colors='magenta', linestyles='dotted', linewidth=3, alpha=.7)
+
+    ax2.legend()
+    ax1.legend()
+    plt.tight_layout()
     if(figureOutput == 'show'):
       plt.show()
     else:
@@ -108,6 +125,8 @@ if __name__=='__main__':
   parser.add_argument('--tof_min', default=None, required=False, help = 'TOF minimum of the fitting range (defaults to the minimum of the monitor spectra).')
   parser.add_argument('--tof_max', default=None, required=False, help = 'TOF maximum of the fitting range (defaults to the maximum of the monitor spectra).')
   parser.add_argument('-r', '--wavelength_rebin', default=1, type=int, required=False, help = 'Rebin along wavelength by the provided factor (only if no extrapolation is needed).')
+  parser.add_argument('--tof_range_factor', default=1.0, type=float, help = 'Increase the accepted TOF range of neutrons by this multiplication factor.')
+
   args = parser.parse_args()
 
   tofLimits = [None, None]
@@ -123,7 +142,7 @@ if __name__=='__main__':
   else:
     figureOutput = 'show'
 
-  fit = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, figureOutput=figureOutput)
+  fit = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.tof_range_factor)
 
   print(f"Mean={fit['mean']:.3f}")
   print(f"FWHM={fit['fwhm']:.3f}")

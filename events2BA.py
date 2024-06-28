@@ -19,6 +19,28 @@ from instruments import instrumentParameters
 from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
+def getTofFilteringLimits(args, mcstasDir, pars):
+  if args.no_mcpl_filtering:
+    mcplTofMin = float('-inf')
+    mcplTofMax = float('inf')
+  else:
+    if args.tof_min and args.tof_max:
+      mcplTofMin = args.tof_min
+      mcplTofMax = args.tof_max
+    else:
+      if args.figure_output == 'png' or args.figure_output == 'pdf':
+        figureOutput = f"{args.savename}.{args.figure_output}"
+      else:
+        figureOutput = args.figure_output # None or 'show'
+      fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.input_tof_range_factor)
+      mcplTofMin = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      mcplTofMax = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      print(f"  Using MCPL input TOF limits: : {mcplTofMin:.3f} - {mcplTofMax:.3f} [microsecond]")
+      if args.figure_output is not None:
+        import sys
+        sys.exit()
+  return mcplTofMin, mcplTofMax
+
 def coordTransformToSampleSystem(events, alpha_inc):
   """Apply coordinate transformation to express neutron parameters in a
   coordinate system with the sample in the centre and being horisontal"""
@@ -172,31 +194,15 @@ def main(args):
 
   mcstasDir = Path(args.filename).resolve().parent
 
+  ### Getting neutron events from the MCPL file ###
+  mcplTofMin, mcplTofMax = getTofFilteringLimits(args, mcstasDir, pars)
   from inputOutput import getNeutronEvents
-  if args.no_mcpl_filtering:
-    mcplTofMin = float('-inf')
-    mcplTofMax = float('inf')
-  else:
-    if args.tof_min and args.tof_max:
-      mcplTofMin = args.tof_min
-      mcplTofMax = args.tof_max
-    else:
-      if args.figure_output == 'png' or args.figure_output == 'pdf':
-        figureOutput = f"{args.savename}.{args.figure_output}"
-      else:
-        figureOutput = args.figure_output # None or 'show'
-      fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput)
-      mcplTofMin = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
-      mcplTofMax = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
-      print(f"  Using MCPL input TOF limits: : {mcplTofMin:.3f} - {mcplTofMax:.3f} [microsecond]")
-      if args.figure_output is not None:
-        import sys
-        sys.exit()
   events = getNeutronEvents(args.filename, mcplTofMin, mcplTofMax)
 
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
 
+  ### T0 Correction ###
   if not args.no_t0_correction and args.wavelength is not None:
     if abs(float(args.t0_fixed)) > 1e-5: #T0 correction with fixed input value
       events = applyT0Correction(events, float(args.t0_fixed))
