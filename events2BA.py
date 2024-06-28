@@ -181,10 +181,17 @@ def main(args):
       mcplTofMin = args.tof_min
       mcplTofMax = args.tof_max
     else:
-      fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin)
+      if args.figure_output == 'png' or args.figure_output == 'pdf':
+        figureOutput = f"{args.savename}.{args.figure_output}"
+      else:
+        figureOutput = args.figure_output # None or 'show'
+      fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput)
       mcplTofMin = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       mcplTofMax = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       print(f"  Using MCPL input TOF limits: : {mcplTofMin:.3f} - {mcplTofMax:.3f} [microsecond]")
+      if args.figure_output is not None:
+        import sys
+        sys.exit()
   events = getNeutronEvents(args.filename, mcplTofMin, mcplTofMax)
 
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
@@ -272,7 +279,7 @@ if __name__=='__main__':
   mcplFilteringGroup.add_argument('--tof_min', type=float, help = 'Lower TOF limit for selecting neutrons from the MCPL file. [microsecond]')
   mcplFilteringGroup.add_argument('--tof_max', type=float, help = 'Upper TOF limit for selecting neutrons from the MCPL file. [microsecond]')
   mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help = 'Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
-  # mcplFilteringGroup.add_argument('--show', action='store_true', help = 'Show the selected input range and exit without doing the simulation.')
+  mcplFilteringGroup.add_argument('--figure_output', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation.')
 
   t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the  wavelength parameter in the MCPL filtering is provided.')
   t0correctionGroup.add_argument('--t0_fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')

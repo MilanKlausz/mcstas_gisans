@@ -17,7 +17,7 @@ def fitGaussian(x,y):
   return popt
 
 
-def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, createPlots=False):
+def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, figureOutput=None):
   data = np.array(McSim(str(dirname))[monitor].data)
   info = McSim(str(dirname))[monitor].info
 
@@ -45,7 +45,12 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   tofForSelectedWavelength = data[wavelengthIndex]
 
   tofBins = np.linspace(tofMin, tofMax, num=tofBinNumber)
-  if(createPlots):
+  if(figureOutput is not None):
+    if figureOutput == 'show':
+      matplotlib.use('TkAgg')
+    else:
+      matplotlib.use('agg')
+
     _, (ax1, ax2) = plt.subplots(2, figsize=(12, 12))
     # plt.scatter(tofBins, tofFor6Ang, label='TOF around 6 ang')
     ax1.plot(tofBins, tofForSelectedWavelength, marker='o', linestyle='-', label='TOF around 6 ang')
@@ -63,7 +68,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   popt = fitGaussian(tofBins[tofLimitMask], tofForSelectedWavelength[tofLimitMask])
   a, mean, sigma = popt
   halfMaximum = a / 2.0
-  if(createPlots):
+  if(figureOutput is not None):
     ax1.plot(tofBins[tofLimitMask], Gaussian(tofBins[tofLimitMask], *popt), 'r-', label='Gaussian fit')
     ax1.axhline(y=halfMaximum, color='green', linestyle='dotted', linewidth=3, label='Half-maximum')
 
@@ -72,7 +77,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   xHalfMaximumLower = mean - fwhm * 0.5
   xHalfMaximumHigher = mean + fwhm * 0.5
 
-  if(createPlots):
+  if(figureOutput is not None):
     # Plot the FWHM and mean value
     ylim = ax1.get_ylim()
     ax1.vlines(x=xHalfMaximumLower, ymin=ylim[0], ymax=ylim[1], colors='green', linestyles='dotted', linewidth=3, label='FWHM')
@@ -85,6 +90,12 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
     ax2.set_xlabel(info['xlabel'])
     ax2.set_ylabel(info['ylabel'])
 
+    if(figureOutput == 'show'):
+      plt.show()
+    else:
+      plt.savefig(figureOutput)
+      print(f"  Created {figureOutput}")
+
   return {'mean': mean, 'fwhm': fwhm}
 
 if __name__=='__main__':
@@ -93,17 +104,11 @@ if __name__=='__main__':
   parser.add_argument('-m', '--monitor', default='Mcpl_TOF_Lambda', required=False, help = 'Directory name with the monitor dat file.')
   parser.add_argument('-w', '--wavelength', default=6.0, type=float, required=False, help = 'Neutron wavelength of interest.')
   parser.add_argument('-s', '--savename', default='fwhm', required=False, help = 'Output image filename.')
+  parser.add_argument('-f', '--figure_output', default='show', choices=['show', 'png', 'pdf', 'None', 'none'], help = 'Figure output format. In case of show, no output file will be created.')
   parser.add_argument('--tof_min', default=None, required=False, help = 'TOF minimum of the fitting range (defaults to the minimum of the monitor spectra).')
   parser.add_argument('--tof_max', default=None, required=False, help = 'TOF maximum of the fitting range (defaults to the maximum of the monitor spectra).')
   parser.add_argument('-r', '--wavelength_rebin', default=1, type=int, required=False, help = 'Rebin along wavelength by the provided factor (only if no extrapolation is needed).')
-  parser.add_argument('--pdf', action = 'store_true', help = 'Export figure as pdf.')
-  parser.add_argument('--png', action = 'store_true', help = 'Export figure as png.')
   args = parser.parse_args()
-
-  if(args.pdf or args.png):
-    matplotlib.use('agg')
-  else:
-    matplotlib.use('TkAgg')
 
   tofLimits = [None, None]
   if args.tof_min is not None:
@@ -111,17 +116,17 @@ if __name__=='__main__':
   if args.tof_max is not None:
       tofLimits[1] = float(args.tof_max)
 
-  fit = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, createPlots=True)
+  if args.figure_output in ['None', 'none']:
+    figureOutput = None
+  elif args.figure_output in ['pdf', 'png']:
+    figureOutput = f"{args.savename}.{args.figure_output}"
+  else:
+    figureOutput = 'show'
+
+  fit = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, figureOutput=figureOutput)
 
   print(f"Mean={fit['mean']:.3f}")
   print(f"FWHM={fit['fwhm']:.3f}")
   tof_min = (fit['mean'] - fit['fwhm'] * 0.5) * 1e-3
   tof_max = (fit['mean'] + fit['fwhm'] * 0.5) * 1e-3
   print('events2BA.py TOF filtering command: ', f"--tof_min={tof_min:.3f} --tof_max={tof_max:.3f}")
-
-  if(args.pdf):
-    plt.savefig(f"{args.savename}.pdf")
-  elif(args.png):
-    plt.savefig(f"{args.savename}.png")
-  else:
-    plt.show()
