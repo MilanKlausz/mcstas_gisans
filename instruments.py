@@ -13,6 +13,7 @@ instrumentParameters = {
       'nominal_source_sample_distance' : 55, #[m]
       'sample_detector_distance' : 10, #[m] along the y axis
       'tof instrument' : True,
+      'mcpl_monitor_name' : 'Mcpl_TOF_Lambda',
       't0_monitor_name' : 'Source_TOF_Lambda',
       'wfm_t0_monitor_name' : 'toflambdawfmc' ,
       'wfm_virtual_source_distance': 8.2, #real source to virtual source distance for WFM mode
@@ -21,6 +22,7 @@ instrumentParameters = {
       'nominal_source_sample_distance' : 23.6,
       'sample_detector_distance' : 5, #can be 5-10m
       'tof instrument' : True,
+      'mcpl_monitor_name' : 'Mcpl_TOF_Lambda',
       't0_monitor_name' : 'Source_TOF_Lambda',
    },
    'skadi': {

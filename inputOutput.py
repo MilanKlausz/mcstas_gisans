@@ -12,7 +12,7 @@ def velocity_from_dir(ux, uy, uz, ekin):
   norm = np.sqrt(ekin * 1e9 / VS2E)
   return [ux*norm, uy*norm, uz*norm]
 
-def getNeutronEvents(filename, tofMin, tofMax):
+def getNeutronEvents(filename, tofMin=float('-inf'), tofMax=float('inf')):
     print(f'Reading events from {filename}...')
     if filename.endswith('.dat'):
       events = np.loadtxt(filename)

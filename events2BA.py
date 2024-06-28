@@ -17,6 +17,7 @@ from bornagain import deg, angstrom
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters
 from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
+from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def coordTransformToSampleSystem(events, alpha_inc):
   """Apply coordinate transformation to express neutron parameters in a
@@ -59,9 +60,8 @@ def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavele
   WARNING: the TOF axis is assumed to have microsecond units!
   """
   if t0correction == 0:
-    from mcstasMonitorFitting import fitGaussianToMcstasMonitor
-    mean, _ = fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=tofLimits, wavelength_rebin=rebin)
-    t0correction = mean * 1e-6
+    fit = fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=tofLimits, wavelength_rebin=rebin)
+    t0correction = fit['mean'] * 1e-6
     print(f"  t0correction: {t0correction} second")
 
   p, x, y, z, vx, vy, vz, t = events.T
@@ -170,23 +170,37 @@ def main(args):
     'angle_range': args.angle_range
   }
 
+  mcstasDir = Path(args.filename).resolve().parent
+
   from inputOutput import getNeutronEvents
-  events = getNeutronEvents(args.filename, args.tof_min, args.tof_max)
+  if args.no_mcpl_filtering:
+    mcplTofMin = float('-inf')
+    mcplTofMax = float('inf')
+  else:
+    if args.tof_min and args.tof_max:
+      mcplTofMin = args.tof_min
+      mcplTofMax = args.tof_max
+    else:
+      fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin)
+      mcplTofMin = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      mcplTofMax = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      print(f"  Using MCPL input TOF limits: : {mcplTofMin:.3f} - {mcplTofMax:.3f} [microsecond]")
+  events = getNeutronEvents(args.filename, mcplTofMin, mcplTofMax)
+
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
 
-  if args.t0correction:
-    if abs(float(args.t0fixed)) > 1e-5: #T0 correction with fixed input value
-      events = applyT0Correction(events, float(args.t0fixed))
+  if not args.no_t0_correction and args.wavelength is not None:
+    if abs(float(args.t0_fixed)) > 1e-5: #T0 correction with fixed input value
+      events = applyT0Correction(events, float(args.t0_fixed))
     else: #T0 correction based on McStas (TOFLambda) monitor
-      mcstasDir = Path(args.filename).resolve().parent
       if not args.wfm:
         tofLimits = [None, None]
         t0monitor = pars['t0_monitor_name']
       else:
         tofLimits = [12000, 14400] #hard-coded SAGA second pulse FIXME
         t0monitor = pars['wfm_t0_monitor_name']
-      events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.rebin)
+      events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.t0_rebin)
 
   savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
   if not args.all_q:
@@ -236,27 +250,35 @@ if __name__=='__main__':
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.')
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
   parser.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
+  parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
-  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
+  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
+  parser.add_argument('--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
+  parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
+
+  #TODO create a sample group
+  parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
   parser.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
-  parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument.')
-  parser.add_argument('-w','--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
-  parser.add_argument('--tof_min', default=0, type=float, help = 'Lower TOF limit in microseconds for selecting neutrons from the input MCPL file.')
-  parser.add_argument('--tof_max', default=150, type=float, help = 'Upper TOF limit in microseconds for selecting neutrons from the input MCPL file')
-  parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
-  parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
   parser.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   parser.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
-  t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction.')
-  t0correctionGroup.add_argument('--no-t0correction', action='store_false', dest='t0correction', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
-  t0correctionGroup.add_argument('--t0fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
-  t0correctionGroup.add_argument('--wavelength', default=6.0, help = 'Central wavelength of the simulation. (This is currently only used for t0 correction.)')
-  t0correctionGroup.add_argument('--rebin', default=1, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
+  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correcpond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
+  mcplFilteringGroup.add_argument('-w', '--wavelength', default=6.0, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
+  mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Increase the accepted TOF range of neutrons by this multiplication factor.')
+  mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
+  mcplFilteringGroup.add_argument('--tof_min', type=float, help = 'Lower TOF limit for selecting neutrons from the MCPL file. [microsecond]')
+  mcplFilteringGroup.add_argument('--tof_max', type=float, help = 'Upper TOF limit for selecting neutrons from the MCPL file. [microsecond]')
+  mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help = 'Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
+  # mcplFilteringGroup.add_argument('--show', action='store_true', help = 'Show the selected input range and exit without doing the simulation.')
+
+  t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the  wavelength parameter in the MCPL filtering is provided.')
+  t0correctionGroup.add_argument('--t0_fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
+  t0correctionGroup.add_argument('--t0_rebin', default=1, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
   t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
+  t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
 
   args = parser.parse_args()
 
