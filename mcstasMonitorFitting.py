@@ -14,10 +14,10 @@ def fitGaussian(x,y):
   mean = sum(x * y) / sum(y)
   sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
   popt, _ = curve_fit(Gaussian, x, y, p0=[max(y), mean, sigma])
-  return popt, mean, sigma
+  return popt
 
 
-def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, verbose=False, createPlots=False):
+def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, createPlots=False):
   data = np.array(McSim(str(dirname))[monitor].data)
   info = McSim(str(dirname))[monitor].info
 
@@ -29,6 +29,8 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
 
   if wavelength_rebin != 1:
     #Rebin along the wavelength axis to get better statistics
+    print('Rebinning monitor:')
+    print('  original shape: ', data.shape)
     if(lambdaBinNumber % wavelength_rebin != 0):
       import sys
       sys.exit(f'Cannot rebin easily from {lambdaBinNumber} by a factor of {wavelength_rebin}')
@@ -36,6 +38,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
       reshaped_arr = data.reshape(int(lambdaBinNumber/wavelength_rebin), wavelength_rebin, int(tofBinNumber))
       data = reshaped_arr.sum(axis=1)
       lambdaBinNumber, tofBinNumber = data.shape
+      print('  new shape: ', data.shape)
 
   wavelengthBinEdges = np.linspace(lambdaMin, lambdaMax, num=lambdaBinNumber+1, endpoint=True)
   wavelengthIndex = np.digitize(wavelength, wavelengthBinEdges) - 1
@@ -57,17 +60,17 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
     tofLimits[1] = tofMax
   tofLimitMask = (float(tofLimits[0]) <= tofBins) & (tofBins <= float(tofLimits[1]))
 
-  popt, mean, sigma = fitGaussian(tofBins[tofLimitMask], tofForSelectedWavelength[tofLimitMask])
-  a, x0, sigma = popt
-  halfMaximum = a / 2
+  popt = fitGaussian(tofBins[tofLimitMask], tofForSelectedWavelength[tofLimitMask])
+  a, mean, sigma = popt
+  halfMaximum = a / 2.0
   if(createPlots):
     ax1.plot(tofBins[tofLimitMask], Gaussian(tofBins[tofLimitMask], *popt), 'r-', label='Gaussian fit')
     ax1.axhline(y=halfMaximum, color='green', linestyle='dotted', linewidth=3, label='Half-maximum')
 
   # Calculate the x-values where the Gaussian curve reaches the half-maximum value
-  xHalfMaximumLower = int(x0 - sigma * np.sqrt(2 * np.log(2)))
-  xHalfMaximumHigher = int(x0 + sigma * np.sqrt(2 * np.log(2)))
-  fwhm = xHalfMaximumHigher - xHalfMaximumLower
+  fwhm = 2 * sigma * np.sqrt(2 * np.log(2))
+  xHalfMaximumLower = mean - fwhm * 0.5
+  xHalfMaximumHigher = mean + fwhm * 0.5
 
   if(createPlots):
     # Plot the FWHM and mean value
@@ -82,14 +85,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
     ax2.set_xlabel(info['xlabel'])
     ax2.set_ylabel(info['ylabel'])
 
-  if(verbose):
-    print('Monitor data shape: ', data.shape)
-    print(f"Mean={mean}")
-    print(f"FWHM={fwhm}")
-    print('xHalfMaximumLower', xHalfMaximumLower)
-    print('xHalfMaximumHigher', xHalfMaximumHigher)
-
-  return (mean, fwhm)
+  return {'mean': mean, 'fwhm': fwhm}
 
 if __name__=='__main__':
   parser = argparse.ArgumentParser(description = 'Calculate and visualise the FWHM of the TOF distribution of neutrons with a certain wavelength from a TOF_Lambda McStas monitor.')
@@ -115,7 +111,13 @@ if __name__=='__main__':
   if args.tof_max is not None:
       tofLimits[1] = float(args.tof_max)
 
-  mean, fwhm = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, verbose=True, createPlots=True)
+  fit = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, createPlots=True)
+
+  print(f"Mean={fit['mean']:.3f}")
+  print(f"FWHM={fit['fwhm']:.3f}")
+  tof_min = (fit['mean'] - fit['fwhm'] * 0.5) * 1e-3
+  tof_max = (fit['mean'] + fit['fwhm'] * 0.5) * 1e-3
+  print('events2BA.py TOF filtering command: ', f"--tof_min={tof_min:.3f} --tof_max={tof_max:.3f}")
 
   if(args.pdf):
     plt.savefig(f"{args.savename}.pdf")
