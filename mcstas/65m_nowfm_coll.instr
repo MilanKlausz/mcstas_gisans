@@ -649,8 +649,8 @@ AT (0,0,0.25) RELATIVE slit2_arm
 
 COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
  xwidth=0.03, yheight=0.03,
- tmin = 70000, tmax = 100000, nt=240,
- Lmin=3.0, Lmax=9.0, nL=200,
+ tmin = 50000, tmax = 120000, nt=500,
+ Lmin=Lmin, Lmax=Lmax, nL=200,
  restore_neutron=1
 )
 AT (0, 0, 0) RELATIVE sample_arm
@@ -689,8 +689,8 @@ COMPONENT toflambdaend = TOFLambda_monitor(
  nL = 300, nt = 300,
  tmin = 70000, tmax = 150000,
  filename = "toflambdaend", xwidth = 0.2,
- yheight = 0.2, Lmin = 3,
- Lmax = 9, restore_neutron = 1)
+ yheight = 0.2, Lmin = Lmin,
+ Lmax = Lmax, restore_neutron = 1)
 AT (0,0,10) RELATIVE sample_arm
 
 COMPONENT divend = Divergence_monitor(

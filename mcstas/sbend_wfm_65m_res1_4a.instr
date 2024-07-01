@@ -111,7 +111,7 @@ COMPONENT divlambdasource = DivLambda_monitor(
  nL = 90, nh = 90,
  filename = "divlambdasource", xwidth = 0.2,
  yheight = 0.2, maxdiv_h = 5,
- Lmin = 0.5, Lmax = 8,
+ Lmin = Lmin, Lmax = Lmax,
  restore_neutron = 1)
 AT (0,0,1.9995) RELATIVE instrument_arm
 
@@ -287,8 +287,8 @@ COMPONENT toflambdawfmc = TOFLambda_monitor(
  nL = 300, nt = 300,
  tmin = 10000, tmax = 20000,
  filename = "toflambdawfmc", xwidth = 0.2,
- yheight = 0.2, Lmin = 3,
- Lmax = 9, restore_neutron = 1)
+ yheight = 0.2, Lmin = Lmin,
+ Lmax = Lmax, restore_neutron = 1)
 AT (0,0,0.18400000000000027) RELATIVE guide1c_arm
 
 COMPONENT guide1cb = Guide_gravity(
@@ -865,8 +865,8 @@ COMPONENT toflambdaafterwbc6 = TOFLambda_monitor(
  nL = 300, nt = 300,
  tmin = 0, tmax = 85000,
  filename = "toflambdaafterwbc6", xwidth = 0.2,
- yheight = 0.2, Lmin = 3,
- Lmax = 9, restore_neutron = 1)
+ yheight = 0.2, Lmin = Lmin,
+ Lmax = Lmax, restore_neutron = 1)
 AT (0,0,0.004) RELATIVE wbc61
 
 COMPONENT guide5_arm = Arm()
@@ -982,8 +982,8 @@ AT (0,0,0.25) RELATIVE slit3_arm
 
 COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
  xwidth=0.03, yheight=0.03,
- tmin = 70000, tmax = 100000, nt=480,
- Lmin=3.0, Lmax=9.0, nL=200,
+ tmin = 50000, tmax = 120000, nt=500,
+ Lmin=Lmin, Lmax=Lmax, nL=200,
  restore_neutron=1
 )
 AT (0, 0, 0) RELATIVE sample_arm
@@ -995,7 +995,7 @@ COMPONENT mcpl_out = MCPL_output_noacc_russian_roulette(filename="test_events", 
 COMPONENT lamend = L_monitor(
  nL = 1000, filename = "lamend",
  xwidth = 0.2, yheight = 0.2,
- Lmin = Lmin, Lmax = 120,
+ Lmin = Lmin, Lmax = Lmax,
  restore_neutron = 1)
 AT (0,0,10) RELATIVE sample_arm
 
@@ -1016,8 +1016,8 @@ COMPONENT toflambdaend = TOFLambda_monitor(
  nL = 300, nt = 300,
  tmin = 50000, tmax = 150000,
  filename = "toflambdaend", xwidth = 0.2,
- yheight = 0.2, Lmin = 3,
- Lmax = 9, restore_neutron = 1)
+ yheight = 0.2, Lmin = Lmin,
+ Lmax = Lmax, restore_neutron = 1)
 AT (0,0,10) RELATIVE sample_arm
 
 COMPONENT divend = Divergence_monitor(
