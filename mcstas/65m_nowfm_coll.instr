@@ -650,7 +650,7 @@ AT (0,0,0.25) RELATIVE slit2_arm
 COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
  xwidth=0.03, yheight=0.03,
  tmin = 70000, tmax = 100000, nt=240,
- Lmin=4.0, Lmax=8.0, nL=150,
+ Lmin=3.0, Lmax=9.0, nL=200,
  restore_neutron=1
 )
 AT (0, 0, 0) RELATIVE sample_arm
