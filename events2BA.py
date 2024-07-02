@@ -214,7 +214,8 @@ def main(args):
         tofLimits = [None, None]
         t0monitor = pars['t0_monitor_name']
       else:
-        tofLimits = [12000, 14400] #hard-coded SAGA second pulse FIXME
+        from instruments import sagaSubpulseLimits
+        tofLimits = sagaSubpulseLimits[args.wfm_subpulse_id - 1]
         t0monitor = pars['wfm_t0_monitor_name']
       events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.t0_rebin)
 
@@ -294,6 +295,7 @@ if __name__=='__main__':
   t0correctionGroup.add_argument('--t0_fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
   t0correctionGroup.add_argument('--t0_rebin', default=1, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
   t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
+  t0correctionGroup.add_argument('--wfm_subpulse_id', default=2, choices=[1,2,3,4], help = 'WFM sub-pulse to be used for T0 correction. (Temporal manual solution until proper automatic method is implemented)')
   t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
 
   args = parser.parse_args()

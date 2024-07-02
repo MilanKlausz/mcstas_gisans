@@ -38,3 +38,10 @@ instrumentParameters = {
    },
    'wfm_required_keys': ['wfm_t0_monitor_name', 'wfm_virtual_source_distance']
 }
+
+sagaSubpulseLimits = [
+  [10200, 12000],
+  [12000, 14300],
+  [14300, 16100],
+  [16100, 18000]
+]
