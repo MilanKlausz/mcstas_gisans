@@ -142,7 +142,10 @@ def processNeutrons(neutron, sc=None):
 
   sim_module = import_module(sc['sim_module_name'])
   get_sample = sim_module.get_sample
-  sample = get_sample(radius=sc['silicaRadius'])
+  if sc['sim_module_name'] == "models.silica_100nm_air":
+    sample = get_sample(radius=sc['silicaRadius'])
+  else:
+    sample = get_sample()
 
   notTOFInstrument = sc['wavelengthSelected'] is not None
   qConvFactorFixed = None if sc['wavelengthSelected'] is None else qConvFactor(sc['wavelengthSelected'])

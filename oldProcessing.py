@@ -53,7 +53,10 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
     qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else qConvFactor(calcWavelength(t, sc['nominal_source_sample_distance'])) #for an intermediate result
     v_in = np.array([vx, vy, vz]) / v
 
-    sample = get_sample(radius=sc['silicaRadius'])
+    if sc['sim_module_name'] == "models.silica_100nm_air":
+      sample = get_sample(radius=sc['silicaRadius'])
+    else:
+      sample = get_sample()
 
     #calculate pixelNr² outgoing beams with a random angle within one pixel range
     Ry = 2*np.random.random()-1
