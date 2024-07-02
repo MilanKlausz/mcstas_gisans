@@ -39,9 +39,22 @@ instrumentParameters = {
    'wfm_required_keys': ['wfm_t0_monitor_name', 'wfm_virtual_source_distance']
 }
 
-sagaSubpulseLimits = [
+sagaSubpulseTofLimits = [
   [10200, 12000],
   [12000, 14300],
   [14300, 16100],
   [16100, 18000]
 ]
+
+def getSubpulseTofLimits(wavelength):
+  """Get hard-coded TOF limits of a WFM sub-pulse in between the WFM choppers, depending on the wavelength"""
+  if wavelength < 5.15:
+    subpulseId = 0
+  elif wavelength < 6.15:
+    subpulseId = 1
+  elif wavelength < 7.1:
+    subpulseId = 2
+  else:
+    subpulseId = 3
+
+  return sagaSubpulseTofLimits[subpulseId]

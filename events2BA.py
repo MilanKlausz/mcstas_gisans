@@ -214,8 +214,8 @@ def main(args):
         tofLimits = [None, None]
         t0monitor = pars['t0_monitor_name']
       else:
-        from instruments import sagaSubpulseLimits
-        tofLimits = sagaSubpulseLimits[args.wfm_subpulse_id - 1]
+        from instruments import getSubpulseTofLimits
+        tofLimits = getSubpulseTofLimits(args.wavelength)
         t0monitor = pars['wfm_t0_monitor_name']
       events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.t0_rebin)
 
