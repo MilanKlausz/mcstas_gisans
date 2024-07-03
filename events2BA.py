@@ -215,7 +215,7 @@ def main(args):
         t0monitor = pars['t0_monitor_name']
       else:
         from instruments import getSubpulseTofLimits
-        tofLimits = getSubpulseTofLimits(args.wavelength)
+        tofLimits = getSubpulseTofLimits(float(args.wavelength))
         t0monitor = pars['wfm_t0_monitor_name']
       events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.t0_rebin)
 
