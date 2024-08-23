@@ -27,6 +27,7 @@ def main(args):
   xDataRange = [-0.55, 0.55]
   yDataRange = [-0.5, 0.6]
   datasets = []
+  experimentTime = args.experiment_time
 
   if args.plotStoredData:
     hist, histError, xEdges, zEdges = getStoredData(args.nxs)
@@ -36,27 +37,26 @@ def main(args):
     datasets.append((hist, histError, xEdges, zEdges, label))
     # if args.overlay:
     #   hist_exp, histError_exp, xEdges_exp, zEdges_exp = hist, histError, xEdges, zEdges
-  
-  for filename, label in zip(args.filename, args.label):
-    with np.load(filename) as npFile:
-      npFileArrayKey = npFile.files[0]
-      q_events = npFile[npFileArrayKey]
-      # x, _, z, weights, _ = unpackQEvents(q_events)
-      x, _, z, weights = unpackQEvents(q_events)
-    bins_hor = 256 #150 #TODO len(xEdges)-1 if args.plotStoredData
-    bins_vert = 128 #100 #TODO len(zEdges)-1 if args.plotStoredData
-    hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
-    qzIndex = np.digitize(args.q_min, zEdges) - 1
+  if args.filename and args.label:
+    for filename, label in zip(args.filename, args.label):
+      with np.load(filename) as npFile:
+        npFileArrayKey = npFile.files[0]
+        q_events = npFile[npFileArrayKey]
+        # x, _, z, weights, _ = unpackQEvents(q_events)
+        x, _, z, weights = unpackQEvents(q_events)
+      bins_hor = 256 #150 #TODO len(xEdges)-1 if args.plotStoredData
+      bins_vert = 128 #100 #TODO len(zEdges)-1 if args.plotStoredData
+      hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
+      qzIndex = np.digitize(args.q_min, zEdges) - 1
 
-    experimentTime = args.experiment_time
-    hist, histError = handleExperimentTime(hist, histError, qzIndex, experimentTime, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
-    datasets.append((hist, histError, xEdges, zEdges, label))
+      hist, histError = handleExperimentTime(hist, histError, qzIndex, experimentTime, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
+      datasets.append((hist, histError, xEdges, zEdges, label))
 
-    # #TODO experimental
-    # detectionEfficiency = 0.7
-    # hist = hist * detectionEfficiency
-    # histError = histError * detectionEfficiency
-    # #TODO experimental
+      # #TODO experimental
+      # detectionEfficiency = 0.7
+      # hist = hist * detectionEfficiency
+      # histError = histError * detectionEfficiency
+      # #TODO experimental
 
   if args.dual_plot:
     _, (ax1, ax2) = plt.subplots(2, figsize=(6, 12))
