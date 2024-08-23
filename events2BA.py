@@ -16,7 +16,7 @@ from bornagain import deg, angstrom
 
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters
-from sharedMemory import createSharedMemory, getSharedMemoryValues, defaultSampleModel
+from sharedMemory import createSharedMemory, getSharedConstants, defaultSampleModel, incrementSharedHistograms
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def getTofFilteringLimits(args, mcstasDir, pars):
@@ -56,7 +56,7 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
   Discard those which avoid the sample.
   """
   p, x, y, z, vx, vy, vz, t = events.T
-  t_propagate = -z/vz
+  t_propagate = -z/vz #negative sign because z axis is pointing down (toward the sample) in the Rotated McStas coord system used for MCPL output
   x += vx * t_propagate
   y += vy * t_propagate
   z += vz * t_propagate
@@ -138,7 +138,7 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
 
 def processNeutrons(neutron, sc=None):
   if sc is None:
-    sc = getSharedMemoryValues() #get shared constants from shared memory
+    sc = getSharedConstants() #get shared constants from shared memory
 
   sim_module = import_module(sc['sim_module_name'])
   get_sample = sim_module.get_sample
@@ -156,7 +156,6 @@ def processNeutrons(neutron, sc=None):
   v = np.sqrt(vx**2+vy**2+vz**2)
   wavelength = velocityToWavelength(v) #angstrom
 
-
   # calculate pixelNr outgoing beams with a random angle within one pixel range
   Ry = 2*np.random.random()-1
   Rz = 2*np.random.random()-1
@@ -173,13 +172,16 @@ def processNeutrons(neutron, sc=None):
   phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['pixelNr'])+Rz/(sc['pixelNr']-1))
   alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
-  VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid)
-  VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid)
-  VZ_grid = -v * np.sin(alpha_grid)
-
+  # These are expressed in the rotated McStas coord system (X - left; y - forward; Z - downward)
+  VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horisontal - to the left)
+  VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horisontal - forward)
+  VZ_grid = -v * np.sin(alpha_grid)                   #this is Z in BA coord system) (horisontal - up)
   qArray = getQsAtDetector(x, y, z, t, sc['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sc['nominal_source_sample_distance'], sc['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
+  if sc['raw_output']: #raw q events output format
+    return np.column_stack([pout.T.flatten(), qArray])
+  else: #histogrammed output format
+    incrementSharedHistograms(qArray, weights=pout.T.flatten())
 
-  return  np.column_stack([pout.T.flatten(), qArray])
 
 def main(args):
   #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
@@ -192,7 +194,8 @@ def main(args):
     'pixelNr': args.pixel_number,
     'wavelengthSelected':  None if pars['tof instrument'] else args.wavelengthSelected,
     'alpha_inc': np.deg2rad(args.alpha),
-    'angle_range': args.angle_range
+    'angle_range': args.angle_range,
+    'raw_output': args.raw_output
   }
 
   mcstasDir = Path(args.filename).resolve().parent
@@ -235,18 +238,32 @@ def main(args):
       print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
 
       try:
-        shm = createSharedMemory(sharedConstants) #using shared memory to pass in constants for the parallel processes
+        (shm_const, shm_hist, shm_error) = createSharedMemory(sharedConstants) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
+
         with Pool(processes=num_processes) as pool:
           # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
           q_events = list(tqdm(pool.imap(processNeutrons, events), total=len(events)))
+
+        if not args.raw_output:
+          from sharedMemory import getFinalHistograms
+          final_hist, final_error, xEdges, yEdges, zEdges = getFinalHistograms(shm_hist, shm_error)
+
       finally:
-        shm.close()
-        shm.unlink()
+        # Cleanup
+        shm_const.close()
+        shm_const.unlink()
+        shm_hist.close()
+        shm_error.close()
+        shm_hist.unlink()
+        shm_error.unlink()
 
-      q_events_calc_detector = [item for sublist in q_events for item in sublist]
-
-    np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
-    print(f"Created {savename}.npz")
+      if args.raw_output:
+        q_events_calc_detector = [item for sublist in q_events for item in sublist] #this solution can cause memory issues for high incident event and pixel number
+        np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
+        print(f"Created {savename}.npz with raw Q events.")
+      else:
+        np.savez_compressed(savename, hist=final_hist, error=final_error, xEdges=xEdges, yEdges=yEdges, zEdges=zEdges)
+        print(f"Created {savename}.npz")
 
   else: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
     from oldProcessing import processNeutronsNonVectorised
@@ -275,6 +292,8 @@ if __name__=='__main__':
   parser.add_argument('--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
 
+  parser.add_argument('--raw_output', default=False, action='store_true', help = 'Create raw list of Q events as output instead of histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
+
   #TODO create a sample group
   parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
   parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
@@ -295,7 +314,6 @@ if __name__=='__main__':
   t0correctionGroup.add_argument('--t0_fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
   t0correctionGroup.add_argument('--t0_rebin', default=1, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
   t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
-  t0correctionGroup.add_argument('--wfm_subpulse_id', default=2, choices=[1,2,3,4], help = 'WFM sub-pulse to be used for T0 correction. (Temporal manual solution until proper automatic method is implemented)')
   t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
 
   args = parser.parse_args()

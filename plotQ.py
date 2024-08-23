@@ -15,6 +15,15 @@ def unpackQEvents(qEvents):
   x, y, z = transformCoordSystem(x,y,z)
   return x, y, z, weights
 
+def unpackHistogram(npFile):
+  hist = npFile['hist']
+  histError = npFile['error']
+  xEdges = npFile['xEdges']
+  yEdges = npFile['yEdges']
+  zEdges = npFile['zEdges']
+  xEdges, yEdges, zEdges = transformCoordSystem(xEdges, yEdges, zEdges)
+  return hist, histError, xEdges, yEdges, zEdges
+
 def transformCoordSystem(x,y,z):
   """inverting x and z so that the coord system will be xyx:right-front-up instead of left-front-down"""
   return -x, y, -z
@@ -37,16 +46,22 @@ def main(args):
     datasets.append((hist, histError, xEdges, zEdges, label))
     # if args.overlay:
     #   hist_exp, histError_exp, xEdges_exp, zEdges_exp = hist, histError, xEdges, zEdges
+
   if args.filename and args.label:
     for filename, label in zip(args.filename, args.label):
       with np.load(filename) as npFile:
-        npFileArrayKey = npFile.files[0]
-        q_events = npFile[npFileArrayKey]
-        # x, _, z, weights, _ = unpackQEvents(q_events)
-        x, _, z, weights = unpackQEvents(q_events)
-      bins_hor = 256 #150 #TODO len(xEdges)-1 if args.plotStoredData
-      bins_vert = 128 #100 #TODO len(zEdges)-1 if args.plotStoredData
-      hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
+        if 'hist' in npFile.files: #new file with histograms
+          hist, histError, xEdges, yEdges, zEdges = unpackHistogram(npFile)
+          hist = np.sum(hist, axis=1).T #TODO collapse along y-axis for now but it should be optional
+          histError = np.sum(histError, axis=1).T #TODO collapse along y-axis for now but it should be optional
+        else: #old file with a list of qEvents
+          npFileArrayKey = npFile.files[0]
+          q_events = npFile[npFileArrayKey]
+          x, _, z, weights = unpackQEvents(q_events)
+          bins_hor = 256 #150 #TODO len(xEdges)-1 if args.plotStoredData
+          bins_vert = 128 #100 #TODO len(zEdges)-1 if args.plotStoredData
+          hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
+
       qzIndex = np.digitize(args.q_min, zEdges) - 1
 
       hist, histError = handleExperimentTime(hist, histError, qzIndex, experimentTime, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
@@ -89,7 +104,7 @@ def main(args):
       plotOutput = ".png"
     else:
       plotOutput = 'show'
-    
+
   if args.intensity_min is not None:
     intensityMin = float(args.intensity_min)
   else:
@@ -126,7 +141,7 @@ def main(args):
       plot2DAxes.axhline(zEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
       plot2DAxes.axhline(zEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
 
-      # ### TEMP manual work  
+      # ### TEMP manual work
       # xFirstPeakMin = 0.04 #TODO
       # xFirstPeakMax = 0.085 #TODO
       # qFirstPeakMinIndex = np.digitize(xFirstPeakMin, xBins) - 1
