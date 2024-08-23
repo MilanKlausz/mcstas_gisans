@@ -8,11 +8,16 @@ from experiment_time_utilities import handleExperimentTime
 from d22data import getStoredData
 
 def unpackQEvents(qEvents):
-    x = qEvents[:, 1]
-    y = qEvents[:, 2]
-    z = -qEvents[:, 3] #NOTE inverting z (to point up instead of down)
-    weights = qEvents[:, 0]
-    return x, y, z, weights
+  weights = qEvents[:, 0]
+  x = qEvents[:, 1]
+  y = qEvents[:, 2]
+  z = qEvents[:, 3]
+  x, y, z = transformCoordSystem(x,y,z)
+  return x, y, z, weights
+
+def transformCoordSystem(x,y,z):
+  """inverting x and z so that the coord system will be xyx:right-front-up instead of left-front-down"""
+  return -x, y, -z
 
 def getRangeDefaultOrOverride(default, minOverride, maxOverride):
   return [minOverride if minOverride else default[0],
