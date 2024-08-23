@@ -103,8 +103,8 @@ def main(args):
     values = np.sum(valuesExtracted, axis=0)
     errorsExtracted = histError[yIndexRange[0]:yIndexRange[1],:]
     errors = np.sqrt(np.sum(errorsExtracted**2, axis=0))
-    xEdges1D = xEdges[:-1] #TODO this is incorrect!
-    return values, errors, xEdges1D, yLimits
+    xBins = (xEdges[:-1] + xEdges[1:]) / 2 # Calculate bin centers from bin edges
+    return values, errors, xBins, yLimits
 
   xPlotRange = getRangeDefaultOrOverride(xDataRange, args.x_min, args.x_max)
   yPlotRange = getRangeDefaultOrOverride(yDataRange, args.y_min, args.y_max)
@@ -121,18 +121,18 @@ def main(args):
 
       qzMinIndex = np.digitize(args.q_min, zEdges) - 1
       qzMaxIndex = np.digitize(args.q_max, zEdges)
-      values, errors, xEdges1D, zLimits = extractRangeTo1D(hist, histError, xEdges, zEdges, [qzMinIndex, qzMaxIndex])
-      plotQ1D(values, errors, xEdges1D, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=plot1DAxes, xRange=xPlotRange, savename=args.savename, output='none')
+      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, zEdges, [qzMinIndex, qzMaxIndex])
+      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=plot1DAxes, xRange=xPlotRange, savename=args.savename, output='none')
       plot2DAxes.axhline(zEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
       plot2DAxes.axhline(zEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
 
       # ### TEMP manual work  
       # xFirstPeakMin = 0.04 #TODO
       # xFirstPeakMax = 0.085 #TODO
-      # qFirstPeakMinIndex = np.digitize(xFirstPeakMin, xEdges1D) - 1
-      # qFirstPeakMaxIndex = np.digitize(xFirstPeakMax, xEdges1D)
-      # plot1DAxes.axvline(xEdges1D[qFirstPeakMinIndex], color='magenta', linestyle='--')
-      # plot1DAxes.axvline(xEdges1D[qFirstPeakMaxIndex], color='magenta', linestyle='--')
+      # qFirstPeakMinIndex = np.digitize(xFirstPeakMin, xBins) - 1
+      # qFirstPeakMaxIndex = np.digitize(xFirstPeakMax, xBins)
+      # plot1DAxes.axvline(xBins[qFirstPeakMinIndex], color='magenta', linestyle='--')
+      # plot1DAxes.axvline(xBins[qFirstPeakMaxIndex], color='magenta', linestyle='--')
 
       # firstPeakSumIntensity = sum(values[qFirstPeakMinIndex:qFirstPeakMaxIndex])
       # print(f"{label} - {qFirstPeakMinIndex=}, {qFirstPeakMaxIndex=}")
@@ -160,8 +160,8 @@ def main(args):
 
       qzMinIndex_exp = np.digitize(args.q_min, zEdges) - 1
       qzMaxIndex_exp = np.digitize(args.q_max, zEdges)
-      values, errors, xEdges1D, zLimits = extractRangeTo1D(hist, histError, xEdges, zEdges, [qzMinIndex_exp, qzMaxIndex_exp])
-      plotQ1D(values, errors, xEdges1D, zLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output='none')
+      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, zEdges, [qzMinIndex_exp, qzMaxIndex_exp])
+      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output='none')
 
   if args.dual_plot:
     if not args.pdf and not args.png:
