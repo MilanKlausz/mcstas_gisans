@@ -45,12 +45,12 @@ def plotQ1D(values, errors, xedges, zLimits, intensityMin=None, color='blue', ti
   import matplotlib.pyplot as plt
   if ax is None:
     _, ax = plt.subplots()
-  
+
   ax.errorbar(xedges, values, yerr=errors, fmt='o-', capsize=5, ecolor='red', color=color, label=label)
 
   ax.set_xlabel('Qx [1/nm]') # Set the x-axis title
   ax.set_ylabel('Intensity') # Set the y-axis title
-  qLimitText = f" Qz=[{zLimits[0]:.4f}1/nm, {zLimits[1]:.4f}1/nm]"
+  qLimitText = f" Qy=[{zLimits[0]:.4f}1/nm, {zLimits[1]:.4f}1/nm]"
   ax.set_title(titleText+qLimitText)
   # ax.set_ylim(bottom=intensityMin)
   ax.set_yscale("log")
@@ -75,12 +75,10 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
   logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase)
   # logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
 
-def create2dHistogram(x, z, weights, bins_hor, bins_vert, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6]):
-  # xRange = [x.min(), x.max()]
-  # yRange = [z.min(), z.max()]
-  hist, xedges, zedges = np.histogram2d(x, z, weights=weights, bins=[bins_hor, bins_vert], range=[xRange, yRange])
-  hist_weight2, _, _ = np.histogram2d(x, z, weights=weights**2, bins=[bins_hor, bins_vert], range=[xRange, yRange])
-  hist_error = np.sqrt(hist_weight2)
+def create2dHistogram(x, y, weights, xBins=256, yBins=128, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6]):
+  hist, xedges, yedges = np.histogram2d(x, y, weights=weights, bins=[xBins, yBins], range=[xRange, yRange])
+  hist_weight2, _, _ = np.histogram2d(x, y, weights=weights**2, bins=[xBins, yBins], range=[xRange, yRange])
+  histError = np.sqrt(hist_weight2)
   hist = hist.T
-  hist_error = hist_error.T
-  return hist, xedges, zedges, hist_error
+  histError = histError.T
+  return hist, histError, xedges, yedges

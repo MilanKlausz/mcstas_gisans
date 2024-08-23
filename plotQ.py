@@ -45,7 +45,7 @@ def main(args):
       x, _, z, weights = unpackQEvents(q_events)
     bins_hor = 256 #150 #TODO len(xEdges)-1 if args.plotStoredData
     bins_vert = 128 #100 #TODO len(zEdges)-1 if args.plotStoredData
-    hist, xEdges, zEdges, histError = create2dHistogram(x, z, weights, bins_hor, bins_vert, xRange=xDataRange, yRange=yDataRange)
+    hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
     qzIndex = np.digitize(args.q_min, zEdges) - 1
 
     experimentTime = args.experiment_time
