@@ -16,7 +16,7 @@ from bornagain import deg, angstrom
 
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters
-from sharedMemory import createSharedMemory, getSharedConstants, defaultSampleModel, incrementSharedHistograms
+from sharedMemory import createSharedMemory, getSharedConstants, incrementSharedHistograms
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def getTofFilteringLimits(args, mcstasDir, pars):
@@ -193,7 +193,7 @@ def main(args):
     'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
     'wavelengthSelected':  None if pars['tof instrument'] else args.wavelengthSelected,
-    'alpha_inc': np.deg2rad(args.alpha),
+    'alpha_inc': float(np.deg2rad(args.alpha)),
     'angle_range': args.angle_range,
     'raw_output': args.raw_output
   }
@@ -296,7 +296,7 @@ if __name__=='__main__':
 
   #TODO create a sample group
   parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
-  parser.add_argument('-m','--model', default=defaultSampleModel, help = 'BornAgain model to be used.')
+  parser.add_argument('-m','--model', default="models.silica_100nm_air", help = 'BornAgain model to be used.')
   parser.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
   parser.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   parser.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')

@@ -10,69 +10,30 @@ update_lock = Lock()
 sharedMemoryHistName = 'sharedHistogram'
 sharedMemoryHistErrorName = 'sharedHistogramError'
 hist_shape = (256, 1, 128) #FIXME shouldn't be hardcoded
-
 sharedMemoryConstantsName = 'sharedConstants'
-defaultSampleModel = "models.silica_100nm_air"
-sim_module=import_module(defaultSampleModel)
 
-sharedTemplate = np.array([
-   0.0,                # nominal_source_sample_distance
-   0.0,                # sample_detector_distance
-   defaultSampleModel, # sample model,
-   0,                  # silica particle radius for 'Silica particles on Silicon measured in air' sample model
-   0,                  # pixelNr (number of outgoing beams in x and y direction)
-   0.0,                # wavelength selected (for non-TOF instruments)
-   0.0,                # alpha_inc (incident angle)
-   0.0,                # angle_range (outgoing angle covered by the simulation)
-   False               # raw_output (use raw list of q events as output instead of histograms)
-   ])
+sharedConstantsKeyOrder = ['nominal_source_sample_distance', 'sample_detector_distance', 'sim_module_name', 'silicaRadius', 'pixelNr', 'wavelengthSelected', 'alpha_inc', 'angle_range', 'raw_output']
 
 def createSharedMemory(sc):
-  '''Add parameters (shared constants) to shared memory for parallel processing simulation'''
-  sharedArray = np.array([
-     sc['nominal_source_sample_distance'],
-     sc['sample_detector_distance'],
-     sc['sim_module_name'],
-     sc['silicaRadius'],
-     sc['pixelNr'],
-     sc['wavelengthSelected'],
-     sc['alpha_inc'],
-     sc['angle_range'],
-     sc['raw_output']
-    ])
-
-  shm = shared_memory.SharedMemory(create=True, size=sharedTemplate.nbytes, name=sharedMemoryConstantsName)
-  mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf) #Create a NumPy array backed by shared memory
-  mem[:] = sharedArray[:] # Copy to the shared memory
-
-  # Create shared memory objects for the histogram and error array
+  '''Create shared memory blocks for parallel processing simulation'''
+  # Create shared memory block for constant values
+  shm_const = shared_memory.ShareableList([sc[key] for key in sharedConstantsKeyOrder], name=sharedMemoryConstantsName)
+  # Create shared memory block for the histogram and error array
   shm_hist = shared_memory.SharedMemory(create=True, size=np.zeros(hist_shape).nbytes, name=sharedMemoryHistName)
   shm_error = shared_memory.SharedMemory(create=True, size=np.zeros(hist_shape).nbytes, name=sharedMemoryHistErrorName)
-  # Create numpy arrays backed by shared memory
+  # Create numpy arrays backed by shared memory to initialize with zeros
   hist_shared = np.ndarray(hist_shape, dtype=np.float64, buffer=shm_hist.buf)
   error_shared = np.ndarray(hist_shape, dtype=np.float64, buffer=shm_error.buf)
-  # Initialize with zeros
   hist_shared[:] = 0
   error_shared[:] = 0
-
-  return (shm, shm_hist, shm_error)
+  return (shm_const.shm, shm_hist, shm_error)
 
 def getSharedConstants():
-  shm = shared_memory.SharedMemory(name=sharedMemoryConstantsName)
-  mem = np.ndarray(sharedTemplate.shape, dtype=sharedTemplate.dtype, buffer=shm.buf)
-
-  sharedValues = {}
-  sharedValues.update({'nominal_source_sample_distance' : float(mem[0])})
-  sharedValues.update({'sample_detector_distance' : float(mem[1])})
-  sharedValues.update({'sim_module_name' : str(mem[2])})
-  sharedValues.update({'silicaRadius' : float(mem[3])})
-  sharedValues.update({'pixelNr' : int(mem[4])})
-  sharedValues.update({'wavelengthSelected' : None if mem[5] == 'None' else float(mem[5])})
-  sharedValues.update({'alpha_inc' : float(mem[6])})
-  sharedValues.update({'angle_range' : float(mem[7])})
-  sharedValues.update({'raw_output' : mem[8].lower() == 'true'})
-  shm.close()
-
+  try:
+    shm = shared_memory.ShareableList(name=sharedMemoryConstantsName)
+    sharedValues = {key:shm[i] for i,key in enumerate(sharedConstantsKeyOrder)}
+  finally:
+    shm.shm.close()
   return sharedValues
 
 def incrementSharedHistograms(qArray, weights):
