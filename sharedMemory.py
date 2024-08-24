@@ -1,7 +1,6 @@
 
 
 from multiprocessing import shared_memory, Lock
-from importlib import import_module
 import numpy as np
 
 # Create a lock for thread-safe updates
@@ -51,6 +50,9 @@ def incrementSharedHistograms(qArray, weights):
     # Increment the shared arrays
     hist_shared += hist
     error_shared += histError
+
+    shm_hist.close()
+    shm_error.close()
 
 def getFinalHistograms(shm_hist, shm_error):
   final_hist = np.ndarray(hist_shape, dtype=np.float64, buffer=shm_hist.buf)

@@ -242,7 +242,7 @@ def main(args):
 
         with Pool(processes=num_processes) as pool:
           # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
-          q_events = list(tqdm(pool.imap(processNeutrons, events), total=len(events)))
+          q_events = list(tqdm(pool.imap_unordered(processNeutrons, events), total=len(events)))
 
         if not args.raw_output:
           from sharedMemory import getFinalHistograms
