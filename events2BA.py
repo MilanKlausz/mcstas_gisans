@@ -16,7 +16,7 @@ from bornagain import deg, angstrom
 
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters
-from sharedMemory import createSharedMemory, getSharedConstants, incrementSharedHistograms
+from sharedMemory import sharedMemoryHandler
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def getTofFilteringLimits(args, mcstasDir, pars):
@@ -138,7 +138,7 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
 
 def processNeutrons(neutron, sc=None):
   if sc is None:
-    sc = getSharedConstants() #get shared constants from shared memory
+    sc = sharedMemoryHandler.getConstants() #get constants from shared memory
 
   sim_module = import_module(sc['sim_module_name'])
   get_sample = sim_module.get_sample
@@ -180,7 +180,7 @@ def processNeutrons(neutron, sc=None):
   if sc['raw_output']: #raw q events output format
     return np.column_stack([pout.T.flatten(), qArray])
   else: #histogrammed output format
-    incrementSharedHistograms(qArray, weights=pout.T.flatten())
+    sharedMemoryHandler.incrementSharedHistograms(qArray, weights=pout.T.flatten())
 
 
 def main(args):
@@ -238,24 +238,21 @@ def main(args):
       print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
 
       try:
-        (shm_const, shm_hist, shm_error) = createSharedMemory(sharedConstants) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
-
+        histParams = { #TODO get from input
+          'bins': [256, 1, 128],
+          'xRange': [-0.55, 0.55],
+          'yRange': [-1000, 1000],
+          'zRange': [-0.6, 0.5],
+        }
+        sharedMemoryHandler.createSharedMemoryBlocks(sharedConstants, histParams) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
         with Pool(processes=num_processes) as pool:
           # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
           q_events = list(tqdm(pool.imap_unordered(processNeutrons, events), total=len(events)))
 
         if not args.raw_output:
-          from sharedMemory import getFinalHistograms
-          final_hist, final_error, xEdges, yEdges, zEdges = getFinalHistograms(shm_hist, shm_error)
-
+          final_hist, final_error, xEdges, yEdges, zEdges = sharedMemoryHandler.getFinalHistograms()
       finally:
-        # Cleanup
-        shm_const.close()
-        shm_const.unlink()
-        shm_hist.close()
-        shm_error.close()
-        shm_hist.unlink()
-        shm_error.unlink()
+        sharedMemoryHandler.cleanup()
 
       if args.raw_output:
         q_events_calc_detector = [item for sublist in q_events for item in sublist] #this solution can cause memory issues for high incident event and pixel number
