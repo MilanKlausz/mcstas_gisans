@@ -33,8 +33,8 @@ def getRangeDefaultOrOverride(default, minOverride, maxOverride):
           maxOverride if maxOverride else default[1]]
 
 def main(args):
-  xDataRange = [-0.55, 0.55]
-  yDataRange = [-0.5, 0.6]
+  xDataRange = args.x_range
+  yDataRange = args.z_range
   datasets = []
   experimentTime = args.experiment_time
 
@@ -51,15 +51,17 @@ def main(args):
     for filename, label in zip(args.filename, args.label):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
-          hist, histError, xEdges, yEdges, zEdges = unpackHistogram(npFile)
+          hist, histError, xEdges, _, zEdges = unpackHistogram(npFile)
           hist = np.sum(hist, axis=1).T #TODO collapse along y-axis for now but it should be optional
           histError = np.sum(histError, axis=1).T #TODO collapse along y-axis for now but it should be optional
-        else: #old file with a list of qEvents
+          xDataRange = [xEdges[0], xEdges[-1]]
+          yDataRange = [zEdges[0], zEdges[-1]]
+        else: #old 'raw data' file with a list of unhistogrammed qEvents
           npFileArrayKey = npFile.files[0]
           q_events = npFile[npFileArrayKey]
           x, _, z, weights = unpackQEvents(q_events)
-          bins_hor = 256 #150 #TODO len(xEdges)-1 if args.plotStoredData
-          bins_vert = 128 #100 #TODO len(zEdges)-1 if args.plotStoredData
+          bins_hor = args.bins[0] if not args.plotStoredData else len(xEdges)-1 #override bin number to match stored data for better comparison
+          bins_vert = args.bins[1] if not args.plotStoredData else  len(zEdges)-1
           hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
 
       qzIndex = np.digitize(args.q_min, zEdges) - 1
@@ -168,7 +170,6 @@ def main(args):
       plt.savefig(filename, dpi=300)
       print(f"Created {filename}")
 
-
   if not args.overlay:
     for hist, histError, xEdges, zEdges, label in datasets:
       logPlot2d(hist, xEdges, zEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, matchXAxes=matchXAxes, output=plotOutput)
@@ -228,6 +229,11 @@ if __name__=='__main__':
   findTimeParamGroup.add_argument('--maximum_iteration_number', type=int, default=50, help = 'Maximum number of iterations.')
   findTimeParamGroup.add_argument('--minimum_count_number', default=36, type=float, help = 'Minimum number of counts expected in the bins.')
   findTimeParamGroup.add_argument('--minimum_count_fraction', type=zeroToOne, default=0.8, help = 'The fraction of bins that are required to fulfill the minimum count number criterion. [0,1]')
+
+  rawFormat = parser.add_argument_group('Raw Q events data', 'Use (old) raw data format with Q event list in the file instead of an already histogrammed data.')
+  rawFormat.add_argument('--bins', nargs=2, type=int, default=[256, 128], help='Number of histogram bins in x,z directions.')
+  rawFormat.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)')
+  rawFormat.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top')
 
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
   storedDataParamGroup.add_argument('--nxs', help = 'Full path to the D22 Nexus file.')
