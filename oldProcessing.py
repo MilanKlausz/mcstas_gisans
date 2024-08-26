@@ -19,8 +19,8 @@ def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detecto
   return x, y, z, t_propagate
 
 def processNeutronsNonVectorised(events, get_simulation, sc):
-  sim_module=import_module(sc['sim_module_name'])
-  get_sample=sim_module.get_sample
+  sim_module = import_module('models.'+sc['sim_module_name'])
+  get_sample = sim_module.get_sample
 
   misses = 0
   average_alpha_i = 0 #sanity check
@@ -53,7 +53,7 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
     qConvFactorFromTof = qConvFactorFixed if notTOFInstrument else qConvFactor(calcWavelength(t, sc['nominal_source_sample_distance'])) #for an intermediate result
     v_in = np.array([vx, vy, vz]) / v
 
-    if sc['sim_module_name'] == "models.silica_100nm_air":
+    if sc['sim_module_name'] == "silica_100nm_air":
       sample = get_sample(radius=sc['silicaRadius'])
     else:
       sample = get_sample()

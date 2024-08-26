@@ -15,7 +15,7 @@ import bornagain as ba
 from bornagain import deg, angstrom
 
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
-from instruments import instrumentParameters
+from instruments import instrumentParameters, wfmRequiredKeys
 from sharedMemory import sharedMemoryHandler
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
@@ -140,9 +140,9 @@ def processNeutrons(neutron, sc=None):
   if sc is None:
     sc = sharedMemoryHandler.getConstants() #get constants from shared memory
 
-  sim_module = import_module(sc['sim_module_name'])
+  sim_module = import_module('models.'+sc['sim_module_name'])
   get_sample = sim_module.get_sample
-  if sc['sim_module_name'] == "models.silica_100nm_air":
+  if sc['sim_module_name'] == "silica_100nm_air":
     sample = get_sample(radius=sc['silicaRadius'])
   else:
     sample = get_sample()
@@ -277,6 +277,11 @@ def main(args):
       write_events_mcpl(out_events, savename, deweight)
 
 if __name__=='__main__':
+  def getBornAgainModels():
+    import sys
+    script_dir = Path(sys.argv[0]).resolve().parent
+    return[f.stem for f in Path(script_dir / 'models').iterdir() if f.is_file() and f.stem != '__init__']
+
   import argparse
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.')
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
@@ -291,12 +296,12 @@ if __name__=='__main__':
 
   parser.add_argument('--raw_output', default=False, action='store_true', help = 'Create raw list of Q events as output instead of histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
 
-  #TODO create a sample group
-  parser.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
-  parser.add_argument('-m','--model', default="models.silica_100nm_air", help = 'BornAgain model to be used.')
-  parser.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
-  parser.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
-  parser.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
+  sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
+  sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
+  sampleGroup.add_argument('-m','--model', default="silica_100nm_air", choices=getBornAgainModels(), help = 'BornAgain model to be used.')
+  sampleGroup.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
+  sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
+  sampleGroup.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correcpond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', default=6.0, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
@@ -315,7 +320,7 @@ if __name__=='__main__':
 
   args = parser.parse_args()
 
-  if args.wfm and any(key not in instrumentParameters[args.instrument] for key in instrumentParameters['wfm_required_keys']):
+  if args.wfm and any(key not in instrumentParameters[args.instrument] for key in wfmRequiredKeys):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument! Set the required instrument parameters in instruments.py!")
 
   main(args)

@@ -35,9 +35,10 @@ instrumentParameters = {
       'sample_detector_distance' : 17.6,
       'tof instrument' : False,
       't0_monitor_name' : 'Source_TOF_Lambda',
-   },
-   'wfm_required_keys': ['wfm_t0_monitor_name', 'wfm_virtual_source_distance']
+   }
 }
+#required keys in the instrumentParameters to enable WFM(wavelength frame multiplication) mode
+wfmRequiredKeys = ['wfm_t0_monitor_name', 'wfm_virtual_source_distance']
 
 sagaSubpulseTofLimits = [
   [10200, 12000],
