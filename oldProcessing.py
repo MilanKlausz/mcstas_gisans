@@ -18,7 +18,7 @@ def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detecto
 
   return x, y, z, t_propagate
 
-def processNeutronsNonVectorised(events, get_simulation, sc):
+def processNeutronsNonVectorised(events, get_simulation, sc, savename):
   sim_module = import_module('models.'+sc['sim_module_name'])
   get_sample = sim_module.get_sample
 
@@ -97,4 +97,22 @@ def processNeutronsNonVectorised(events, get_simulation, sc):
   print(f"  dLambda/Lambda MIN: {min(dLambdaPerLambda)}; MAX: {max(dLambdaPerLambda)}; AVG: {sum(dLambdaPerLambda)/len(dLambdaPerLambda)}")
   print("misses:", misses)
   print(f"average_alpha_i: {average_alpha_i/len(events)}")
-  return np.array(out_events), np.array(q_events_real), np.array(q_events_no_incident_info), np.array(q_events_calc_lambda), np.array(q_events_calc_sample), np.array(q_events_calc_detector)
+
+  out_events = np.array(out_events)
+  q_events_real = np.array(q_events_real)
+  q_events_no_incident_info = np.array(q_events_no_incident_info)
+  q_events_calc_lambda = np.array(q_events_calc_lambda)
+  q_events_calc_sample = np.array(q_events_calc_sample)
+  q_events_calc_detector = np.array(q_events_calc_detector)
+
+  np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
+  np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
+  np.savez_compressed(f"{savename}_q_events_calc_lambda", q_events_calc_lambda=q_events_calc_lambda)
+  np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
+  np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
+  saveOutgoingEvents = False
+  if saveOutgoingEvents:
+    from inputOutput import write_events_mcpl
+    deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
+    write_events_mcpl(out_events, savename, deweight)
+  return 

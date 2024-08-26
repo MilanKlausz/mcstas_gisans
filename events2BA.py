@@ -222,7 +222,10 @@ def main(args):
       events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.t0_rebin)
 
   savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
-  if not args.all_q:
+  if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
+    from oldProcessing import processNeutronsNonVectorised
+    processNeutronsNonVectorised(events, get_simulation, sharedConstants, savename)
+  else:
     if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially
       total=len(events)
       q_events_calc_detector = []
@@ -270,20 +273,6 @@ def main(args):
           hist2D = np.sum(final_hist, axis=1)
           from plotting_utilities import logPlot2d
           logPlot2d(hist2D.T, -xEdges, -zEdges, xRange=args.x_range, yRange=args.z_range, output='show')
-
-  else: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
-    from oldProcessing import processNeutronsNonVectorised
-    out_events, q_events_real, q_events_no_incident_info, q_events_calc_lambda, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, sharedConstants)
-    np.savez_compressed(f"{savename}_q_events_real", q_events_real=q_events_real)
-    np.savez_compressed(f"{savename}_q_events_no_incident_info", q_events_no_incident_info=q_events_no_incident_info)
-    np.savez_compressed(f"{savename}_q_events_calc_lambda", q_events_calc_lambda=q_events_calc_lambda)
-    np.savez_compressed(f"{savename}_q_events_calc_sample", q_events_calc_sample=q_events_calc_sample)
-    np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
-    saveOutgoingEvents = False
-    if saveOutgoingEvents:
-      from inputOutput import write_events_mcpl
-      deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
-      write_events_mcpl(out_events, savename, deweight)
 
 if __name__=='__main__':
   def getBornAgainModels():
