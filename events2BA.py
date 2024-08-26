@@ -266,6 +266,11 @@ def main(args):
         np.savez_compressed(savename, hist=final_hist, error=final_error, xEdges=xEdges, yEdges=yEdges, zEdges=zEdges)
         print(f"Created {savename}.npz")
 
+        if args.quick_plot:
+          hist2D = np.sum(final_hist, axis=1)
+          from plotting_utilities import logPlot2d
+          logPlot2d(hist2D.T, -xEdges, -zEdges, xRange=args.x_range, yRange=args.z_range, output='show')
+
   else: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
     from oldProcessing import processNeutronsNonVectorised
     out_events, q_events_real, q_events_no_incident_info, q_events_calc_lambda, q_events_calc_sample, q_events_calc_detector = processNeutronsNonVectorised(events, get_simulation, sharedConstants)
@@ -303,6 +308,7 @@ if __name__=='__main__':
   outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)') 
   outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-1000, 1000], help='Qy range of the histogram. (In horizontal plane back to front)') 
   outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top') 
+  outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.') 
   outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
