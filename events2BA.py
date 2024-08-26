@@ -20,6 +20,13 @@ from sharedMemory import sharedMemoryHandler
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def getTofFilteringLimits(args, mcstasDir, pars):
+  """Get TOF (time-of-flight) limits that can be used for filtering neutrons from the MCPL input file
+  The options are:
+    1) No filtering ([-inf, inf])
+    2) Using input values ([args.tof_min, args.tof_max])
+    3) Derive limits by fitting a Gaussian function and getting an FWHM range centred around the selected wavelength
+    on a McStas TOFLambda monitor spectrum (that is assumed to represent the MCPL file content). The width of the range can be modified by the input_tof_range_factor.
+  """
   if args.no_mcpl_filtering:
     mcplTofMin = float('-inf')
     mcplTofMax = float('inf')
@@ -37,13 +44,15 @@ def getTofFilteringLimits(args, mcstasDir, pars):
       mcplTofMax = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       print(f"  Using MCPL input TOF limits: : {mcplTofMin:.3f} - {mcplTofMax:.3f} [microsecond]")
       if args.figure_output is not None:
+      # Terminate the script execution because an 'only plotting' has been selected by the user
         import sys
         sys.exit()
   return mcplTofMin, mcplTofMax
 
 def coordTransformToSampleSystem(events, alpha_inc):
   """Apply coordinate transformation to express neutron parameters in a
-  coordinate system with the sample in the centre and being horizontal"""
+  coordinate system with the sample in the centre and being horizontal.
+  """
   rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
   p, x, y, z, vx, vy, vz, t = events.T
   zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
@@ -51,9 +60,8 @@ def coordTransformToSampleSystem(events, alpha_inc):
   return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
 
 def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
-  """
-  Propagate neutron events to z=0, the sample surface.
-  Discard those which avoid the sample.
+  """Propagate neutron events to z=0, the sample surface.
+  Discard those neutrons which would miss the sample.
   """
   p, x, y, z, vx, vy, vz, t = events.T
   t_propagate = -z/vz #negative sign because z axis is pointing down (toward the sample) in the Rotated McStas coord system used for MCPL output
@@ -73,8 +81,7 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
   return sampleHitEvents
 
 def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavelength=None, tofLimits=[None,None], rebin=1):
-  """
-  Apply t0 TOF correction for all neutrons. A fixed tCorrection value can be given to be subtracted, or
+  """Apply t0 TOF correction for all neutrons. A fixed tCorrection value can be given to be subtracted, or
   a McStas TOF-Wavelength monitor can be provided with a selected wavelength, in which case tCorrection
   is retrieved as the mean value from fitting a Gaussian function to the TOF distribution. By default
   the fitting is done for the full TOF range of a single wavelength bin including selected wavelength,
@@ -91,8 +98,7 @@ def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavele
   return np.vstack([p, x, y, z, vx, vy, vz, t]).T
 
 def get_simulation(sample, pixelNr, angle_range, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
-  """
-  Create a simulation with pixelNr pixels that cover an angular range of angle_range degrees.
+  """Create a simulation with pixelNr pixels that cover an angular range of angle_range degrees.
   The Ry and Rz values are relative rotations of the detector within one pixel
   to finely define the outgoing direction of events.
   """
@@ -108,7 +114,7 @@ def get_simulation(sample, pixelNr, angle_range, wavelength=6.0, alpha_i=0.2, p=
   return ba.ScatteringSimulation(beam, sample, detector)
 
 def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc):
-  """Calculate x,y,z position on the detector surface and the corresponding tof for the sample to detector propagation"""
+  """Calculate x,y,z position on the detector surface and the corresponding TOF for the sample to detector propagation"""
   rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
   #Calculate time until the detector surface with coord system rotation
   _, yRot = np.dot(rot_matrix, [z, y])
@@ -120,23 +126,46 @@ def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_
   return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
 
 def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed):
+  """Calculate Q values (x,y,z) from positions at the detector surface.
+  All outgoing directions from the BornAgain simulation of a single neutron are
+  handled at the same time using operations on vectors.
+  - Outgoing direction is calculated by propagating neutrons to the detector surface,
+  and assuming that the neutron is scattered at the centre of the sample (the origin).
+  - Incident direction is an input value.
+  - For non-TOF instruments the (2*pi/(wavelength)) factor (qConvFactorFixed) is an input value.
+    For TOF instruments this factor is calculated from the TOF at the detector surface position
+    and the nominal distance travelled by the neutron until that position.
+
+  Note that the current implementation doesn't take detector resolution into account (infinite resolution).
+  """
   sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc)
   posDetector = np.vstack((xDet, yDet, zDet)).T
   sample_detector_path_length = np.linalg.norm(posDetector, axis=1)
 
   v_out_det = posDetector / sample_detector_path_length[:, np.newaxis]
-
   v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
+
   if notTOFInstrument is False: #TOF instruments
     wavelengthDet = calcWavelength(t+sample_detector_tof, nominal_source_sample_distance+sample_detector_path_length)
-    qConvFactorFromTofAtDetector = qConvFactor(wavelengthDet)
-    qArray = (v_out_det - v_in_alpha) * qConvFactorFromTofAtDetector[:, np.newaxis]
-  else:
-    qArray = (v_out_det - v_in_alpha) * qConvFactorFixed
+    qFactor = qConvFactor(wavelengthDet)[:, np.newaxis]
+  else: #not TOF instruments
+    qFactor = qConvFactorFixed
 
-  return qArray
+  return (v_out_det - v_in_alpha) * qFactor
 
 def processNeutrons(neutron, sc=None):
+  """Carry out the BornAgain simulation and subsequent calculations of single 
+  incident neutron.
+  1) The BornAgain simulation for a certain sample model is set up with an array 
+     out outgoing directions
+  2) The BornAgain simulation is performed, resulting in an array of outgoing
+     beams with weights (outgoing probabilities)
+  3) The Q values are calculated after a virtual propagation to the detector
+     surface.
+  4) Depending on the input options, the list of Q events (weight,qx,qy,qz) are
+     either returned (old raw format), or histogrammed and added to a cummulative
+     histogram where all other neutrons result are added.
+  """
   if sc is None:
     sc = sharedMemoryHandler.getConstants() #get constants from shared memory
 
@@ -156,7 +185,7 @@ def processNeutrons(neutron, sc=None):
   v = np.sqrt(vx**2+vy**2+vz**2)
   wavelength = velocityToWavelength(v) #angstrom
 
-  # calculate pixelNr outgoing beams with a random angle within one pixel range
+  # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
   Ry = 2*np.random.random()-1
   Rz = 2*np.random.random()-1
   sim = get_simulation(sample, sc['pixelNr'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
@@ -183,6 +212,7 @@ def processNeutrons(neutron, sc=None):
     sharedMemoryHandler.incrementSharedHistograms(qArray, weights=pout.T.flatten())
 
 def main(args):
+  """The actual script execution after the input arguments are parsed."""
   #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
   pars = instrumentParameters[args.instrument]
   sharedConstants = {
@@ -276,6 +306,7 @@ def main(args):
 
 if __name__=='__main__':
   def getBornAgainModels():
+    """Get all the Born Again sample models from the ./models directory."""
     import sys
     scriptDir = Path(sys.argv[0]).resolve().parent
     return[f.stem for f in Path(scriptDir / 'models').iterdir() if f.is_file() and f.stem != '__init__']
@@ -307,7 +338,7 @@ if __name__=='__main__':
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
-  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correcpond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
+  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', default=6.0, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
   mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Increase the accepted TOF range of neutrons by this multiplication factor.')
   mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
