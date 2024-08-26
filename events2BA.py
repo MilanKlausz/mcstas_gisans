@@ -43,7 +43,7 @@ def getTofFilteringLimits(args, mcstasDir, pars):
 
 def coordTransformToSampleSystem(events, alpha_inc):
   """Apply coordinate transformation to express neutron parameters in a
-  coordinate system with the sample in the centre and being horisontal"""
+  coordinate system with the sample in the centre and being horizontal"""
   rot_matrix_inverse = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],[np.sin(-alpha_inc), np.cos(-alpha_inc)]])
   p, x, y, z, vx, vy, vz, t = events.T
   zRot, yRot = np.dot(rot_matrix_inverse, [z, y])
@@ -173,15 +173,14 @@ def processNeutrons(neutron, sc=None):
   alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
   # These are expressed in the rotated McStas coord system (X - left; y - forward; Z - downward)
-  VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horisontal - to the left)
-  VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horisontal - forward)
-  VZ_grid = -v * np.sin(alpha_grid)                   #this is Z in BA coord system) (horisontal - up)
+  VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
+  VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
+  VZ_grid = -v * np.sin(alpha_grid)                   #this is Z in BA coord system) (horizontal - up)
   qArray = getQsAtDetector(x, y, z, t, sc['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sc['nominal_source_sample_distance'], sc['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
   if sc['raw_output']: #raw q events output format
     return np.column_stack([pout.T.flatten(), qArray])
   else: #histogrammed output format
     sharedMemoryHandler.incrementSharedHistograms(qArray, weights=pout.T.flatten())
-
 
 def main(args):
   #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
@@ -238,11 +237,16 @@ def main(args):
       print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
 
       try:
-        histParams = { #TODO get from input
-          'bins': [256, 1, 128],
-          'xRange': [-0.55, 0.55],
-          'yRange': [-1000, 1000],
-          'zRange': [-0.6, 0.5],
+        def transformRangeLimits(range):
+          """Returns inverted coordinates in ascending order"""
+          rangeNegate = [-x for x in range]
+          rangeNegate.sort()
+          return rangeNegate
+        histParams = {
+          'bins': args.bins,
+          'xRange': transformRangeLimits(args.x_range), #coord system used for simulation is from right to left
+          'yRange': args.y_range,
+          'zRange': transformRangeLimits(args.z_range), #coord system used for simulation is top to bottom
         }
         sharedMemoryHandler.createSharedMemoryBlocks(sharedConstants, histParams) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
         with Pool(processes=num_processes) as pool:
@@ -279,22 +283,27 @@ def main(args):
 if __name__=='__main__':
   def getBornAgainModels():
     import sys
-    script_dir = Path(sys.argv[0]).resolve().parent
-    return[f.stem for f in Path(script_dir / 'models').iterdir() if f.is_file() and f.stem != '__init__']
+    scriptDir = Path(sys.argv[0]).resolve().parent
+    return[f.stem for f in Path(scriptDir / 'models').iterdir() if f.is_file() and f.stem != '__init__']
 
   import argparse
-  parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.')
+  parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
-  parser.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument (from instruments.py).')
-  parser.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
   parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
 
-  parser.add_argument('--raw_output', default=False, action='store_true', help = 'Create raw list of Q events as output instead of histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
+  outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.') #TODO extend with other options
+  outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
+  outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
+  outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 1, 128], help='Number of histogram bins in x,y,z directions.') 
+  outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)') 
+  outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-1000, 1000], help='Qy range of the histogram. (In horizontal plane back to front)') 
+  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top') 
+  outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an an incident beam coordinate transformations.)')
