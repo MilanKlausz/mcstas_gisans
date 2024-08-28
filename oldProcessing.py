@@ -115,4 +115,4 @@ def processNeutronsNonVectorised(events, get_simulation, sc, savename):
     from inputOutput import write_events_mcpl
     deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
     write_events_mcpl(out_events, savename, deweight)
-  return 
+  return
