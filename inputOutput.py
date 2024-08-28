@@ -12,7 +12,7 @@ def velocity_from_dir(ux, uy, uz, ekin):
   norm = np.sqrt(ekin * 1e9 / VS2E)
   return [ux*norm, uy*norm, uz*norm]
 
-def getNeutronEvents(filename, tofMin=float('-inf'), tofMax=float('inf')):
+def getNeutronEvents(filename, mcplTofLimits):
     print(f'Reading events from {filename}...')
     if filename.endswith('.dat'):
       events = np.loadtxt(filename)
@@ -23,10 +23,15 @@ def getNeutronEvents(filename, tofMin=float('-inf'), tofMax=float('inf')):
             p.x/100, p.y/100, p.z/100, #convert cm->m
             *velocity_from_dir(p.ux, p.uy, p.uz, p.ekin),
             p.time*1e-3 #convert ms->s
-            ) for p in myfile.particles if (p.weight>1e-5 and tofMin < p.time and p.time < tofMax)]
+            ) for p in myfile.particles if (p.weight>1e-5 and mcplTofLimits[0] < p.time and p.time < mcplTofLimits[1])]
           )
     else:
       sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
+    if len(events)==0:
+      if mcplTofLimits != [float('-inf'), float('inf')]:
+        sys.exit(f"No neutrons found in the input file ({filename}) within the TOF filtering limits: {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]!")
+      else:
+        sys.exit(f"No neutrons found in the input file {filename}.")
     return events
 
 def write_events_mcpl(out_events, filename, deweight=False):

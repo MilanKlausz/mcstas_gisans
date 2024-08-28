@@ -23,31 +23,28 @@ def getTofFilteringLimits(args, mcstasDir, pars):
   """Get TOF (time-of-flight) limits that can be used for filtering neutrons from the MCPL input file
   The options are:
     1) No filtering ([-inf, inf])
-    2) Using input values ([args.tof_min, args.tof_max])
+    2) Using input values (args.input_tof_limits)
     3) Derive limits by fitting a Gaussian function and getting an FWHM range centred around the selected wavelength
     on a McStas TOFLambda monitor spectrum (that is assumed to represent the MCPL file content). The width of the range can be modified by the input_tof_range_factor.
   """
-  if args.no_mcpl_filtering:
-    mcplTofMin = float('-inf')
-    mcplTofMax = float('inf')
-  else:
-    if args.tof_min and args.tof_max:
-      mcplTofMin = args.tof_min
-      mcplTofMax = args.tof_max
+  tofLimits = [float('-inf'), float('inf')]
+  if not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
+    if args.input_tof_limits:
+      tofLimits = args.input_tof_limits
     else:
       if args.figure_output == 'png' or args.figure_output == 'pdf':
         figureOutput = f"{args.savename}.{args.figure_output}"
       else:
         figureOutput = args.figure_output # None or 'show'
       fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.input_tof_range_factor)
-      mcplTofMin = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
-      mcplTofMax = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
-      print(f"  Using MCPL input TOF limits: : {mcplTofMin:.3f} - {mcplTofMax:.3f} [microsecond]")
+      tofLimits[0] = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      tofLimits[1] = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      print(f"  Using MCPL input TOF limits: : {tofLimits[0]:.3f} - {tofLimits[1]:.3f} [millisecond]")
       if args.figure_output is not None:
       # Terminate the script execution because an 'only plotting' has been selected by the user
         import sys
         sys.exit()
-  return mcplTofMin, mcplTofMax
+  return tofLimits
 
 def coordTransformToSampleSystem(events, alpha_inc):
   """Apply coordinate transformation to express neutron parameters in a
@@ -230,9 +227,9 @@ def main(args):
   mcstasDir = Path(args.filename).resolve().parent
 
   ### Getting neutron events from the MCPL file ###
-  mcplTofMin, mcplTofMax = getTofFilteringLimits(args, mcstasDir, pars)
+  mcplTofLimits = getTofFilteringLimits(args, mcstasDir, pars)
   from inputOutput import getNeutronEvents
-  events = getNeutronEvents(args.filename, mcplTofMin, mcplTofMax)
+  events = getNeutronEvents(args.filename, mcplTofLimits)
 
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
@@ -338,14 +335,13 @@ if __name__=='__main__':
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
-  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
-  mcplFilteringGroup.add_argument('-w', '--wavelength', default=6.0, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
-  mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Increase the accepted TOF range of neutrons by this multiplication factor.')
+  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
+  mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
+  mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Modify the accepted TOF range of neutrons by this multiplication factor.')
   mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
-  mcplFilteringGroup.add_argument('--tof_min', type=float, help = 'Lower TOF limit for selecting neutrons from the MCPL file. [microsecond]')
-  mcplFilteringGroup.add_argument('--tof_max', type=float, help = 'Upper TOF limit for selecting neutrons from the MCPL file. [microsecond]')
+  mcplFilteringGroup.add_argument('--input_tof_limits', nargs=2, type=float, help = 'TOF limits for selecting neutrons from the MCPL file [millisecond]. When provided, fitting to the McStas monitor is not attempted.')
   mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help = 'Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
-  mcplFilteringGroup.add_argument('--figure_output', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation.')
+  mcplFilteringGroup.add_argument('--figure_output', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation. Only works with McStas monitor fitting.')
 
   t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the  wavelength parameter in the MCPL filtering is provided.')
   t0correctionGroup.add_argument('--t0_fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
@@ -357,6 +353,14 @@ if __name__=='__main__':
 
   if args.wfm and any(key not in instrumentParameters[args.instrument] for key in wfmRequiredKeys):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument! Set the required instrument parameters in instruments.py!")
+
+  if args.figure_output: 
+    if not args.wavelength:
+      parser.error(f"The figure_output option can only be used if a central wavelength (--wavelength) for fitting is provided.")
+    if args.input_tof_limits:
+      parser.error(f"The figure_output option can not be used when the TOF range is provided with --input_tof_limits.")
+    if args.no_mcpl_filtering:
+      parser.error(f"The figure_output option can not be used when TOF no filtering is selected with --no_mcpl_filtering.")
 
   main(args)
 
