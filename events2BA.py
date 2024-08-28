@@ -97,7 +97,7 @@ def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavele
   t -= t0correction
   return np.vstack([p, x, y, z, vx, vy, vz, t]).T
 
-def get_simulation(sample, pixelNr, angle_range, wavelength=6.0, alpha_i=0.2, p=1.0, Ry=0., Rz=0.):
+def get_simulation(sample, pixelNr, angle_range, wavelength, alpha_i, p, Ry, Rz):
   """Create a simulation with pixelNr pixels that cover an angular range of angle_range degrees.
   The Ry and Rz values are relative rotations of the detector within one pixel
   to finely define the outgoing direction of events.
