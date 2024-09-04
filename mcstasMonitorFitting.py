@@ -17,7 +17,7 @@ def fitGaussian(x,y):
   return popt
 
 
-def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, figureOutput=None, tofRangeFactor=1):
+def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=None, figureOutput=None, tofRangeFactor=1):
   """
   Fit Gaussian function to a 1D TOF spectrum from 2D TOFLambda_monitor result.
   The TOF spectrum of the wavelength bin that includes the 'wavelength' input
@@ -35,7 +35,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   # dTof = tofMax - tofMax / tofBinNumber
   # dLambda = lambdaMax - lambdaMin / lambdaBinNumber
 
-  if wavelength_rebin != 1:
+  if wavelength_rebin:
     #Rebin along the wavelength axis to get better statistics
     print('Rebinning monitor:')
     print('  original shape: ', data.shape)

@@ -83,7 +83,7 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
     print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} neutrons avoided the sample!")
   return sampleHitEvents
 
-def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavelength=None, tofLimits=[None,None], rebin=1):
+def applyT0Correction(events, t0correction=None, dirname=None, monitor=None, wavelength=None, tofLimits=[None,None], wavelength_rebin=None):
   """Apply t0 TOF correction for all neutrons. A fixed tCorrection value can be given to be subtracted, or
   a McStas TOF-Wavelength monitor can be provided with a selected wavelength, in which case tCorrection
   is retrieved as the mean value from fitting a Gaussian function to the TOF distribution. By default
@@ -91,8 +91,8 @@ def applyT0Correction(events, t0correction=0, dirname=None, monitor=None, wavele
   but optionally the TOF range can be limited, and rebinning can be applied along the wavelength axis.
   WARNING: the TOF axis is assumed to have microsecond units!
   """
-  if t0correction == 0:
-    fit = fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=tofLimits, wavelength_rebin=rebin)
+  if args.t0_fixed is None:
+    fit = fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=tofLimits, wavelength_rebin=wavelength_rebin)
     t0correction = fit['mean'] * 1e-6
     print(f"  t0correction: {t0correction} second")
 
@@ -241,18 +241,20 @@ def main(args):
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
 
   ### T0 Correction ###
-  if not args.no_t0_correction and args.wavelength is not None:
-    if abs(float(args.t0_fixed)) > 1e-5: #T0 correction with fixed input value
-      events = applyT0Correction(events, float(args.t0_fixed))
+  if args.no_t0_correction:
+    print("  No T0 correction is applied.")
+  else:
+    if args.t0_fixed: #T0 correction with fixed input value
+      events = applyT0Correction(events, t0correction=args.t0_fixed)
     else: #T0 correction based on McStas (TOFLambda) monitor
       if not args.wfm:
-        tofLimits = [None, None]
+        tofLimits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
         t0monitor = pars['t0_monitor_name']
-      else:
+      else: # Wavelength Frame Multiplication (WFM)
         from instruments import getSubpulseTofLimits
         tofLimits = getSubpulseTofLimits(float(args.wavelength))
         t0monitor = pars['wfm_t0_monitor_name']
-      events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, rebin=args.t0_rebin)
+      events = applyT0Correction(events, dirname=mcstasDir, monitor=t0monitor, wavelength=args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.t0_rebin)
 
   savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
   if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
@@ -349,9 +351,9 @@ if __name__=='__main__':
   mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help = 'Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
   mcplFilteringGroup.add_argument('--figure_output', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation. Only works with McStas monitor fitting.')
 
-  t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the  wavelength parameter in the MCPL filtering is provided.')
-  t0correctionGroup.add_argument('--t0_fixed', default=0.0, help = 'Fix t0 correction value that is subtracted from the neutron TOFs.')
-  t0correctionGroup.add_argument('--t0_rebin', default=1, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
+  t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the wavelength parameter in the MCPL filtering is provided.')
+  t0correctionGroup.add_argument('--t0_fixed', default=None, type=float, help = 'Fix t0 correction value that is subtracted from the neutron TOFs. [s]')
+  t0correctionGroup.add_argument('--t0_rebin', default=None, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
   t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
   t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
 
@@ -360,13 +362,25 @@ if __name__=='__main__':
   if args.wfm and any(key not in instrumentParameters[args.instrument] for key in wfmRequiredKeys):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument! Set the required instrument parameters in instruments.py!")
 
-  if args.figure_output: 
+  if args.figure_output:
     if not args.wavelength:
-      parser.error(f"The figure_output option can only be used if a central wavelength (--wavelength) for fitting is provided.")
+      parser.error(f"The --figure_output option can only be used if a central wavelength (--wavelength) for fitting is provided.")
     if args.input_tof_limits:
-      parser.error(f"The figure_output option can not be used when the TOF range is provided with --input_tof_limits.")
+      parser.error(f"The --figure_output option can not be used when the TOF range is provided with --input_tof_limits.")
     if args.no_mcpl_filtering:
-      parser.error(f"The figure_output option can not be used when TOF no filtering is selected with --no_mcpl_filtering.")
+      parser.error(f"The --figure_output option can not be used when TOF no filtering is selected with --no_mcpl_filtering.")
+
+  if args.no_t0_correction:
+    if args.t0_fixed:
+      parser.error(f"The --no_t0_correction option can not be used together with --t0_fixed ")
+    if args.t0_rebin:
+      parser.error(f"The --no_t0_correction option can not be used together with --t0_rebin ")
+    if args.wfm:
+      parser.error(f"The --no_t0_correction option can not be used together with --wfm ")
+  
+  if args.t0_fixed:
+    if args.t0_rebin:
+      parser.error(f"The --t0_fixed option can not be used together with --t0_rebin ")
 
   main(args)
 
