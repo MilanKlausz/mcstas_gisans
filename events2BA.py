@@ -28,7 +28,7 @@ def getTofFilteringLimits(args, mcstasDir, pars):
     on a McStas TOFLambda monitor spectrum (that is assumed to represent the MCPL file content). The width of the range can be modified by the input_tof_range_factor.
   """
   tofLimits = [float('-inf'), float('inf')]
-  if not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
+  if pars['tof instrument'] and not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
     if args.input_tof_limits:
       tofLimits = args.input_tof_limits
     else:
