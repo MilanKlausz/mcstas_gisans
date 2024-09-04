@@ -18,6 +18,14 @@ def fitGaussian(x,y):
 
 
 def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=1, figureOutput=None, tofRangeFactor=1):
+  """
+  Fit Gaussian function to a 1D TOF spectrum from 2D TOFLambda_monitor result.
+  The TOF spectrum of the wavelength bin that includes the 'wavelength' input
+  value is used. The reliability of the Gaussian fitting can be increased by
+  first rebinning the 2D histogram along the wavelength axis by a provided
+  factor (wavelength_rebin). The TOF ranged used for the fitting can be limited
+  by the 'tofLimits' input values. Can generate figure output about the fitting.
+  """
   data = np.array(McSim(str(dirname))[monitor].data)
   info = McSim(str(dirname))[monitor].info
 

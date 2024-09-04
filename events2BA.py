@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Load events from McStas to run a BornAgain simulation and create new neutron events from the results
-to feed back to McStas and/or calculate and save Q values for each neutron for processing/plotting.
+Handles the simulation and processing of neutron scattering experiments.
+It takes neutron events from an MCPL file, applies transformations, and
+processes them through BornAgain simulations to generate Q values for each
+neutron, and saves the result for further analysis or plotting.
 """
 
 from importlib import import_module
@@ -20,12 +22,16 @@ from sharedMemory import sharedMemoryHandler
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def getTofFilteringLimits(args, mcstasDir, pars):
-  """Get TOF (time-of-flight) limits that can be used for filtering neutrons from the MCPL input file
-  The options are:
+  """
+  Get TOF (time-of-flight) limits that can be used for filtering neutrons from
+  the MCPL input file. The options are:
     1) No filtering ([-inf, inf])
     2) Using input values (args.input_tof_limits)
-    3) Derive limits by fitting a Gaussian function and getting an FWHM range centred around the selected wavelength
-    on a McStas TOFLambda monitor spectrum (that is assumed to represent the MCPL file content). The width of the range can be modified by the input_tof_range_factor.
+    3) Derive limits from a 1D TOF spectrum corresponding to a selected
+       wavelength that is retrieved from a 2D McStas TOFLambda_monitor spectrum
+       (that is assumed to represent the MCPL file content). The limits are
+       defined by fitting a Gaussian function and getting a single FWHM range
+       centred around the mean TOF value.
   """
   tofLimits = [float('-inf'), float('inf')]
   if pars['tof instrument'] and not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
@@ -151,9 +157,9 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
   return (v_out_det - v_in_alpha) * qFactor
 
 def processNeutrons(neutron, sc=None):
-  """Carry out the BornAgain simulation and subsequent calculations of single 
+  """Carry out the BornAgain simulation and subsequent calculations of single
   incident neutron.
-  1) The BornAgain simulation for a certain sample model is set up with an array 
+  1) The BornAgain simulation for a certain sample model is set up with an array
      out outgoing directions
   2) The BornAgain simulation is performed, resulting in an array of outgoing
      beams with weights (outgoing probabilities)
@@ -321,11 +327,11 @@ if __name__=='__main__':
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.') #TODO extend with other options
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
-  outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 1, 128], help='Number of histogram bins in x,y,z directions.') 
-  outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)') 
-  outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-1000, 1000], help='Qy range of the histogram. (In horizontal plane back to front)') 
-  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top') 
-  outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.') 
+  outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 1, 128], help='Number of histogram bins in x,y,z directions.')
+  outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)')
+  outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-1000, 1000], help='Qy range of the histogram. (In horizontal plane back to front)')
+  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top')
+  outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
   outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
@@ -335,7 +341,7 @@ if __name__=='__main__':
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
-  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
+  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
   mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Modify the accepted TOF range of neutrons by this multiplication factor.')
   mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
