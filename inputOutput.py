@@ -12,11 +12,16 @@ def velocity_from_dir(ux, uy, uz, ekin):
   norm = np.sqrt(ekin * 1e9 / VS2E)
   return [ux*norm, uy*norm, uz*norm]
 
+def printTofLimits(mcplTofLimits):
+  if mcplTofLimits == [float('-inf'), float('inf')]:
+    print(f"  No TOF filtering applied. Processing all neutrons from the input file.")
+  else:
+    print(f"  Using MCPL input TOF limits: : {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]")
+
 def getNeutronEvents(filename, mcplTofLimits):
     print(f'Reading events from {filename}...')
-    if filename.endswith('.dat'):
-      events = np.loadtxt(filename)
-    elif filename.endswith('.mcpl') or filename.endswith('.mcpl.gz'):
+    printTofLimits(mcplTofLimits)
+    if filename.endswith('.mcpl') or filename.endswith('.mcpl.gz'):
       with mcpl.MCPLFile(filename) as myfile:
         events = np.array(
           [(p.weight,
@@ -25,8 +30,10 @@ def getNeutronEvents(filename, mcplTofLimits):
             p.time*1e-3 #convert ms->s
             ) for p in myfile.particles if (p.weight>1e-5 and mcplTofLimits[0] < p.time and p.time < mcplTofLimits[1])]
           )
+    elif filename.endswith('.dat'): #legacy file type
+      events = np.loadtxt(filename)
     else:
-      sys.exit("Wrong input file extension. Expected: '.dat', '.mcpl', or '.mcpl.gz")
+      sys.exit("Wrong input file extension. Expected: '.mcpl', '.mcpl.gz' or '.dat'" )
     if len(events)==0:
       if mcplTofLimits != [float('-inf'), float('inf')]:
         sys.exit(f"No neutrons found in the input file ({filename}) within the TOF filtering limits: {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]!")

@@ -3,7 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram  #, createTofSliced2dQPlots
+from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram #, createTofSliced2dQPlots
 from experiment_time_utilities import handleExperimentTime
 from d22data import getStoredData
 
@@ -61,7 +61,7 @@ def main(args):
           q_events = npFile[npFileArrayKey]
           x, _, z, weights = unpackQEvents(q_events)
           bins_hor = args.bins[0] if not args.plotStoredData else len(xEdges)-1 #override bin number to match stored data for better comparison
-          bins_vert = args.bins[1] if not args.plotStoredData else  len(zEdges)-1
+          bins_vert = args.bins[1] if not args.plotStoredData else len(zEdges)-1
           hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
 
       qzIndex = np.digitize(args.q_min, zEdges) - 1
@@ -237,8 +237,8 @@ if __name__=='__main__':
 
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
   storedDataParamGroup.add_argument('--nxs', help = 'Full path to the D22 Nexus file.')
-  storedDataParamGroup.add_argument('--plotStoredData',  action='store_true', help = 'Plot stored data.')
-  storedDataParamGroup.add_argument('--overlay',  action='store_true', help = 'Overlay stored data with simulated data.')
+  storedDataParamGroup.add_argument('--plotStoredData', action='store_true', help = 'Plot stored data.')
+  storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.')
 
   args = parser.parse_args()
 
