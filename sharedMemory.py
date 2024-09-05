@@ -31,7 +31,7 @@ class sharedMemoryHandler:
   updateLock = Lock() # A lock for thread-safe updates
 
   @classmethod
-  def createSharedMemoryBlocks(cls, sharedConstants, histParams):
+  def createSharedMemoryBlocks(cls, sharedConstants, bins, x_range, y_range, z_range):
     """Create shared memory blocks.
     It is intended for the main process to initialise all shared memory blocks.
     """
@@ -39,6 +39,7 @@ class sharedMemoryHandler:
     shared_memory.ShareableList([sharedConstants[key] for key in cls.sharedConstantsKeyOrder], name=cls.constantsMemoryName)
 
     ## Create a shared memory block for the histogram parameters
+    histParams = cls.prepareHistogramParameters(bins, x_range, y_range, z_range)
     shared_memory.ShareableList([p for key in cls.histParamsKeyOrder for p in histParams[key]], name=cls.histParamsMemoryName)
 
     ## Create shared memory blocks for the histogram and error array
@@ -49,6 +50,21 @@ class sharedMemoryHandler:
     error = np.ndarray(histParams['bins'], dtype=np.float64, buffer=shm_error.buf)
     hist[:] = 0
     error[:] = 0
+
+  def prepareHistogramParameters(bins, xRange, yRange, zRange):
+    """Returns dictionary of parameters for the shared histograms"""
+    def transformRangeLimits(range):
+      """Returns inverted coordinates in ascending order"""
+      rangeNegate = [-x for x in range]
+      rangeNegate.sort()
+      return rangeNegate
+    
+    return {
+      'bins': bins,
+      'xRange': transformRangeLimits(xRange), #coord system used for simulation is from right to left
+      'yRange': yRange,
+      'zRange': transformRangeLimits(zRange), #coord system used for simulation is top to bottom
+    }  
 
   @classmethod
   def getConstants(cls):

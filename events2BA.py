@@ -263,58 +263,56 @@ def main(args):
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
   events = applyT0Correction(events, args)
 
+  ### BornAgain simulation ###
   savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
+  print('Number of events being processed: ', len(events))
+  
   if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
     from oldProcessing import processNeutronsNonVectorised
     processNeutronsNonVectorised(events, get_simulation, sharedConstants, savename)
-  else:
-    if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially
-      total=len(events)
-      q_events_calc_detector = []
-      for in_ID, neutron in enumerate(events):
-        if in_ID%200==0:
-          print(f'{in_ID:10}/{total}')
-        tmp = processNeutrons(neutron, sharedConstants)
-        q_events_calc_detector.extend(tmp)
-    else:
-      print('Number of events being processed: ', len(events))
-      num_processes = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
-      print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
+    return
 
-      try:
-        def transformRangeLimits(range):
-          """Returns inverted coordinates in ascending order"""
-          rangeNegate = [-x for x in range]
-          rangeNegate.sort()
-          return rangeNegate
-        histParams = {
-          'bins': args.bins,
-          'xRange': transformRangeLimits(args.x_range), #coord system used for simulation is from right to left
-          'yRange': args.y_range,
-          'zRange': transformRangeLimits(args.z_range), #coord system used for simulation is top to bottom
-        }
-        sharedMemoryHandler.createSharedMemoryBlocks(sharedConstants, histParams) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
-        with Pool(processes=num_processes) as pool:
-          # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
-          q_events = list(tqdm(pool.imap_unordered(processNeutrons, events), total=len(events)))
+  if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially, mainly intended for profiling
+    #NOTE the storing histogrammed results could be implemented, but right now it is raw_output only
+    q_events_calc_detector = []
+    for in_ID, neutron in enumerate(events):
+      if in_ID%200==0:
+        print(f'{in_ID:10}/{len(events)}')
+      tmp = processNeutrons(neutron, sharedConstants)
+      q_events_calc_detector.extend(tmp) #this solution can cause memory issues for high incident event and pixel number
+    np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
+    print(f"Created {savename}.npz with raw Q events.")
+    return
 
-        if not args.raw_output:
-          final_hist, final_error, xEdges, yEdges, zEdges = sharedMemoryHandler.getFinalHistograms()
-      finally:
-        sharedMemoryHandler.cleanup()
+  num_processes = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+  print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
+  try:
+    #TODO the histogram memory blocks should not be created if args.raw_output
+    sharedMemoryHandler.createSharedMemoryBlocks(sharedConstants, args.bins, args.x_range, args.y_range, args.z_range) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
+    with Pool(processes=num_processes) as pool:
+      # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
+      q_events = list(tqdm(pool.imap_unordered(processNeutrons, events), total=len(events)))
 
-      if args.raw_output:
-        q_events_calc_detector = [item for sublist in q_events for item in sublist] #this solution can cause memory issues for high incident event and pixel number
-        np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
-        print(f"Created {savename}.npz with raw Q events.")
-      else:
-        np.savez_compressed(savename, hist=final_hist, error=final_error, xEdges=xEdges, yEdges=yEdges, zEdges=zEdges)
-        print(f"Created {savename}.npz")
+    if not args.raw_output:
+      final_hist, final_error, xEdges, yEdges, zEdges = sharedMemoryHandler.getFinalHistograms()
+  finally:
+    sharedMemoryHandler.cleanup()
 
-        if args.quick_plot:
-          hist2D = np.sum(final_hist, axis=1)
-          from plotting_utilities import logPlot2d
-          logPlot2d(hist2D.T, -xEdges, -zEdges, xRange=args.x_range, yRange=args.z_range, output='show')
+  ### Create Output ###
+  if args.raw_output: # Create raw list of Q events (old output)
+    #storing all Q events in a list can cause memory issues (earlier at the BornAgain simulation stage) for high incident event and pixel number
+    q_events_calc_detector = [item for sublist in q_events for item in sublist] 
+    np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
+    print(f"Created {savename}.npz with raw Q events.")
+    return 
+  
+  np.savez_compressed(savename, hist=final_hist, error=final_error, xEdges=xEdges, yEdges=yEdges, zEdges=zEdges)
+  print(f"Created {savename}.npz")
+
+  if args.quick_plot:
+    hist2D = np.sum(final_hist, axis=1)
+    from plotting_utilities import logPlot2d
+    logPlot2d(hist2D.T, -xEdges, -zEdges, xRange=args.x_range, yRange=args.z_range, output='show')
 
 if __name__=='__main__':
   def getBornAgainModels():
@@ -328,7 +326,7 @@ if __name__=='__main__':
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
   parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
-  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling, and the output of the number of neutrons missing the sample.')
+  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profilin. Uses --raw_output implicitly.')
   parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
