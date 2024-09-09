@@ -34,7 +34,7 @@ def getTofFilteringLimits(args, pars):
        centred around the mean TOF value.
   """
   tofLimits = [float('-inf'), float('inf')]
-  if pars['tof instrument'] and not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
+  if pars['tof_instrument'] and not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
     if args.input_tof_limits:
       tofLimits = args.input_tof_limits
     else:
@@ -187,7 +187,7 @@ def processNeutrons(neutron, sc=None):
   3) The Q values are calculated after a virtual propagation to the detector
      surface.
   4) Depending on the input options, the list of Q events (weight,qx,qy,qz) are
-     either returned (old raw format), or histogrammed and added to a cummulative
+     either returned (old raw format), or histogrammed and added to a cumulative
      histogram where all other neutrons result are added.
   """
   if sc is None:
@@ -242,7 +242,7 @@ def createConstantsDict(args, instParams):
     'sim_module_name': args.model,
     'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
-    'wavelengthSelected':  None if instParams['tof instrument'] else args.wavelengthSelected,
+    'wavelengthSelected':  None if instParams['tof_instrument'] else args.wavelengthSelected,
     'alpha_inc': float(np.deg2rad(args.alpha)),
     'angle_range': args.angle_range,
     'raw_output': args.raw_output
@@ -326,20 +326,20 @@ if __name__=='__main__':
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
   parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
-  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profilin. Uses --raw_output implicitly.')
+  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
   parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
   parser.add_argument('--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
   parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
 
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
-  outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
+  outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create a raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
   outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 1, 128], help='Number of histogram bins in x,y,z directions.')
   outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)')
   outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-1000, 1000], help='Qy range of the histogram. (In horizontal plane back to front)')
-  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top')
+  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane bottom to top')
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
-  outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different level of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
+  outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different levels of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
