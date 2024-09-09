@@ -93,6 +93,8 @@ def processNeutronsNonVectorised(events, get_simulation, sc, savename):
       wavelengthDet = calcWavelength(t+sample_detector_tof, sample_detector_path_length+sc['nominal_source_sample_distance'])
       qConvFactorFromTofAtDet = qConvFactorFixed if notTOFInstrument else qConvFactor(wavelengthDet)
       dLambdaPerLambda.append((wavelength-wavelengthDet)/wavelength)
+      q_events_calc_detector.append([pouti, *(qConvFactorFromTofAtDet * np.subtract(v_out_det, v_in_alpha)), t])
+
   print(" Empirical resolution statistics (WITHOUT WEIGHTS):")
   print(f"  dLambda/Lambda MIN: {min(dLambdaPerLambda)}; MAX: {max(dLambdaPerLambda)}; AVG: {sum(dLambdaPerLambda)/len(dLambdaPerLambda)}")
   print("misses:", misses)
