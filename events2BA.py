@@ -86,39 +86,35 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
   return sampleHitEvents
 
 def applyT0Correction(events, args): #TODO update docstring
-  """Apply t0 TOF correction for all neutrons unless explicitly asked not to.
-  A fixed t0correction value can be given to be subtracted, or a McStas TOFLambda
-  monitor result with a selected wavelength is used, in which case t0correction
-  is retrieved as the mean value from fitting a Gaussian function to the TOF
-  spectrum of the wavelength bin including the selected wavelength. The fitting
-  is done for the full TOF range unless the WFM mode is used, in which case
-  it is done within the wavelength dependent subpulse TOF limits. Rebinning along
-  the wavelength axis can be applied beforehand to improve the reliability of
-  the fitting.
+  """Apply t0 TOF correction for all neutrons. A fixed t0correction value can be 
+  given to be subtracted, or a McStas TOFLambda monitor result with a selected
+  wavelength is used, in which case t0correction is retrieved as the mean value
+  from fitting a Gaussian function to the TOF spectrum of the wavelength bin 
+  including the selected wavelength. The fitting is done for the full TOF range
+  unless the WFM mode is used, in which case it is done within the wavelength
+  dependent subpulse TOF limits. Rebinning along the wavelength axis can be 
+  applied beforehand to improve the reliability of the fitting.
   WARNING: the TOF axis of the monitor is assumed to have microsecond units!
   """
-  if args.no_t0_correction:
-    print("No T0 correction is applied.")
-  else:
-    if args.t0_fixed: #T0 correction with fixed input value
-      t0correction = args.t0_fixed
-    else: #T0 correction based on McStas (TOFLambda) monitor
-      if not args.wfm:
-        tofLimits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
-        t0monitor = instrumentParameters[args.instrument]['t0_monitor_name']
-      else: # Wavelength Frame Multiplication (WFM)
-        from instruments import getSubpulseTofLimits
-        tofLimits = getSubpulseTofLimits(args.wavelength)
-        t0monitor = instrumentParameters[args.instrument]['wfm_t0_monitor_name']
-      print(f"Applying T0 correction based on McStas monitor: {t0monitor}")
-      mcstasDir = Path(args.filename).resolve().parent
-      fit = fitGaussianToMcstasMonitor(mcstasDir, t0monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.t0_wavelength_rebin)
-      t0correction = fit['mean'] * 1e-6
-    print(f"  T0 correction value: {t0correction} second")
+  if args.t0_fixed: #T0 correction with fixed input value
+    t0correction = args.t0_fixed
+  else: #T0 correction based on McStas (TOFLambda) monitor
+    if not args.wfm:
+      tofLimits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
+      t0monitor = instrumentParameters[args.instrument]['t0_monitor_name']
+    else: # Wavelength Frame Multiplication (WFM)
+      from instruments import getSubpulseTofLimits
+      tofLimits = getSubpulseTofLimits(args.wavelength)
+      t0monitor = instrumentParameters[args.instrument]['wfm_t0_monitor_name']
+    print(f"Applying T0 correction based on McStas monitor: {t0monitor}")
+    mcstasDir = Path(args.filename).resolve().parent
+    fit = fitGaussianToMcstasMonitor(mcstasDir, t0monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.t0_wavelength_rebin)
+    t0correction = fit['mean'] * 1e-6
+  print(f"T0 correction value: {t0correction} second")
 
-    p, x, y, z, vx, vy, vz, t = events.T
-    t -= t0correction
-    events = np.vstack([p, x, y, z, vx, vy, vz, t]).T
+  p, x, y, z, vx, vy, vz, t = events.T
+  t -= t0correction
+  events = np.vstack([p, x, y, z, vx, vy, vz, t]).T
   return events
 
 def get_simulation(sample, pixelNr, angle_range, wavelength, alpha_i, p, Ry, Rz):
@@ -261,7 +257,10 @@ def main(args):
   ### Preconditioning ###
   events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
-  events = applyT0Correction(events, args)
+  if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
+    print("No T0 correction is applied.")
+  else:
+    events = applyT0Correction(events, args)
 
   ### BornAgain simulation ###
   savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename

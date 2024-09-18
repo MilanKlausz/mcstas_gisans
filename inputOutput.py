@@ -14,9 +14,9 @@ def velocity_from_dir(ux, uy, uz, ekin):
 
 def printTofLimits(mcplTofLimits):
   if mcplTofLimits == [float('-inf'), float('inf')]:
-    print(f"  No TOF filtering applied. Processing all neutrons from the input file.")
+    print(f"No TOF filtering applied. Processing all neutrons from the input file.")
   else:
-    print(f"  Using MCPL input TOF limits: : {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]")
+    print(f"Using MCPL input TOF limits: : {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]")
 
 def getNeutronEvents(filename, mcplTofLimits):
     print(f'Reading events from {filename}...')
