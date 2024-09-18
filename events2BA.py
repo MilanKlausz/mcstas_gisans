@@ -387,4 +387,7 @@ if __name__=='__main__':
     if args.t0_wavelength_rebin:
       parser.error(f"The --t0_fixed option can not be used together with --t0_wavelength_rebin ")
 
+  if args.all_q and args.wfm:
+    parser.error(f"The --all_q option can not be used together with --wfm. (Simply because --all_q is not well maintained, but it can be changed on demand.)")
+
   main(args)
