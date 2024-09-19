@@ -18,12 +18,14 @@ Simulation
 - Run the McStas simulation in shell set up for running McStas:
   ```
   mcstas-3.4-environment
-  mcrun mcstas/loki_master_model.instr sampletype=-1 sourceapx=0.010 sampleapx=0.005 sourceapy=0.004 sampleapy=0.0002 l_min=5.5 l_max=6.5 collen=5 source_l_min=5.5 source_l_max=6.5 -n1e8 -d output_dir --mpi=6
+  cd mcstas/
+  mcrun loki_master_model.instr sampletype=-1 sourceapx=0.010 sampleapx=0.005 sourceapy=0.004 sampleapy=0.0002 l_min=5.5 l_max=6.5 collen=5 source_l_min=5.5 source_l_max=6.5 -n1e8 -d output_dir --mpi=6
+  cd ..
   ```
 - Run the BornAgain simulation script using the MCPL output file from the McStas simulation in a shell with the conda environment activated:
   ```
   conda activate mcstas_ba
-  python events2BA.py output_dir/test_events.mcpl.gz --instrument='loki' --pixel_number=100 --savename 'test_q'
+  python events2BA.py mcstas/output_dir/test_events.mcpl.gz --instrument='loki' --wavelength=6.0 --pixel_number=100 --savename 'test_q' --no_mcpl_filtering
   ```
 
 - Plot the result:

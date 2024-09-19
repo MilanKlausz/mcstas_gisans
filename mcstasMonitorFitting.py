@@ -35,7 +35,7 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   # dTof = tofMax - tofMax / tofBinNumber
   # dLambda = lambdaMax - lambdaMin / lambdaBinNumber
 
-  if wavelength_rebin:
+  if wavelength_rebin and wavelength_rebin != 1:
     #Rebin along the wavelength axis to get better statistics
     print('Rebinning monitor:')
     print('  original shape: ', data.shape)

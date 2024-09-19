@@ -348,7 +348,7 @@ if __name__=='__main__':
   sampleGroup.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
-  mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
+  mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
   mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Modify the accepted TOF range of neutrons by this multiplication factor.')
   mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
   mcplFilteringGroup.add_argument('--input_tof_limits', nargs=2, type=float, help = 'TOF limits for selecting neutrons from the MCPL file [millisecond]. When provided, fitting to the McStas monitor is not attempted.')
@@ -372,7 +372,7 @@ if __name__=='__main__':
     if args.input_tof_limits:
       parser.error(f"The --figure_output option can not be used when the TOF range is provided with --input_tof_limits.")
     if args.no_mcpl_filtering:
-      parser.error(f"The --figure_output option can not be used when TOF no filtering is selected with --no_mcpl_filtering.")
+      parser.error(f"The --figure_output option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
 
   if args.no_t0_correction:
     if args.t0_fixed:
@@ -381,6 +381,13 @@ if __name__=='__main__':
       parser.error(f"The --no_t0_correction option can not be used together with --t0_wavelength_rebin ")
     if args.wfm:
       parser.error(f"The --no_t0_correction option can not be used together with --wfm ")
+  else:
+    if not args.wavelength:
+      parser.error(f"The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
+
+  if not args.no_mcpl_filtering:
+    if not args.wavelength:
+      parser.error(f"The --wavelength must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering")
 
   if args.t0_fixed:
     if args.t0_wavelength_rebin:
