@@ -9,8 +9,8 @@ neutron, and saves the result for further analysis or plotting.
 
 from importlib import import_module
 import numpy as np
-from multiprocessing import Pool, cpu_count
-from tqdm import tqdm
+from multiprocessing import cpu_count, Queue
+import multiprocessing
 from pathlib import Path
 
 import bornagain as ba
@@ -18,7 +18,6 @@ from bornagain import deg, angstrom
 
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters, wfmRequiredKeys
-from sharedMemory import sharedMemoryHandler
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
 
 def getTofFilteringLimits(args, pars):
@@ -86,13 +85,13 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
   return sampleHitEvents
 
 def applyT0Correction(events, args): #TODO update docstring
-  """Apply t0 TOF correction for all neutrons. A fixed t0correction value can be 
+  """Apply t0 TOF correction for all neutrons. A fixed t0correction value can be
   given to be subtracted, or a McStas TOFLambda monitor result with a selected
   wavelength is used, in which case t0correction is retrieved as the mean value
-  from fitting a Gaussian function to the TOF spectrum of the wavelength bin 
+  from fitting a Gaussian function to the TOF spectrum of the wavelength bin
   including the selected wavelength. The fitting is done for the full TOF range
   unless the WFM mode is used, in which case it is done within the wavelength
-  dependent subpulse TOF limits. Rebinning along the wavelength axis can be 
+  dependent subpulse TOF limits. Rebinning along the wavelength axis can be
   applied beforehand to improve the reliability of the fitting.
   WARNING: the TOF axis of the monitor is assumed to have microsecond units!
   """
@@ -173,9 +172,9 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
 
   return (v_out_det - v_in_alpha) * qFactor
 
-def processNeutrons(neutron, sc=None):
-  """Carry out the BornAgain simulation and subsequent calculations of single
-  incident neutron.
+def processNeutrons(neutrons, params, queue=None):
+  """Carry out the BornAgain simulation and subsequent calculations of each
+  incident neutron (separately) in the input array.
   1) The BornAgain simulation for a certain sample model is set up with an array
      out outgoing directions
   2) The BornAgain simulation is performed, resulting in an array of outgoing
@@ -186,52 +185,124 @@ def processNeutrons(neutron, sc=None):
      either returned (old raw format), or histogrammed and added to a cumulative
      histogram where all other neutrons result are added.
   """
-  if sc is None:
-    sc = sharedMemoryHandler.getConstants() #get constants from shared memory
 
-  sim_module = import_module('models.'+sc['sim_module_name'])
+  sim_module = import_module('models.'+params['sim_module_name'])
   get_sample = sim_module.get_sample
-  if sc['sim_module_name'] == "silica_100nm_air":
-    sample = get_sample(radius=sc['silicaRadius'])
+  if params['sim_module_name'] == "silica_100nm_air":
+    sample = get_sample(radius=params['silicaRadius'])
   else:
     sample = get_sample()
 
-  notTOFInstrument = sc['wavelengthSelected'] is not None
-  qConvFactorFixed = None if sc['wavelengthSelected'] is None else qConvFactor(sc['wavelengthSelected'])
+  notTOFInstrument = params['wavelengthSelected'] is not None
+  qConvFactorFixed = None if params['wavelengthSelected'] is None else qConvFactor(params['wavelengthSelected'])
 
-  p, x, y, z, vx, vy, vz, t = neutron
-  alpha_i = np.rad2deg(np.arctan(vz/vy)) #deg
-  phi_i = np.rad2deg(np.arctan(vx/vy)) #deg
-  v = np.sqrt(vx**2+vy**2+vz**2)
-  wavelength = velocityToWavelength(v) #angstrom
+  if params['raw_output']:
+    q_events = [] #p, Qx, Qy, Qz, t
+  else:
+    qHist = np.zeros(tuple(params['bins']))
+    qHistWeightsSquared = np.zeros(tuple(params['bins']))
 
-  # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
-  Ry = 2*np.random.random()-1
-  Rz = 2*np.random.random()-1
-  sim = get_simulation(sample, sc['pixelNr'], sc['angle_range'], wavelength, alpha_i, p, Ry, Rz)
-  sim.options().setUseAvgMaterials(True)
-  sim.options().setIncludeSpecular(True)
-  # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
+  ## Carry out BornAgain simulation for all incident neutron one-by-one
+  for id, neutron in enumerate(neutrons):
+    if id%200==0:
+      print(f'{id:10}/{len(neutrons)}') #print output to indicate progress
+    p, x, y, z, vx, vy, vz, t = neutron
+    alpha_i = np.rad2deg(np.arctan(vz/vy)) #deg
+    phi_i = np.rad2deg(np.arctan(vx/vy)) #deg
+    v = np.sqrt(vx**2+vy**2+vz**2)
+    wavelength = velocityToWavelength(v) #angstrom
 
-  res = sim.simulate()
-  # get probability (intensity) for all pixels
-  pout = res.array()
-  # calculate beam angle relative to coordinate system, including incident beam direction
-  alpha_f = sc['angle_range']*(np.linspace(1., -1., sc['pixelNr'])+Ry/(sc['pixelNr']-1))
-  phi_f = phi_i+sc['angle_range']*(np.linspace(-1., 1., sc['pixelNr'])+Rz/(sc['pixelNr']-1))
-  alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
+    # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
+    Ry = 2*np.random.random()-1
+    Rz = 2*np.random.random()-1
+    sim = get_simulation(sample, params['pixelNr'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+    sim.options().setUseAvgMaterials(True)
+    sim.options().setIncludeSpecular(True)
+    # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
 
-  # These are expressed in the rotated McStas coord system (X - left; y - forward; Z - downward)
-  VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
-  VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
-  VZ_grid = -v * np.sin(alpha_grid)                   #this is Z in BA coord system) (horizontal - up)
-  qArray = getQsAtDetector(x, y, z, t, sc['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), sc['nominal_source_sample_distance'], sc['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
-  if sc['raw_output']: #raw q events output format
-    return np.column_stack([pout.T.flatten(), qArray])
-  else: #histogrammed output format
-    sharedMemoryHandler.incrementSharedHistograms(qArray, weights=pout.T.flatten())
+    res = sim.simulate()
+    # get probability (intensity) for all pixels
+    pout = res.array()
+    # calculate beam angle relative to coordinate system, including incident beam direction
+    alpha_f = params['angle_range']*(np.linspace(1., -1., params['pixelNr'])+Ry/(params['pixelNr']-1))
+    phi_f = phi_i+params['angle_range']*(np.linspace(-1., 1., params['pixelNr'])+Rz/(params['pixelNr']-1))
+    alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
-def createConstantsDict(args, instParams):
+    # These are expressed in the rotated McStas coord system (X - left; y - forward; Z - downward)
+    VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
+    VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
+    VZ_grid = -v * np.sin(alpha_grid)                   #this is Z in BA coord system) (horizontal - up)
+    qArray = getQsAtDetector(x, y, z, t, params['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
+    weights = pout.T.flatten()
+    if params['raw_output']:
+      q_events.append(np.column_stack([weights, qArray]))
+    else: #histogrammed output format
+      qHistOfNeutron, _ = np.histogramdd(qArray, weights=weights, bins=params['bins'], range=params['histRanges'])
+      qHistWeightsSquaredOfNeutron, _ = np.histogramdd(qArray, weights=weights**2, bins=params['bins'], range=params['histRanges'])
+      qHist += qHistOfNeutron
+      qHistWeightsSquared += qHistWeightsSquaredOfNeutron
+
+  if params['raw_output']:
+    result = [item for sublist in q_events for item in sublist] #flatten sublists
+  else:
+    result = {'qHist': qHist, 'qHistWeightsSquared': qHistWeightsSquared}
+
+  if queue: #return result from multiprocessing process
+    queue.put(result)
+  else:
+    return result
+
+def processNeutronsInParallel(events, params, processNumber):
+  """Spawn parallel processes to carry out the BornAgain simulation and
+  subsequent calculation of the neutrons.
+  """
+  print(f"Number of parallel processes: {processNumber} (number of CPU cores: {cpu_count()})")
+
+  processes = []
+  results = []
+  queue = Queue() #a queue to get results from each process
+
+  eventNumber = len(events)
+  chunkSize = eventNumber // processNumber
+  def getEventsChunk(processIndex):
+    """Distribute the events array among the processes as evenly as possible"""
+    start = processIndex * chunkSize
+    end = (processIndex + 1) * chunkSize if processIndex < processNumber - 1 else eventNumber
+    return events[start:end]
+
+  for i in range(processNumber):
+    p = multiprocessing.Process(target=processNeutrons, args=(getEventsChunk(i), params, queue,))
+    processes.append(p)
+    p.start()
+
+  for p in processes: # get the results from each process
+    results.append(queue.get())
+  for p in processes: # Wait for all processes to finish
+    p.join()
+
+  if len(results) != len(processes):
+      print(f"Warning: Expected {len(processes)} results, but received {len(results)}. Some processes may not have completed.")
+
+  if params['raw_output']: #merge lists of raw Q events of the processes
+    result = [item for sublist in results for item in sublist]
+  else: #merge the histogram results of the processes
+    qHist = np.zeros(tuple(params['bins']))
+    qHistWeightsSquared = np.zeros(tuple(params['bins']))
+    for processResult in results:
+      qHist += processResult['qHist']
+      qHistWeightsSquared += processResult['qHistWeightsSquared']
+    result = {'qHist': qHist, 'qHistWeightsSquared': qHistWeightsSquared}
+  return result
+
+def createParamsDict(args, instParams):
+  """Pack parameters necessary for processing in single dictionary"""
+
+  def transformRangeLimits(range):
+      """Returns inverted coordinates in ascending order"""
+      rangeNegate = [-x for x in range]
+      rangeNegate.sort()
+      return rangeNegate
+
   return {
     'nominal_source_sample_distance': instParams['nominal_source_sample_distance'] - (0 if not args.wfm else instParams['wfm_virtual_source_distance']),
     'sample_detector_distance': instParams['sample_detector_distance'],
@@ -241,13 +312,15 @@ def createConstantsDict(args, instParams):
     'wavelengthSelected':  None if instParams['tof_instrument'] else args.wavelengthSelected,
     'alpha_inc': float(np.deg2rad(args.alpha)),
     'angle_range': args.angle_range,
-    'raw_output': args.raw_output
+    'raw_output': args.raw_output,
+    'bins': args.bins,
+    'histRanges': [transformRangeLimits(args.x_range), args.y_range, transformRangeLimits(args.z_range)],  #coord system used for simulation is from right to left and top to bottom
   }
 
 def main(args):
   """The actual script execution after the input arguments are parsed."""
-  #Constant values necessary for neutron processing, that are stored in shared memory if parallel processing is used
-  sharedConstants = createConstantsDict(args, instrumentParameters[args.instrument])
+  #parameters necessary for neutron processing
+  params = createParamsDict(args, instrumentParameters[args.instrument])
 
   ### Getting neutron events from the MCPL file ###
   mcplTofLimits = getTofFilteringLimits(args, instrumentParameters[args.instrument])
@@ -255,7 +328,7 @@ def main(args):
   events = getNeutronEvents(args.filename, mcplTofLimits)
 
   ### Preconditioning ###
-  events = coordTransformToSampleSystem(events, sharedConstants['alpha_inc'])
+  events = coordTransformToSampleSystem(events, params['alpha_inc'])
   events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
   if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
@@ -263,55 +336,43 @@ def main(args):
     events = applyT0Correction(events, args)
 
   ### BornAgain simulation ###
-  savename = f"q_events_pix{sharedConstants['pixelNr']}" if args.savename == '' else args.savename
+  savename = f"q_events_pix{params['pixelNr']}" if args.savename == '' else args.savename
   print('Number of events being processed: ', len(events))
-  
+
   if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
     from oldProcessing import processNeutronsNonVectorised
-    processNeutronsNonVectorised(events, get_simulation, sharedConstants, savename)
-    return
+    processNeutronsNonVectorised(events, get_simulation, params, savename)
+    return #early return
 
   if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially, mainly intended for profiling
-    #NOTE the storing histogrammed results could be implemented, but right now it is raw_output only
-    q_events_calc_detector = []
-    for in_ID, neutron in enumerate(events):
-      if in_ID%200==0:
-        print(f'{in_ID:10}/{len(events)}')
-      tmp = processNeutrons(neutron, sharedConstants)
-      q_events_calc_detector.extend(tmp) #this solution can cause memory issues for high incident event and pixel number
-    np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
-    print(f"Created {savename}.npz with raw Q events.")
-    return
-
-  num_processes = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
-  print(f"Number of parallel processes: {num_processes} (number of CPU cores: {cpu_count()})")
-  try:
-    #TODO the histogram memory blocks should not be created if args.raw_output
-    sharedMemoryHandler.createSharedMemoryBlocks(sharedConstants, args.bins, args.x_range, args.y_range, args.z_range) #using shared memory to pass in constants for the parallel processes and store result by incrementing shared histograms
-    with Pool(processes=num_processes) as pool:
-      # Use tqdm to wrap the iterable returned by pool.imap for the progressbar
-      q_events = list(tqdm(pool.imap_unordered(processNeutrons, events), total=len(events)))
-
-    if not args.raw_output:
-      final_hist, final_error, xEdges, yEdges, zEdges = sharedMemoryHandler.getFinalHistograms()
-  finally:
-    sharedMemoryHandler.cleanup()
+    result = processNeutrons(events, params)
+  else:
+    processNumber = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+    result = processNeutronsInParallel(events, params, processNumber)
 
   ### Create Output ###
-  if args.raw_output: # Create raw list of Q events (old output)
-    #storing all Q events in a list can cause memory issues (earlier at the BornAgain simulation stage) for high incident event and pixel number
-    q_events_calc_detector = [item for sublist in q_events for item in sublist] 
-    np.savez_compressed(savename, q_events_calc_detector=q_events_calc_detector)
+  if args.raw_output: #raw list of Q events (old output)
+    qArray = result
+    np.savez_compressed(savename, q_events_calc_detector=qArray)
     print(f"Created {savename}.npz with raw Q events.")
-    return 
-  
-  np.savez_compressed(savename, hist=final_hist, error=final_error, xEdges=xEdges, yEdges=yEdges, zEdges=zEdges)
+    return # no further processing, early return
+
+  ## Create Q histogram with corresponding uncertainty array (new output format)
+  qHist = result['qHist']
+  qHistWeightsSquared = result['qHistWeightsSquared']
+  qHistError = np.sqrt(qHistWeightsSquared)
+
+  #Get the bin edges of the histograms
+  edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
+               for b, r in zip(params['bins'], params['histRanges'])]
+
+  np.savez_compressed(savename, hist=qHist, error=qHistError, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
   print(f"Created {savename}.npz")
 
   if args.quick_plot:
-    hist2D = np.sum(final_hist, axis=1)
+    hist2D = np.sum(qHist, axis=1)
     from plotting_utilities import logPlot2d
-    logPlot2d(hist2D.T, -xEdges, -zEdges, xRange=args.x_range, yRange=args.z_range, output='show')
+    logPlot2d(hist2D.T, -edges[0], -edges[2], xRange=args.x_range, yRange=args.z_range, output='show')
 
 if __name__=='__main__':
   def getBornAgainModels():
