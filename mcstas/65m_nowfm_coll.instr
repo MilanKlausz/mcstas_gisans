@@ -663,7 +663,7 @@ AT (0,0,0) RELATIVE sample_arm
 
 COMPONENT mcpl_out = MCPL_output_noacc_russian_roulette(filename="test_events", intendedWeight=0.0)
  AT (0, 0, 0) RELATIVE sample_arm
- ROTATED (90.0,0,0) RELATIVE sample_arm
+ ROTATED (0,0,0) RELATIVE sample_arm
 
 COMPONENT lamend = L_monitor(
  nL = 500, filename = "lamend",

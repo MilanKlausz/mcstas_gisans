@@ -63,19 +63,19 @@ def coordTransformToSampleSystem(events, alpha_inc):
   vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
   return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
 
-def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
-  """Propagate neutron events to z=0, the sample surface.
+def propagateToSampleSurface(events, sample_xwidth, sample_zheight):
+  """Propagate neutron events to y=0, the sample surface.
   Discard those neutrons which would miss the sample.
   """
   p, x, y, z, vx, vy, vz, t = events.T
-  t_propagate = -z/vz #negative sign because z axis is pointing down (toward the sample) in the Rotated McStas coord system used for MCPL output
+  t_propagate = -y/vy # y+vy*t_propagate=0 (where y is the initial position)
   x += vx * t_propagate
   y += vy * t_propagate
   z += vz * t_propagate
   t += t_propagate
 
   # Create a boolean mask for neutrons to select those which hit the sample
-  hitSampleMask = (abs(x) < sample_xwidth*0.5) & (abs(y) < sample_yheight*0.5)
+  hitSampleMask = (abs(x) < sample_xwidth*0.5) & (abs(z) < sample_zheight*0.5)
   sampleHitEvents = np.vstack([p, x, y, z, vx, vy, vz, t]).T[hitSampleMask]
 
   eventNr = len(events)
@@ -84,7 +84,7 @@ def propagateToSampleSurface(events, sample_xwidth, sample_yheight):
     print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} neutrons avoided the sample!")
   return sampleHitEvents
 
-def applyT0Correction(events, args): #TODO update docstring
+def applyT0Correction(events, args):
   """Apply t0 TOF correction for all neutrons. A fixed t0correction value can be
   given to be subtracted, or a McStas TOFLambda monitor result with a selected
   wavelength is used, in which case t0correction is retrieved as the mean value
@@ -136,11 +136,11 @@ def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_
   """Calculate x,y,z position on the detector surface and the corresponding TOF for the sample to detector propagation"""
   rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
   #Calculate time until the detector surface with coord system rotation
-  _, yRot = np.dot(rot_matrix, [z, y])
-  _, vyRot = np.matmul(rot_matrix, np.vstack((VZ, VY))) # get [vz, vy]
+  zRot, _ = np.dot(rot_matrix, [z, y])
+  vzRot, _ = np.matmul(rot_matrix, np.vstack((VZ, VY))) # get [vz, vy]
 
   #propagate to detector surface perpendicular to the y-axis
-  t_propagate = (sample_detector_distance - yRot) / vyRot
+  t_propagate = (sample_detector_distance - zRot) / vzRot
 
   return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
 
@@ -162,7 +162,7 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
   sample_detector_path_length = np.linalg.norm(posDetector, axis=1)
 
   v_out_det = posDetector / sample_detector_path_length[:, np.newaxis]
-  v_in_alpha = np.array([0, np.cos(alpha_inc), np.sin(alpha_inc)])
+  v_in_alpha = np.array([0, -np.sin(alpha_inc), np.cos(alpha_inc)])
 
   if notTOFInstrument is False: #TOF instruments
     wavelengthDet = calcWavelength(t+sample_detector_tof, nominal_source_sample_distance+sample_detector_path_length)
@@ -206,9 +206,14 @@ def processNeutrons(neutrons, params, queue=None):
   for id, neutron in enumerate(neutrons):
     if id%200==0:
       print(f'{id:10}/{len(neutrons)}') #print output to indicate progress
+    # Neutron positions, velocities and corresponding calculations are expressed
+    # in the McStas coord system (X - left; y - up; Z - forward 'along the beam')
+    # not in the BornAgain coord system (X - forward, Y - left, Z - up),
+    # but with the SphericalDetector, BornAgain only deals with alpha_i (input),
+    # alpha_f and phi_f (output), which are the same if calculated correctly
     p, x, y, z, vx, vy, vz, t = neutron
-    alpha_i = np.rad2deg(np.arctan(vz/vy)) #deg
-    phi_i = np.rad2deg(np.arctan(vx/vy)) #deg
+    alpha_i = np.rad2deg(np.arctan(-vy/vz)) #[deg]
+    phi_i = np.rad2deg(np.arctan(vx/vz)) #[deg], not used in sim, added to phi_f
     v = np.sqrt(vx**2+vy**2+vz**2)
     wavelength = velocityToWavelength(v) #angstrom
 
@@ -228,10 +233,9 @@ def processNeutrons(neutrons, params, queue=None):
     phi_f = phi_i+params['angle_range']*(np.linspace(-1., 1., params['pixelNr'])+Rz/(params['pixelNr']-1))
     alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
-    # These are expressed in the rotated McStas coord system (X - left; y - forward; Z - downward)
     VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
-    VY_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
-    VZ_grid = -v * np.sin(alpha_grid)                   #this is Z in BA coord system) (horizontal - up)
+    VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
+    VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
     qArray = getQsAtDetector(x, y, z, t, params['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
     weights = pout.T.flatten()
     if params['raw_output']:
@@ -297,12 +301,6 @@ def processNeutronsInParallel(events, params, processNumber):
 def createParamsDict(args, instParams):
   """Pack parameters necessary for processing in single dictionary"""
 
-  def transformRangeLimits(range):
-      """Returns inverted coordinates in ascending order"""
-      rangeNegate = [-x for x in range]
-      rangeNegate.sort()
-      return rangeNegate
-
   return {
     'nominal_source_sample_distance': instParams['nominal_source_sample_distance'] - (0 if not args.wfm else instParams['wfm_virtual_source_distance']),
     'sample_detector_distance': instParams['sample_detector_distance'],
@@ -314,7 +312,7 @@ def createParamsDict(args, instParams):
     'angle_range': args.angle_range,
     'raw_output': args.raw_output,
     'bins': args.bins,
-    'histRanges': [transformRangeLimits(args.x_range), args.y_range, transformRangeLimits(args.z_range)],  #coord system used for simulation is from right to left and top to bottom
+    'histRanges': [args.x_range, args.y_range, args.z_range]
   }
 
 def main(args):
@@ -329,7 +327,7 @@ def main(args):
 
   ### Preconditioning ###
   events = coordTransformToSampleSystem(events, params['alpha_inc'])
-  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_yheight)
+  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_zheight)
   if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
   else:
@@ -370,9 +368,9 @@ def main(args):
   print(f"Created {savename}.npz")
 
   if args.quick_plot:
-    hist2D = np.sum(qHist, axis=1)
+    hist2D = np.sum(qHist, axis=2)
     from plotting_utilities import logPlot2d
-    logPlot2d(hist2D.T, -edges[0], -edges[2], xRange=args.x_range, yRange=args.z_range, output='show')
+    logPlot2d(hist2D.T, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
 
 if __name__=='__main__':
   def getBornAgainModels():
@@ -394,10 +392,10 @@ if __name__=='__main__':
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create a raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
-  outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 1, 128], help='Number of histogram bins in x,y,z directions.')
-  outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)')
-  outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-1000, 1000], help='Qy range of the histogram. (In horizontal plane back to front)')
-  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane bottom to top')
+  outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 128, 1], help='Number of histogram bins in x,y,z directions.')
+  outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane right to left)')
+  outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qy range of the histogram. (In vertical plane bottom to top)')
+  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-1000, 1000], help='Qz range of the histogram. (In horizontal plane back to forward)')
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
   outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different levels of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
 
@@ -406,7 +404,7 @@ if __name__=='__main__':
   sampleGroup.add_argument('-m','--model', default="silica_100nm_air", choices=getBornAgainModels(), help = 'BornAgain model to be used.')
   sampleGroup.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
-  sampleGroup.add_argument('--sample_yheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
+  sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
 
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')

@@ -12,7 +12,6 @@ def unpackQEvents(qEvents):
   x = qEvents[:, 1]
   y = qEvents[:, 2]
   z = qEvents[:, 3]
-  x, y, z = transformCoordSystem(x,y,z)
   return x, y, z, weights
 
 def unpackHistogram(npFile):
@@ -21,12 +20,7 @@ def unpackHistogram(npFile):
   xEdges = npFile['xEdges']
   yEdges = npFile['yEdges']
   zEdges = npFile['zEdges']
-  xEdges, yEdges, zEdges = transformCoordSystem(xEdges, yEdges, zEdges)
   return hist, histError, xEdges, yEdges, zEdges
-
-def transformCoordSystem(x,y,z):
-  """inverting x and z so that the coord system will be xyx:right-front-up instead of left-front-down"""
-  return -x, y, -z
 
 def getRangeDefaultOrOverride(default, minOverride, maxOverride):
   return [minOverride if minOverride else default[0],
@@ -39,35 +33,35 @@ def main(args):
   experimentTime = args.experiment_time
 
   if args.plotStoredData:
-    hist, histError, xEdges, zEdges = getStoredData(args.nxs)
+    hist, histError, xEdges, yEdges = getStoredData(args.nxs)
     xDataRange = [xEdges[0], xEdges[-1]]
-    yDataRange = [zEdges[0], zEdges[-1]]
+    yDataRange = [yEdges[0], yEdges[-1]]
     label = 'D22 measurement'
-    datasets.append((hist, histError, xEdges, zEdges, label))
+    datasets.append((hist, histError, xEdges, yEdges, label))
     # if args.overlay:
-    #   hist_exp, histError_exp, xEdges_exp, zEdges_exp = hist, histError, xEdges, zEdges
+    #   hist_exp, histError_exp, xEdges_exp, yEdges_exp = hist, histError, xEdges, yEdges
 
   if args.filename and args.label:
     for filename, label in zip(args.filename, args.label):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
-          hist, histError, xEdges, _, zEdges = unpackHistogram(npFile)
-          hist = np.sum(hist, axis=1).T #TODO collapse along y-axis for now but it should be optional
-          histError = np.sum(histError, axis=1).T #TODO collapse along y-axis for now but it should be optional
+          hist, histError, xEdges, yEdges, _ = unpackHistogram(npFile)
+          hist = np.sum(hist, axis=2).T #TODO collapse along z-axis for now but it should be optional
+          histError = np.sum(histError, axis=2).T #TODO collapse along z-axis for now but it should be optional
           xDataRange = [xEdges[0], xEdges[-1]]
-          yDataRange = [zEdges[0], zEdges[-1]]
+          yDataRange = [yEdges[0], yEdges[-1]]
         else: #old 'raw data' file with a list of unhistogrammed qEvents
           npFileArrayKey = npFile.files[0]
           q_events = npFile[npFileArrayKey]
-          x, _, z, weights = unpackQEvents(q_events)
+          x, y, _, weights = unpackQEvents(q_events)
           bins_hor = args.bins[0] if not args.plotStoredData else len(xEdges)-1 #override bin number to match stored data for better comparison
-          bins_vert = args.bins[1] if not args.plotStoredData else len(zEdges)-1
-          hist, histError, xEdges, zEdges = create2dHistogram(x, z, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
+          bins_vert = args.bins[1] if not args.plotStoredData else len(yEdges)-1
+          hist, histError, xEdges, yEdges = create2dHistogram(x, y, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
 
-      qzIndex = np.digitize(args.q_min, zEdges) - 1
+      qzIndex = np.digitize(args.q_min, yEdges) - 1
 
       hist, histError = handleExperimentTime(hist, histError, qzIndex, experimentTime, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
-      datasets.append((hist, histError, xEdges, zEdges, label))
+      datasets.append((hist, histError, xEdges, yEdges, label))
 
       # #TODO experimental
       # detectionEfficiency = 0.7
@@ -133,15 +127,15 @@ def main(args):
     for datasetIndex, dataset in enumerate(datasets):
       plot2DAxes = plot2DAxesList[datasetIndex]
       lineColor = lineColors[datasetIndex]
-      hist, histError, xEdges, zEdges, label = dataset
-      logPlot2d(hist, xEdges, zEdges, label, ax=plot2DAxes, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
+      hist, histError, xEdges, yEdges, label = dataset
+      logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
 
-      qzMinIndex = np.digitize(args.q_min, zEdges) - 1
-      qzMaxIndex = np.digitize(args.q_max, zEdges)
-      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, zEdges, [qzMinIndex, qzMaxIndex])
+      qzMinIndex = np.digitize(args.q_min, yEdges) - 1
+      qzMaxIndex = np.digitize(args.q_max, yEdges)
+      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qzMinIndex, qzMaxIndex])
       plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=plot1DAxes, xRange=xPlotRange, savename=args.savename, output='none')
-      plot2DAxes.axhline(zEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
-      plot2DAxes.axhline(zEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
+      plot2DAxes.axhline(yEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
+      plot2DAxes.axhline(yEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
 
       # ### TEMP manual work
       # xFirstPeakMin = 0.04 #TODO
@@ -171,12 +165,12 @@ def main(args):
       print(f"Created {filename}")
 
   if not args.overlay:
-    for hist, histError, xEdges, zEdges, label in datasets:
-      logPlot2d(hist, xEdges, zEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, matchXAxes=matchXAxes, output=plotOutput)
+    for hist, histError, xEdges, yEdges, label in datasets:
+      logPlot2d(hist, xEdges, yEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, matchXAxes=matchXAxes, output=plotOutput)
 
-      qzMinIndex_exp = np.digitize(args.q_min, zEdges) - 1
-      qzMaxIndex_exp = np.digitize(args.q_max, zEdges)
-      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, zEdges, [qzMinIndex_exp, qzMaxIndex_exp])
+      qzMinIndex_exp = np.digitize(args.q_min, yEdges) - 1
+      qzMaxIndex_exp = np.digitize(args.q_max, yEdges)
+      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qzMinIndex_exp, qzMaxIndex_exp])
       plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output='none')
 
   if args.dual_plot:

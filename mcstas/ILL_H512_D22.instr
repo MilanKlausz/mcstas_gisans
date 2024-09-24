@@ -358,7 +358,7 @@ AT (0, 0, 0) RELATIVE D22_Sample_Pos
 
 COMPONENT mcpl_out = MCPL_output_noacc_russian_roulette(filename="test_events", intendedWeight=intendedWeight)
  AT (0, 0, 0) RELATIVE D22_Sample_Pos
- ROTATED (90.0,0,0) RELATIVE D22_Sample_Pos
+ ROTATED (0,0,0) RELATIVE D22_Sample_Pos
 
 // SPLIT COMPONENT H51_D22_Sample = Isotropic_Sqw(radius=0.005,yheight=0.05,
 //   Sqw_coh=D22_sample, Sqw_inc=NULL, d_phi=RAD2DEG*atan2(1, D22_collimation))
