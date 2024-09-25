@@ -4,7 +4,7 @@ Plotting utilities
 
 import numpy as np
 import math as m
-from neutron_utilities import calcWavelength
+# from neutron_utilities import calcWavelength
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
@@ -30,6 +30,8 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
   ax.set_ylabel('Qy [1/nm]')
   ax.set_title(titleText)
   fig = ax.figure
+
+  # plt.gca().invert_xaxis() #optionally invert x-axis?
 
   if not matchXAxes:
     cbar = fig.colorbar(quadmesh, ax=ax, orientation='vertical')
@@ -76,9 +78,22 @@ def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=20
   # logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
 
 def create2dHistogram(x, y, weights, xBins=256, yBins=128, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6]):
+  """Create 2D histogram of weighted x-y values, controlling the ranges and
+  number of bins along the axes. Histograms are transposed """
   hist, xedges, yedges = np.histogram2d(x, y, weights=weights, bins=[xBins, yBins], range=[xRange, yRange])
   hist_weight2, _, _ = np.histogram2d(x, y, weights=weights**2, bins=[xBins, yBins], range=[xRange, yRange])
   histError = np.sqrt(hist_weight2)
   hist = hist.T
   histError = histError.T
   return hist, histError, xedges, yedges
+
+def extractRangeTo1D(hist, histError, xEdges, yEdges, yIndexRange):
+  """Extract a range of a 2D histogram into a 1D histogram while handling
+  the propagation of error of the corresponding histogram of uncertainties"""
+  yLimits = [yEdges[yIndexRange[0]], yEdges[yIndexRange[1]+1]]
+  valuesExtracted = hist[yIndexRange[0]:yIndexRange[1],:]
+  values = np.sum(valuesExtracted, axis=0)
+  errorsExtracted = histError[yIndexRange[0]:yIndexRange[1],:]
+  errors = np.sqrt(np.sum(errorsExtracted**2, axis=0))
+  xBins = (xEdges[:-1] + xEdges[1:]) / 2 # Calculate bin centers from bin edges
+  return values, errors, xBins, yLimits

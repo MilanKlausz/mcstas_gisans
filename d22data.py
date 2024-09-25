@@ -7,6 +7,8 @@ import numpy as np
 from numpy import pi, sin, arctan
 
 def getStoredData(filepath='073174.nxs'):
+  """Read data from measurements at D22(ILL) from nxs files.It is hardcoded
+  and not meant to be used for any other data in the current state."""
   # Constants
   lambda_angstrom = 6  # Wavelength in angstroms
   detector_distance_mm = 17600  # Distance from sample to detector in mm

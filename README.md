@@ -25,12 +25,12 @@ Simulation
 - Run the BornAgain simulation script using the MCPL output file from the McStas simulation in a shell with the conda environment activated:
   ```
   conda activate mcstas_ba
-  python events2BA.py mcstas/output_dir/test_events.mcpl.gz --instrument='loki' --wavelength=6.0 --pixel_number=100 --savename 'test_q' --no_mcpl_filtering
+  python events2BA.py mcstas/output_dir/test_events.mcpl.gz --instrument='loki' --wavelength=6.0 --angle_range 3.0 --pixel_number=100 --savename 'test_q' --no_mcpl_filtering
   ```
 
 - Plot the result:
   ```
-  python plotQ.py --filename test_q.npz --label "test run" --intensity_min 1e-6 --x_min=-0.3 --x_max=0.3 --y_min=-0.25 --y_max=0.3
+  python plotQ.py --filename test_q.npz --intensity_min 1e-5
   ```
 
 Suggestions for setup

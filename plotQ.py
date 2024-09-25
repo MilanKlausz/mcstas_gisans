@@ -3,28 +3,56 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram #, createTofSliced2dQPlots
+from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D
 from experiment_time_utilities import handleExperimentTime
 from d22data import getStoredData
 from inputOutput import unpackQHistogramFile, unpackRawQListFile
 
-def main(args):
+def getPlotRanges(datasets, xPlotRange, yPlotRange):
+  """Get plot ranges. Return ranges if provided, otherwise find the minimum and
+  maximum from the datasets."""
+  if not xPlotRange:
+    xEdgeMin = min([xEdges[0] for _,_,xEdges,_,_ in datasets])
+    xEdgeMax = max([xEdges[-1] for _,_,xEdges,_,_ in datasets])
+    xPlotRange = [xEdgeMin, xEdgeMax]
+  if not yPlotRange:
+    yEdgeMin = min([yEdges[0] for _,_,_,yEdges,_ in datasets])
+    yEdgeMax = max([yEdges[-1] for _,_,_,yEdges,_ in datasets])
+    yPlotRange = [yEdgeMin, yEdgeMax]
+  return xPlotRange, yPlotRange
+
+def getOverlayPlotAxes(column=2):
+  """Get axes for special subplot layout for dataset comparison. Create a
+  grid of subplots, replacing the bottom row with a single larger subplot"""
+  fig, axes = plt.subplots(2, column, figsize=(16, 12))
+
+  #Replace the bottom row of the grid with a single new subplot
+  gs = axes[1, 0].get_gridspec() #Get GridSpec from the bottom left subplot
+  for i in range(column): #Remove all bottom subplots
+    axes[1, i].remove()
+  axesBottom = fig.add_subplot(gs[1:, :]) #cover the row with a new subplot
+
+  axes = axes.flatten()
+  axesTop = [axes[i] for i in range(column)]
+  return axesTop, axesBottom
+
+def getDatasets(args):
+  """Prepare the datasets to be plotted. Process input files, and scale to
+  experiment time if required"""
+  datasets = []
   xDataRange = args.x_range
   yDataRange = args.y_range
-  datasets = []
-  experimentTime = args.experiment_time
 
-  if args.plotStoredData:
+  if args.nxs:
     hist, histError, xEdges, yEdges = getStoredData(args.nxs)
     xDataRange = [xEdges[0], xEdges[-1]]
     yDataRange = [yEdges[0], yEdges[-1]]
     label = 'D22 measurement'
     datasets.append((hist, histError, xEdges, yEdges, label))
-    # if args.overlay:
-    #   hist_exp, histError_exp, xEdges_exp, yEdges_exp = hist, histError, xEdges, yEdges
 
-  if args.filename and args.label:
-    for filename, label in zip(args.filename, args.label):
+  if args.filename:
+    labels = args.label if args.label else args.filename #default to filenames
+    for filename, label in zip(args.filename, labels):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
           hist, histError, xEdges, yEdges, _ = unpackQHistogramFile(npFile)
@@ -34,13 +62,13 @@ def main(args):
           yDataRange = [yEdges[0], yEdges[-1]]
         else: #old 'raw data' file with a list of unhistogrammed qEvents
           x, y, _, weights = unpackRawQListFile(npFile)
-          bins_hor = args.bins[0] if not args.plotStoredData else len(xEdges)-1 #override bin number to match stored data for better comparison
-          bins_vert = args.bins[1] if not args.plotStoredData else len(yEdges)-1
+          bins_hor = args.bins[0] if not args.nxs else len(xEdges)-1 #override bin number to match stored data for better comparison
+          bins_vert = args.bins[1] if not args.nxs else len(yEdges)-1
           hist, histError, xEdges, yEdges = create2dHistogram(x, y, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
 
       qzIndex = np.digitize(args.q_min, yEdges) - 1
 
-      hist, histError = handleExperimentTime(hist, histError, qzIndex, experimentTime, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
+      hist, histError = handleExperimentTime(hist, histError, qzIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
       datasets.append((hist, histError, xEdges, yEdges, label))
 
       # #TODO experimental
@@ -49,6 +77,11 @@ def main(args):
       # histError = histError * detectionEfficiency
       # #TODO experimental
 
+  return datasets
+
+def main(args):
+  datasets = getDatasets(args)
+
   if args.dual_plot:
     _, (ax1, ax2) = plt.subplots(2, figsize=(6, 12))
     plotOutput = 'none'
@@ -56,22 +89,7 @@ def main(args):
   else:
     matchXAxes = False
     if args.overlay:
-      # _, ax2 = plt.subplots(1, figsize=(6, 6))
-      fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-      # Remove the bottom-right subplot
-      axes[1, 1].remove()
-
-      # Get the GridSpec from the bottom left subplot
-      gs = axes[1, 0].get_gridspec()
-      # Remove the bottom left subplot
-      axes[1, 0].remove()
-      # Add a new, larger subplot to cover the entire bottom row
-      ax2 = fig.add_subplot(gs[1:, :])
-
-      axes = axes.flatten()
-      ax1 = axes[0]
-      ax3 = axes[1]
-      # ax2 = axes[2]
+      axesTop, axesBottom = getOverlayPlotAxes(len(datasets))
     else:
       ax1, ax2 = None, None
     if args.pdf:
@@ -84,28 +102,13 @@ def main(args):
   if args.intensity_min is not None:
     intensityMin = float(args.intensity_min)
   else:
-    intensityMin = 1e-9 if experimentTime is None else 1
-
-
-  #TODO fix xEdges, and move the function to plotting_utilities(?)
-  def extractRangeTo1D(hist, histError, xEdges, yEdges, yIndexRange):
-    yLimits = [yEdges[yIndexRange[0]], yEdges[yIndexRange[1]+1]]
-    valuesExtracted = hist[yIndexRange[0]:yIndexRange[1],:]
-    values = np.sum(valuesExtracted, axis=0)
-    errorsExtracted = histError[yIndexRange[0]:yIndexRange[1],:]
-    errors = np.sqrt(np.sum(errorsExtracted**2, axis=0))
-    xBins = (xEdges[:-1] + xEdges[1:]) / 2 # Calculate bin centers from bin edges
-    return values, errors, xBins, yLimits
-
-  xPlotRange = getRangeDefaultOrOverride(xDataRange, args.x_min, args.x_max)
-  yPlotRange = getRangeDefaultOrOverride(yDataRange, args.y_min, args.y_max)
+    intensityMin = 1e-9 if args.experiment_time is None else 1
 
   if args.overlay:
+    xPlotRange, yPlotRange = getPlotRanges(datasets, args.x_plot_range, args.y_plot_range)
     lineColors = ['blue', 'green', 'orange','purple']
-    plot2DAxesList = [ax1, ax3, ax3, ax3]
-    plot1DAxes = ax2
     for datasetIndex, dataset in enumerate(datasets):
-      plot2DAxes = plot2DAxesList[datasetIndex]
+      plot2DAxes = axesTop[datasetIndex]
       lineColor = lineColors[datasetIndex]
       hist, histError, xEdges, yEdges, label = dataset
       logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
@@ -113,7 +116,7 @@ def main(args):
       qzMinIndex = np.digitize(args.q_min, yEdges) - 1
       qzMaxIndex = np.digitize(args.q_max, yEdges)
       values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qzMinIndex, qzMaxIndex])
-      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=plot1DAxes, xRange=xPlotRange, savename=args.savename, output='none')
+      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, xRange=xPlotRange, savename=args.savename, output='none')
       plot2DAxes.axhline(yEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
       plot2DAxes.axhline(yEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
 
@@ -122,17 +125,17 @@ def main(args):
       # xFirstPeakMax = 0.085 #TODO
       # qFirstPeakMinIndex = np.digitize(xFirstPeakMin, xBins) - 1
       # qFirstPeakMaxIndex = np.digitize(xFirstPeakMax, xBins)
-      # plot1DAxes.axvline(xBins[qFirstPeakMinIndex], color='magenta', linestyle='--')
-      # plot1DAxes.axvline(xBins[qFirstPeakMaxIndex], color='magenta', linestyle='--')
+      # axesBottom.axvline(xBins[qFirstPeakMinIndex], color='magenta', linestyle='--')
+      # axesBottom.axvline(xBins[qFirstPeakMaxIndex], color='magenta', linestyle='--')
 
       # firstPeakSumIntensity = sum(values[qFirstPeakMinIndex:qFirstPeakMaxIndex])
       # print(f"{label} - {qFirstPeakMinIndex=}, {qFirstPeakMaxIndex=}")
       # print(f"{label} - first peak sum intensity: {firstPeakSumIntensity}")
       # ### TEMP manual work
 
-    plot1DAxes.set_ylim(bottom=intensityMin)
-    plot1DAxes.grid()
-    plot1DAxes.legend()
+    axesBottom.set_ylim(bottom=intensityMin)
+    axesBottom.grid()
+    axesBottom.legend()
     plt.tight_layout()
     if not args.pdf and not args.png:
       plt.show()
@@ -146,12 +149,14 @@ def main(args):
 
   if not args.overlay:
     for hist, histError, xEdges, yEdges, label in datasets:
+      xPlotRange = args.x_plot_range if args.x_plot_range else [xEdges[0], xEdges[-1]]
+      yPlotRange = args.y_plot_range if args.y_plot_range else [yEdges[0], yEdges[-1]]
       logPlot2d(hist, xEdges, yEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, matchXAxes=matchXAxes, output=plotOutput)
 
       qzMinIndex_exp = np.digitize(args.q_min, yEdges) - 1
       qzMaxIndex_exp = np.digitize(args.q_max, yEdges)
       values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qzMinIndex_exp, qzMaxIndex_exp])
-      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output='none')
+      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output=plotOutput)
 
   if args.dual_plot:
     if not args.pdf and not args.png:
@@ -164,11 +169,10 @@ def main(args):
       plt.savefig(filename, dpi=300)
       print(f"Created {filename}")
 
-  # createTofSliced2dQPlots(x, z, weights, key)
-
 if __name__=='__main__':
 
   def zeroToOne(x):
+    """Argparser type check function for float number in range [0.0, 1.0]"""
     try:
         x = float(x)
     except ValueError:
@@ -192,10 +196,8 @@ if __name__=='__main__':
   plotParamGroup.add_argument('-m', '--intensity_min', default=None, help = 'Intensity minimum for the 2D q plot colorbar.')
   plotParamGroup.add_argument('-q', '--q_min', default=0.09, type=float, help = 'Vertical component of the Q values of interest. Used as the minimum of the range is q_max is provided as well.')
   plotParamGroup.add_argument('--q_max', default=0.10, type=float, help = 'Maximum of the vertical component of the Q range of interest.')
-  plotParamGroup.add_argument('--x_min', default=None, type=float, help = 'Plot limit: x minimum.')
-  plotParamGroup.add_argument('--x_max', default=None, type=float, help = 'Plot limit: x maximum.')
-  plotParamGroup.add_argument('--y_min', default=None, type=float, help = 'Plot limit: y minimum')
-  plotParamGroup.add_argument('--y_max', default=None, type=float, help = 'Plot limit: y maximum.')
+  plotParamGroup.add_argument('--x_plot_range', nargs=2, type=float, help = 'Plot x range.')
+  plotParamGroup.add_argument('--y_plot_range', nargs=2, type=float, help = 'Plot y range.')
 
   findTimeParamGroup = parser.add_argument_group('Find experiment time', 'Parameters and options for finding the experiment time to scale up to.')
   findTimeParamGroup.add_argument('--find_experiment_time', action='store_true', help = 'Find the minimum experiment time the results need to be upscaled to in order to get a certain minimum number of counts in the bins.')
@@ -210,13 +212,15 @@ if __name__=='__main__':
   rawFormat.add_argument('--y_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qy range of the histogram. (In vertical plane bottom to top)')
 
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
-  storedDataParamGroup.add_argument('--nxs', help = 'Full path to the D22 Nexus file.')
-  storedDataParamGroup.add_argument('--plotStoredData', action='store_true', help = 'Plot stored data.')
-  storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.')
+  storedDataParamGroup.add_argument('--nxs', default=None, help = 'Full path to the D22 Nexus file. (Using automatic D22 measurement label for it.)')
+  storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
 
   args = parser.parse_args()
 
-  if args.filename is None and not args.plotStoredData:
-    parser.error('No input file provided! This is only allowed when the --plotStoredData option is used.')
+  if args.filename is None and args.nxs is None:
+    parser.error('No input file provided! This is only allowed when the --nxs option is used.')
+
+  if args.label and len(args.label) != len(args.filename):
+    parser.error(f"The number of labels(${len(args.label)}) doesn't agree with the number of files(${len(args.filename)})")
 
   main(args)
