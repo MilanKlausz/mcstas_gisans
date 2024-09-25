@@ -28,7 +28,7 @@ def getRangeDefaultOrOverride(default, minOverride, maxOverride):
 
 def main(args):
   xDataRange = args.x_range
-  yDataRange = args.z_range
+  yDataRange = args.y_range
   datasets = []
   experimentTime = args.experiment_time
 
@@ -226,8 +226,8 @@ if __name__=='__main__':
 
   rawFormat = parser.add_argument_group('Raw Q events data', 'Use (old) raw data format with Q event list in the file instead of an already histogrammed data.')
   rawFormat.add_argument('--bins', nargs=2, type=int, default=[256, 128], help='Number of histogram bins in x,z directions.')
-  rawFormat.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane left to right)')
-  rawFormat.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qz range of the histogram. (In vertical plane )bottom to top')
+  rawFormat.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane right to left)')
+  rawFormat.add_argument('--y_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qy range of the histogram. (In vertical plane bottom to top)')
 
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
   storedDataParamGroup.add_argument('--nxs', help = 'Full path to the D22 Nexus file.')
