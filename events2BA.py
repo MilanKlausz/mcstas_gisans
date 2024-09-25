@@ -19,6 +19,7 @@ from bornagain import deg, angstrom
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters, wfmRequiredKeys
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
+from inputOutput import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
 
 def getTofFilteringLimits(args, pars):
   """
@@ -47,7 +48,6 @@ def getTofFilteringLimits(args, pars):
       tofLimits[1] = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       if args.figure_output is not None:
       # Terminate the script execution because an 'only plotting' has been selected by the user
-        from inputOutput import printTofLimits
         import sys
         printTofLimits(tofLimits)
         sys.exit()
@@ -300,7 +300,6 @@ def processNeutronsInParallel(events, params, processNumber):
 
 def createParamsDict(args, instParams):
   """Pack parameters necessary for processing in single dictionary"""
-
   return {
     'nominal_source_sample_distance': instParams['nominal_source_sample_distance'] - (0 if not args.wfm else instParams['wfm_virtual_source_distance']),
     'sample_detector_distance': instParams['sample_detector_distance'],
@@ -322,7 +321,6 @@ def main(args):
 
   ### Getting neutron events from the MCPL file ###
   mcplTofLimits = getTofFilteringLimits(args, instrumentParameters[args.instrument])
-  from inputOutput import getNeutronEvents
   events = getNeutronEvents(args.filename, mcplTofLimits)
 
   ### Preconditioning ###
@@ -351,8 +349,7 @@ def main(args):
   ### Create Output ###
   if args.raw_output: #raw list of Q events (old output)
     qArray = result
-    np.savez_compressed(savename, q_events_calc_detector=qArray)
-    print(f"Created {savename}.npz with raw Q events.")
+    saveRawQListFile(savename, qArray)
     return # no further processing, early return
 
   ## Create Q histogram with corresponding uncertainty array (new output format)
@@ -364,8 +361,7 @@ def main(args):
   edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
                for b, r in zip(params['bins'], params['histRanges'])]
 
-  np.savez_compressed(savename, hist=qHist, error=qHistError, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
-  print(f"Created {savename}.npz")
+  saveQHistogramFile(savename, qHist, qHistError, edges)
 
   if args.quick_plot:
     hist2D = np.sum(qHist, axis=2)

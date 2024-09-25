@@ -6,25 +6,7 @@ import matplotlib.pyplot as plt
 from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram #, createTofSliced2dQPlots
 from experiment_time_utilities import handleExperimentTime
 from d22data import getStoredData
-
-def unpackQEvents(qEvents):
-  weights = qEvents[:, 0]
-  x = qEvents[:, 1]
-  y = qEvents[:, 2]
-  z = qEvents[:, 3]
-  return x, y, z, weights
-
-def unpackHistogram(npFile):
-  hist = npFile['hist']
-  histError = npFile['error']
-  xEdges = npFile['xEdges']
-  yEdges = npFile['yEdges']
-  zEdges = npFile['zEdges']
-  return hist, histError, xEdges, yEdges, zEdges
-
-def getRangeDefaultOrOverride(default, minOverride, maxOverride):
-  return [minOverride if minOverride else default[0],
-          maxOverride if maxOverride else default[1]]
+from inputOutput import unpackQHistogramFile, unpackRawQListFile
 
 def main(args):
   xDataRange = args.x_range
@@ -45,15 +27,13 @@ def main(args):
     for filename, label in zip(args.filename, args.label):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
-          hist, histError, xEdges, yEdges, _ = unpackHistogram(npFile)
+          hist, histError, xEdges, yEdges, _ = unpackQHistogramFile(npFile)
           hist = np.sum(hist, axis=2).T #TODO collapse along z-axis for now but it should be optional
           histError = np.sum(histError, axis=2).T #TODO collapse along z-axis for now but it should be optional
           xDataRange = [xEdges[0], xEdges[-1]]
           yDataRange = [yEdges[0], yEdges[-1]]
         else: #old 'raw data' file with a list of unhistogrammed qEvents
-          npFileArrayKey = npFile.files[0]
-          q_events = npFile[npFileArrayKey]
-          x, y, _, weights = unpackQEvents(q_events)
+          x, y, _, weights = unpackRawQListFile(npFile)
           bins_hor = args.bins[0] if not args.plotStoredData else len(xEdges)-1 #override bin number to match stored data for better comparison
           bins_vert = args.bins[1] if not args.plotStoredData else len(yEdges)-1
           hist, histError, xEdges, yEdges = create2dHistogram(x, y, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
