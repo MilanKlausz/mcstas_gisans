@@ -16,13 +16,13 @@ def showOrSave(output, filenameBase):
     plt.savefig(filename, dpi=300)
     print(f"Created {filename}")
 
-def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', matchXAxes=False, output='show'):
+def logPlot2d(hist, xEdges, yEdges, titleText=None, ax=None, intensityMin=1e-9, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', matchXAxes=False, output='show'):
   if ax is None:
     _, ax = plt.subplots()
 
   cmap = plt.get_cmap('jet')
   cmap.set_bad('k') # Handle empty bins giving error with LogNorm
-  quadmesh = ax.pcolormesh(xedges, zedges, hist.T, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
+  quadmesh = ax.pcolormesh(xEdges, yEdges, hist.T, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
 
   ax.set_xlim(xRange)
   ax.set_ylim(yRange)
@@ -43,16 +43,16 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
 
   showOrSave(output, savename+'_2D')
 
-def plotQ1D(values, errors, xedges, zLimits, intensityMin=None, color='blue', titleText=None, label='', ax=None, xRange=[-0.55, 0.55], savename='plotQ', output='show'):
+def plotQ1D(values, errors, xEdges, yLimits, intensityMin=None, color='blue', titleText=None, label='', ax=None, xRange=[-0.55, 0.55], savename='plotQ', output='show'):
   import matplotlib.pyplot as plt
   if ax is None:
     _, ax = plt.subplots()
 
-  ax.errorbar(xedges, values, yerr=errors, fmt='o-', capsize=5, ecolor='red', color=color, label=label)
+  ax.errorbar(xEdges, values, yerr=errors, fmt='o-', capsize=5, ecolor='red', color=color, label=label)
 
   ax.set_xlabel('Qx [1/nm]') # Set the x-axis title
   ax.set_ylabel('Intensity') # Set the y-axis title
-  qLimitText = f" Qy=[{zLimits[0]:.4f}1/nm, {zLimits[1]:.4f}1/nm]"
+  qLimitText = f" Qy=[{yLimits[0]:.4f}1/nm, {yLimits[1]:.4f}1/nm]"
   ax.set_title(titleText+qLimitText)
   # ax.set_ylim(bottom=intensityMin)
   ax.set_yscale("log")
@@ -60,32 +60,32 @@ def plotQ1D(values, errors, xedges, zLimits, intensityMin=None, color='blue', ti
 
   showOrSave(output, savename+'_qSlice')
 
-def createTofSliced2dQPlots(x, z, weights, titleBase, bins_hor=300, bins_vert=200):
+def createTofSliced2dQPlots(x, y, weights, titleBase, bins_hor=300, bins_vert=200):
   # tofLimits = [0.005, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.075]
   tofLimits = [0.005, 0.010, 0.015, 0.020, 0.025, 0.030, 0.035, 0.040, 0.045, 0.050, 0.055, 0.060, 0.065, 0.070, 0.075]
 
   for tofRange in [(tofLimits[i],tofLimits[i+1]) for i in range(len(tofLimits)-1)]:
     tof_filter = (tofRange[0]<time) & (time < tofRange[1])
     xtmp = x[tof_filter]
-    ztmp = z[tof_filter]
+    ytmp = y[tof_filter]
     wtmp = weights[tof_filter]
     # print(time[tofRange[0]<time])
     if(len(xtmp)>0):
       titleText = f"tofMin={tofRange[0]}_tofMax={tofRange[1]}"
       # titleText = f"lambdaMin={calcWavelength(tofRange[0]):.2f}_lambdaMax={calcWavelength(tofRange[1]):.2f}" #FIXME pathLength is not known for all instruments at this point
-      logPlot2d(xtmp, ztmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
-  logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase)
-  # logPlot2d(x, z, weights, bins_hor, bins_vert, titleBase+'Full range')
+      logPlot2d(xtmp, ytmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
+  logPlot2d(x, y, weights, bins_hor, bins_vert, titleBase)
+  # logPlot2d(x, y, weights, bins_hor, bins_vert, titleBase+'Full range')
 
 def create2dHistogram(x, y, weights, xBins=256, yBins=128, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6]):
   """Create 2D histogram of weighted x-y values, controlling the ranges and
   number of bins along the axes. Histograms are transposed """
-  hist, xedges, yedges = np.histogram2d(x, y, weights=weights, bins=[xBins, yBins], range=[xRange, yRange])
+  hist, xEdges, yEdges = np.histogram2d(x, y, weights=weights, bins=[xBins, yBins], range=[xRange, yRange])
   hist_weight2, _, _ = np.histogram2d(x, y, weights=weights**2, bins=[xBins, yBins], range=[xRange, yRange])
   histError = np.sqrt(hist_weight2)
   hist = hist
   histError = histError
-  return hist, histError, xedges, yedges
+  return hist, histError, xEdges, yEdges
 
 def extractRangeTo1D(hist, histError, xEdges, yEdges, yIndexRange):
   """Extract a range of a 2D histogram into a 1D histogram while handling

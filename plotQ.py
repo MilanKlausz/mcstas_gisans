@@ -66,9 +66,9 @@ def getDatasets(args):
           bins_vert = args.bins[1] if not args.nxs else len(yEdges)-1
           hist, histError, xEdges, yEdges = create2dHistogram(x, y, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
 
-      qzIndex = np.digitize(args.q_min, yEdges) - 1
+      qyIndex = np.digitize(args.q_min, yEdges) - 1
 
-      hist, histError = handleExperimentTime(hist, histError, qzIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
+      hist, histError = handleExperimentTime(hist, histError, qyIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
       datasets.append((hist, histError, xEdges, yEdges, label))
 
       # #TODO experimental
@@ -113,12 +113,12 @@ def main(args):
       hist, histError, xEdges, yEdges, label = dataset
       logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
 
-      qzMinIndex = np.digitize(args.q_min, yEdges) - 1
-      qzMaxIndex = np.digitize(args.q_max, yEdges)
-      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qzMinIndex, qzMaxIndex])
-      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, xRange=xPlotRange, savename=args.savename, output='none')
-      plot2DAxes.axhline(yEdges[qzMinIndex], color='magenta', linestyle='--', label='q_y = 0')
-      plot2DAxes.axhline(yEdges[qzMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
+      qyMinIndex = np.digitize(args.q_min, yEdges) - 1
+      qyMaxIndex = np.digitize(args.q_max, yEdges)
+      values, errors, xBins, yLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qyMinIndex, qyMaxIndex])
+      plotQ1D(values, errors, xBins, yLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, xRange=xPlotRange, savename=args.savename, output='none')
+      plot2DAxes.axhline(yEdges[qyMinIndex], color='magenta', linestyle='--', label='q_y = 0')
+      plot2DAxes.axhline(yEdges[qyMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
 
       # ### TEMP manual work
       # xFirstPeakMin = 0.04 #TODO
@@ -153,10 +153,10 @@ def main(args):
       yPlotRange = args.y_plot_range if args.y_plot_range else [yEdges[0], yEdges[-1]]
       logPlot2d(hist, xEdges, yEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, matchXAxes=matchXAxes, output=plotOutput)
 
-      qzMinIndex_exp = np.digitize(args.q_min, yEdges) - 1
-      qzMaxIndex_exp = np.digitize(args.q_max, yEdges)
-      values, errors, xBins, zLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qzMinIndex_exp, qzMaxIndex_exp])
-      plotQ1D(values, errors, xBins, zLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output=plotOutput)
+      qyMinIndex_exp = np.digitize(args.q_min, yEdges) - 1
+      qyMaxIndex_exp = np.digitize(args.q_max, yEdges)
+      values, errors, xBins, yLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qyMinIndex_exp, qyMaxIndex_exp])
+      plotQ1D(values, errors, xBins, yLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output=plotOutput)
 
   if args.dual_plot:
     if not args.pdf and not args.png:
@@ -207,7 +207,7 @@ if __name__=='__main__':
   findTimeParamGroup.add_argument('--minimum_count_fraction', type=zeroToOne, default=0.8, help = 'The fraction of bins that are required to fulfill the minimum count number criterion. [0,1]')
 
   rawFormat = parser.add_argument_group('Raw Q events data', 'Use (old) raw data format with Q event list in the file instead of an already histogrammed data.')
-  rawFormat.add_argument('--bins', nargs=2, type=int, default=[256, 128], help='Number of histogram bins in x,z directions.')
+  rawFormat.add_argument('--bins', nargs=2, type=int, default=[256, 128], help='Number of histogram bins in x,y directions.')
   rawFormat.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane right to left)')
   rawFormat.add_argument('--y_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qy range of the histogram. (In vertical plane bottom to top)')
 
