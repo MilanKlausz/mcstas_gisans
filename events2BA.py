@@ -366,7 +366,7 @@ def main(args):
   if args.quick_plot:
     hist2D = np.sum(qHist, axis=2)
     from plotting_utilities import logPlot2d
-    logPlot2d(hist2D.T, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
+    logPlot2d(hist2D, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
 
 if __name__=='__main__':
   def getBornAgainModels():

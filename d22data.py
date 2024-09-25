@@ -42,4 +42,4 @@ def getStoredData(filepath='073174.nxs'):
   q_x *= 10 #from 1/A to 1/nm
   q_y *= 10 #from 1/A to 1/nm
 
-  return hist, histError, q_x, q_y
+  return hist.T, histError.T, q_x, q_y

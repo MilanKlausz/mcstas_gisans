@@ -22,7 +22,7 @@ def logPlot2d(hist, xedges, zedges, titleText=None, ax=None, intensityMin=1e-9, 
 
   cmap = plt.get_cmap('jet')
   cmap.set_bad('k') # Handle empty bins giving error with LogNorm
-  quadmesh = ax.pcolormesh(xedges, zedges, hist, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
+  quadmesh = ax.pcolormesh(xedges, zedges, hist.T, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
 
   ax.set_xlim(xRange)
   ax.set_ylim(yRange)
@@ -83,17 +83,17 @@ def create2dHistogram(x, y, weights, xBins=256, yBins=128, xRange=[-0.55, 0.55],
   hist, xedges, yedges = np.histogram2d(x, y, weights=weights, bins=[xBins, yBins], range=[xRange, yRange])
   hist_weight2, _, _ = np.histogram2d(x, y, weights=weights**2, bins=[xBins, yBins], range=[xRange, yRange])
   histError = np.sqrt(hist_weight2)
-  hist = hist.T
-  histError = histError.T
+  hist = hist
+  histError = histError
   return hist, histError, xedges, yedges
 
 def extractRangeTo1D(hist, histError, xEdges, yEdges, yIndexRange):
   """Extract a range of a 2D histogram into a 1D histogram while handling
   the propagation of error of the corresponding histogram of uncertainties"""
   yLimits = [yEdges[yIndexRange[0]], yEdges[yIndexRange[1]+1]]
-  valuesExtracted = hist[yIndexRange[0]:yIndexRange[1],:]
-  values = np.sum(valuesExtracted, axis=0)
-  errorsExtracted = histError[yIndexRange[0]:yIndexRange[1],:]
-  errors = np.sqrt(np.sum(errorsExtracted**2, axis=0))
+  valuesExtracted = hist[:,yIndexRange[0]:yIndexRange[1]]
+  values = np.sum(valuesExtracted, axis=1)
+  errorsExtracted = histError[:,yIndexRange[0]:yIndexRange[1]]
+  errors = np.sqrt(np.sum(errorsExtracted**2, axis=1))
   xBins = (xEdges[:-1] + xEdges[1:]) / 2 # Calculate bin centers from bin edges
   return values, errors, xBins, yLimits

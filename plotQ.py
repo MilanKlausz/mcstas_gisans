@@ -56,8 +56,8 @@ def getDatasets(args):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
           hist, histError, xEdges, yEdges, _ = unpackQHistogramFile(npFile)
-          hist = np.sum(hist, axis=2).T #TODO collapse along z-axis for now but it should be optional
-          histError = np.sum(histError, axis=2).T #TODO collapse along z-axis for now but it should be optional
+          hist = np.sum(hist, axis=2)
+          histError = np.sum(histError, axis=2)
           xDataRange = [xEdges[0], xEdges[-1]]
           yDataRange = [yEdges[0], yEdges[-1]]
         else: #old 'raw data' file with a list of unhistogrammed qEvents
