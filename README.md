@@ -3,6 +3,8 @@ Project to carry out the simulation of GISANS measurements at neutron scattering
 The simulation of a neutron scattering instrument up until the sample is carried out using a McStas model of the instrument, that ends in an MCPL_output component to export neutrons in an MCPL file.
 This MCPL file is then used as a source of neutrons for the subsequent GISANS simulation of a sample model using BornAgain through a Python script. The result of this simulation is a Qx,Qy,Qz histogram (and corresponding uncertainty) in an NPZ file, that can be processed with a plotting script.
 
+Documentation can be found at: https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/edit?usp=sharing
+
 Installation
 ============
 * Clone this repository 
