@@ -19,7 +19,7 @@ from bornagain import deg, angstrom
 from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from instruments import instrumentParameters, wfmRequiredKeys
 from mcstasMonitorFitting import fitGaussianToMcstasMonitor
-from inputOutput import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
+from input_output_utilities import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
 
 def getTofFilteringLimits(args, pars):
   """
@@ -336,7 +336,7 @@ def main(args):
   print('Number of events being processed: ', len(events))
 
   if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
-    from oldProcessing import processNeutronsNonVectorised
+    from old_processing import processNeutronsNonVectorised
     processNeutronsNonVectorised(events, get_simulation, params, savename)
     return #early return
 

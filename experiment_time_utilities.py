@@ -19,7 +19,7 @@ def checkUpscalingError(hist, hist_error, time):
   expectedError = np.sqrt(scaledHist)
 
   highErrorIndexes = np.where(scaledError > expectedError)
-  print(f"Higher than sqrt(N) error in {len(highErrorIndexes[0])} bins out of {scaledHist.size}")
+  print(f"Higher than sqrt(I) error in {len(highErrorIndexes[0])} bins out of {scaledHist.size}")
 
 def scaleToExperiment(hist, hist_error, time):
   """Make simulated data comparable with a real experiment of a certain length
@@ -57,7 +57,7 @@ def scaleToExperimentWithIteratedTime(hist, hist_error, qyIndex, minCountNumber,
   distribution to increase the error to the experimentally expected sqrt(I).
   The scaling is performed with iteratively increased time until a given minimum
   bin count criterion is fulfilled at least for a fraction of the bins.
-  """
+"""
   for i in range(maxIterationNumber):
     print(f"  Iteration {i} - experiment time: {iterativeExperimentTime:.0f} sec ({iterativeExperimentTime/(60*60):.2f} hours)")
     #TODO add option to optimise for the full array instead of the selected q?
@@ -81,27 +81,17 @@ def scaleToExperimentWithIteratedTime(hist, hist_error, qyIndex, minCountNumber,
   print(f"WARNING: the iteration ended after reaching the maximum iteration number ({maxIterationNumber}) without fulfilling the bin count criterion!")
   return tmp_hist, tmp_hist_error, iterativeExperimentTime
 
-def findExperimentTimeMinimum(hist, minimumValue, requiredFulfillmentRatio = 1):
-
-  #minimum time needed for each bin to reach the required minimum value(number of counts)
-  tMinArray =  np.divide(minimumValue, hist)
+def findExperimentTimeMinimum(hist, minCountNr, minCountFraction):
+  """Find the minimum virtual experiment time needed for minCountNr counts
+  to be reached in at least minCountFraction fraction of the bins.
+  """
+  tMinArray =  np.divide(minCountNr, hist)
   sortedIndexArray = np.argsort(tMinArray)
-  allowedToFail = (1 - requiredFulfillmentRatio) * hist.size
+  allowedToFail = (1 - minCountFraction) * hist.size
   N = m.floor(allowedToFail)
   nthLargest = tMinArray[sortedIndexArray[-N:]]
   tMinNth = nthLargest[0]
 
-  print('hist.size', hist.size)
-  print('allowedToFail', allowedToFail)
-  print('N', N)
-  print('tMinNth', tMinNth)
-
-  # tMinNth = np.partition(tMinArray, N-1)[N-1]
-
-  # tMin = max(tMinArray) #the minimum time for ALL bins is the maximum of tMinArray
-  # print('tMinArray', tMinArray)
-  # print('tMin', tMin)
-  # print('nth min', tMinNth)
   return m.ceil(tMinNth)
 
 def handleExperimentTime(hist, hist_error, qyIndex, experimentTime, findExperimentTime, minCountNr, minCountFraction, iterate, maxIterNr, verbose):
