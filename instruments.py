@@ -12,6 +12,7 @@ instrumentParameters = {
    'saga': {
       'nominal_source_sample_distance' : 55, #[m]
       'sample_detector_distance' : 10, #[m] along the y axis
+      'beam_declination_angle' : 0.4, #[deg]
       'tof_instrument' : True,
       'mcpl_monitor_name' : 'Mcpl_TOF_Lambda',
       't0_monitor_name' : 'Source_TOF_Lambda',

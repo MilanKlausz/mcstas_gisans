@@ -132,19 +132,18 @@ def get_simulation(sample, pixelNr, angle_range, wavelength, alpha_i, p, Ry, Rz)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
-def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc):
+def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, sampleToRealCoordRotMatrix):
   """Calculate x,y,z position on the detector surface and the corresponding TOF for the sample to detector propagation"""
-  rot_matrix = np.array([[np.cos(alpha_inc), -np.sin(alpha_inc)],[np.sin(alpha_inc), np.cos(alpha_inc)]])
   #Calculate time until the detector surface with coord system rotation
-  zRot, _ = np.dot(rot_matrix, [z, y])
-  vzRot, _ = np.matmul(rot_matrix, np.vstack((VZ, VY))) # get [vz, vy]
+  zRot, _ = np.dot(sampleToRealCoordRotMatrix, [z, y])
+  vzRot, _ = np.matmul(sampleToRealCoordRotMatrix, np.vstack((VZ, VY))) # get [vz, vy]
 
   #propagate to detector surface perpendicular to the y-axis
   t_propagate = (sample_detector_distance - zRot) / vzRot
 
   return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
 
-def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed):
+def getQsAtDetector(x, y, z, t, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed, sampleToRealCoordRotMatrix, incidentDirection):
   """Calculate Q values (x,y,z) from positions at the detector surface.
   All outgoing directions from the BornAgain simulation of a single neutron are
   handled at the same time using operations on vectors.
@@ -157,12 +156,11 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
 
   Note that the current implementation doesn't take detector resolution into account (infinite resolution).
   """
-  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, alpha_inc)
+  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, sampleToRealCoordRotMatrix)
   posDetector = np.vstack((xDet, yDet, zDet)).T
   sample_detector_path_length = np.linalg.norm(posDetector, axis=1)
 
-  v_out_det = posDetector / sample_detector_path_length[:, np.newaxis]
-  v_in_alpha = np.array([0, -np.sin(alpha_inc), np.cos(alpha_inc)])
+  outgoingDirection = posDetector / sample_detector_path_length[:, np.newaxis]
 
   if notTOFInstrument is False: #TOF instruments
     wavelengthDet = calcWavelength(t+sample_detector_tof, nominal_source_sample_distance+sample_detector_path_length)
@@ -170,7 +168,7 @@ def getQsAtDetector(x, y, z, t, alpha_inc, VX, VY, VZ, nominal_source_sample_dis
   else: #not TOF instruments
     qFactor = qConvFactorFixed
 
-  return (v_out_det - v_in_alpha) * qFactor
+  return (outgoingDirection - incidentDirection) * qFactor
 
 def processNeutrons(neutrons, params, queue=None):
   """Carry out the BornAgain simulation and subsequent calculations of each
@@ -202,12 +200,14 @@ def processNeutrons(neutrons, params, queue=None):
     qHist = np.zeros(tuple(params['bins']))
     qHistWeightsSquared = np.zeros(tuple(params['bins']))
 
+  incidentDirection = np.array([0, -np.sin(params['alpha_inc']), np.cos(params['alpha_inc'])]) #for Q calculation
+
   ## Carry out BornAgain simulation for all incident neutron one-by-one
   for id, neutron in enumerate(neutrons):
     if id%200==0:
       print(f'{id:10}/{len(neutrons)}') #print output to indicate progress
     # Neutron positions, velocities and corresponding calculations are expressed
-    # in the McStas coord system (X - left; y - up; Z - forward 'along the beam')
+    # in the McStas coord system (X - left; Y - up; Z - forward 'along the beam')
     # not in the BornAgain coord system (X - forward, Y - left, Z - up),
     # but with the SphericalDetector, BornAgain only deals with alpha_i (input),
     # alpha_f and phi_f (output), which are the same if calculated correctly
@@ -236,7 +236,8 @@ def processNeutrons(neutrons, params, queue=None):
     VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
     VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
     VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
-    qArray = getQsAtDetector(x, y, z, t, params['alpha_inc'], VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed)
+
+    qArray = getQsAtDetector(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection)
     weights = pout.T.flatten()
     if params['raw_output']:
       q_events.append(np.column_stack([weights, qArray]))
@@ -300,9 +301,13 @@ def processNeutronsInParallel(events, params, processNumber):
 
 def createParamsDict(args, instParams):
   """Pack parameters necessary for processing in single dictionary"""
+  beamDeclination = 0 if not 'beam_declination_angle' in instParams else instParams['beam_declination_angle']
+  sampleInclination = float(np.deg2rad(args.alpha - beamDeclination))
   return {
     'nominal_source_sample_distance': instParams['nominal_source_sample_distance'] - (0 if not args.wfm else instParams['wfm_virtual_source_distance']),
     'sample_detector_distance': instParams['sample_detector_distance'],
+    'sampleToRealCoordRotMatrix' : np.array([[np.cos(sampleInclination), -np.sin(sampleInclination)],
+                                             [np.sin(sampleInclination), np.cos(sampleInclination)]]),
     'sim_module_name': args.model,
     'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
