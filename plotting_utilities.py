@@ -16,13 +16,14 @@ def showOrSave(output, filenameBase):
     plt.savefig(filename, dpi=300)
     print(f"Created {filename}")
 
-def logPlot2d(hist, xEdges, yEdges, titleText=None, ax=None, intensityMin=1e-9, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', matchXAxes=False, output='show'):
+def logPlot2d(hist, xEdges, yEdges, titleText=None, ax=None, intensityMin=1e-9, intensityMax=None, xRange=[-0.55, 0.55], yRange=[-0.5, 0.6], savename='plotQ', matchXAxes=False, output='show'):
   if ax is None:
     _, ax = plt.subplots()
 
   cmap = plt.get_cmap('jet')
   cmap.set_bad('k') # Handle empty bins giving error with LogNorm
-  quadmesh = ax.pcolormesh(xEdges, yEdges, hist.T, norm=colors.LogNorm(intensityMin, vmax=hist.max().max()), cmap=cmap)
+  intensityMax = intensityMax if intensityMax is not None else hist.max().max()
+  quadmesh = ax.pcolormesh(xEdges, yEdges, hist.T, norm=colors.LogNorm(intensityMin, vmax=intensityMax), cmap=cmap)
 
   ax.set_xlim(xRange)
   ax.set_ylim(yRange)

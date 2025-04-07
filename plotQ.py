@@ -19,7 +19,9 @@ def getPlotRanges(datasets, xPlotRange, yPlotRange):
     yEdgeMin = min([yEdges[0] for _,_,_,yEdges,_ in datasets])
     yEdgeMax = max([yEdges[-1] for _,_,_,yEdges,_ in datasets])
     yPlotRange = [yEdgeMin, yEdgeMax]
-  return xPlotRange, yPlotRange
+  minValue = min([hist.min().min() for hist,_,_,_,_ in datasets])
+  maxValue = max([hist.max().max() for hist,_,_,_,_ in datasets])
+  return xPlotRange, yPlotRange, minValue, maxValue
 
 def getOverlayPlotAxes(column=2):
   """Get axes for special subplot layout for dataset comparison. Create a
@@ -106,13 +108,14 @@ def main(args):
     intensityMin = 1e-9 if not isUpscaled else 1
 
   if args.overlay:
-    xPlotRange, yPlotRange = getPlotRanges(datasets, args.x_plot_range, args.y_plot_range)
+    xPlotRange, yPlotRange, _ , maxValue = getPlotRanges(datasets, args.x_plot_range, args.y_plot_range)
     lineColors = ['blue', 'green', 'orange','purple']
     for datasetIndex, dataset in enumerate(datasets):
       plot2DAxes = axesTop[datasetIndex]
       lineColor = lineColors[datasetIndex]
       hist, histError, xEdges, yEdges, label = dataset
-      logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
+      commonMaximum = maxValue if args.individual_colorbars is False else None
+      logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, intensityMax=commonMaximum, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
 
       qyMinIndex = np.digitize(args.q_min, yEdges) - 1
       qyMaxIndex = np.digitize(args.q_max, yEdges)
@@ -195,6 +198,7 @@ if __name__=='__main__':
   plotParamGroup = parser.add_argument_group('Control plotting', 'Parameters and options for plotting.')
   plotParamGroup.add_argument('-d', '--dual_plot', default=False, action='store_true', help = 'Create a dual plot in a single figure.')
   plotParamGroup.add_argument('-m', '--intensity_min', default=None, help = 'Intensity minimum for the 2D q plot colorbar.')
+  plotParamGroup.add_argument('--individual_colorbars', default=False, action='store_true', help = 'Allow different individual colorbars for multiple 2D q plots.')
   plotParamGroup.add_argument('-q', '--q_min', default=0.09, type=float, help = 'Vertical component of the Q values of interest. Used as the minimum of the range is q_max is provided as well.')
   plotParamGroup.add_argument('--q_max', default=0.10, type=float, help = 'Maximum of the vertical component of the Q range of interest.')
   plotParamGroup.add_argument('--x_plot_range', nargs=2, type=float, help = 'Plot x range.')
