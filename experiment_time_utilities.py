@@ -27,6 +27,11 @@ def scaleToExperiment(hist, hist_error, time):
   distribution to increase the error to the experimentally expected sqrt(I)"""
   from scipy.stats import norm
 
+  if np.any(hist < 0):
+    import sys
+    sys.stderr.write("Error! Negative bin values encountered. Scaling the experiment time with negative values is not possible.\n")
+    sys.exit(1)
+
   scaledHist = hist * time
   scaledError = hist_error * time
   expectedError = np.sqrt(scaledHist)
