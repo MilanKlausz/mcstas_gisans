@@ -34,7 +34,7 @@
 *
 * %End
 *******************************************************************************/
-DEFINE INSTRUMENT ILL_H512_D22(lambda=6.0, dlambda=0.6, D22_collimation=17.6, intendedWeight=0.0, string D22_sample="H2O_liq.qSq")
+DEFINE INSTRUMENT ILL_H512_D22(lambda=6.0, dlambda=0.6, D22_collimation=17.6, string D22_sample="H2O_liq.qSq")
 
 DECLARE %{
 
@@ -55,9 +55,6 @@ DECLARE %{
   double  D22_nu      = 0;
 
   double flag         = 0;
-
-  double sampleapx    = 0.04;
-  double sampleapy    = 0.055;
   //#ifdef OPENACC
   // This single bracket is put here to kill compilation on GPU - as it seemingly never finishes...
   //{
@@ -330,8 +327,8 @@ AT (0,0,0.3) RELATIVE D22_Vselector
 COMPONENT Collimation_pin_hole = Diaphragm(radius=0.005) //The collimation pin-hole was 10 mm in diameter
 AT (0,0,20+0.3-17.6) RELATIVE D22_Vselector //and 17.6m away from the sample
 
-COMPONENT sampleaperture = Slit(xwidth=0.014, yheight=0.0004) //14x0.4 mm^2
-AT (0,0,20+0.3-0.01) RELATIVE D22_Vselector //very close to the sample (maybe 10 cm)
+COMPONENT sampleaperture = Slit(xwidth=0.014, yheight=0.0003) //14x0.3 mm^2
+AT (0,0,20+0.3-0.1) RELATIVE D22_Vselector //very close to the sample (maybe 10 cm)
 
 COMPONENT D22_Sample_Pos = Arm()
 AT (0,0,20+0.3) RELATIVE D22_Vselector
@@ -356,7 +353,7 @@ COMPONENT Mcpl_TOF_Lambda = TOFLambda_monitor(
 )
 AT (0, 0, 0) RELATIVE D22_Sample_Pos
 
-COMPONENT mcpl_out = MCPL_output_noacc_russian_roulette(filename="test_events", intendedWeight=intendedWeight)
+COMPONENT mcpl_out = MCPL_output_noacc(filename="test_events")
  AT (0, 0, 0) RELATIVE D22_Sample_Pos
  ROTATED (0,0,0) RELATIVE D22_Sample_Pos
 
