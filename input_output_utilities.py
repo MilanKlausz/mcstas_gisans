@@ -21,7 +21,7 @@ def printTofLimits(mcplTofLimits):
   else:
     print(f"Using MCPL input TOF limits: : {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]")
 
-def getNeutronEvents(filename, mcplTofLimits):
+def getNeutronEvents(filename, mcplTofLimits, intensity_factor):
   """Read neutron events from an MCPL file or a .dat file (created with the
   Virtual_output McStas component). In case of an MCPL file, convert units and
   apply filtering based on the time (TOF) field using the provided limits."""
@@ -30,7 +30,7 @@ def getNeutronEvents(filename, mcplTofLimits):
   if filename.endswith('.mcpl') or filename.endswith('.mcpl.gz'):
     with mcpl.MCPLFile(filename) as myfile:
       events = np.array(
-        [(p.weight,
+        [(p.weight * intensity_factor,
           p.x/100, p.y/100, p.z/100, #convert cm->m
           *getVelocity(p.ux, p.uy, p.uz, p.ekin),
           p.time*1e-3 #convert ms->s

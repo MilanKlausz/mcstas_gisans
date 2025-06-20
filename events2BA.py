@@ -336,7 +336,7 @@ def main(args):
 
   ### Getting neutron events from the MCPL file ###
   mcplTofLimits = getTofFilteringLimits(args, instrumentParameters[args.instrument])
-  events = getNeutronEvents(args.filename, mcplTofLimits)
+  events = getNeutronEvents(args.filename, mcplTofLimits, args.intensity_factor)
 
   ### Preconditioning ###
   events = coordTransformToSampleSystem(events, params['alpha_inc'])
@@ -393,6 +393,7 @@ if __name__=='__main__':
   import argparse
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
+  parser.add_argument('--intensity_factor', default=1.0, type=float, help = 'A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
   parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
@@ -471,5 +472,8 @@ if __name__=='__main__':
     parser.error(f"One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")
   if (args.sample_xwidth < 0 or args.sample_zheight < 0):
     parser.error(f"The sample sizes can not be negative. (For direct beam simulation, set either of the sample sizes to zero.)")
+
+  if args.intensity_factor <= 0.0:
+    parser.error(f"The intensity multiplication factor (--intensity_factor) must have a positive value.")
 
   main(args)
