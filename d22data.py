@@ -29,9 +29,9 @@ def getStoredData(filepath='073174.nxs'):
   x_mm = x_pixels * pixel_size_x_mm
   y_mm = y_pixels * pixel_size_y_mm
 
-  # Apply offset based of values to match the specular peak
-  x_mm = x_mm - x_mm.max()/2 - (pixel_size_x_mm * 3) #TODO hardcoded
-  y_mm = y_mm - y_mm.max()/2 + (pixel_size_y_mm * 37) #TODO hardcoded
+# Apply offset to centre the direct beam (based on 073162.nxs)
+  x_mm = x_mm - x_mm.max()/2 - (pixel_size_x_mm * 3)
+  y_mm = y_mm - y_mm.max()/2 + (pixel_size_y_mm * 37)
 
   # Convert mm to q
   theta_x = arctan(x_mm / detector_distance_mm)/2
