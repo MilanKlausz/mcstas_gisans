@@ -48,6 +48,9 @@ def getDatasets(args):
   if args.nxs:
     hist, histError, xEdges, yEdges = getStoredData(args.nxs)
     label = 'D22 measurement'
+    if args.verbose:
+      nxs_sum = np.sum(hist)
+      print(f"NXS sum: {nxs_sum}")
     datasets.append((hist, histError, xEdges, yEdges, label))
     xDataRange = [xEdges[0], xEdges[-1]]
     yDataRange = [yEdges[0], yEdges[-1]]
@@ -71,13 +74,18 @@ def getDatasets(args):
       qyIndex = np.digitize(args.q_min, yEdges) - 1
 
       hist, histError = handleExperimentTime(hist, histError, qyIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
+      if args.verbose:
+        hist_sum = np.sum(hist)
+        print(f"{filename} sum: {hist_sum}")
+      if args.normalise_to_nxs:
+        hist *= nxs_sum / hist_sum #normalise total intensity of the sim to the nxs data
+        histError *= nxs_sum / hist_sum
       datasets.append((hist, histError, xEdges, yEdges, label))
 
-      # #TODO experimental
-      # detectionEfficiency = 0.7
-      # hist = hist * detectionEfficiency
-      # histError = histError * detectionEfficiency
-      # #TODO experimental
+      if args.csv:
+        csvFilename = f"{filename.rsplit('.', 1)[0]}.csv"
+        np.savetxt(csvFilename, hist, delimiter=',')
+        print(f"Created {csvFilename}")
 
   return datasets
 
@@ -194,6 +202,7 @@ if __name__=='__main__':
   parser.add_argument('--png', action='store_true', help = 'Export figure as png.')
   parser.add_argument('-t', '--experiment_time', default=None, type=int, help = 'Experiment time in seconds to scale the results up to. (e.g. 10800). Must be a positive integer.')
   parser.add_argument('-v', '--verbose', action='store_true', help = 'Verbose output.')
+  parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
 
   plotParamGroup = parser.add_argument_group('Control plotting', 'Parameters and options for plotting.')
   plotParamGroup.add_argument('-d', '--dual_plot', default=False, action='store_true', help = 'Create a dual plot in a single figure.')
@@ -219,6 +228,7 @@ if __name__=='__main__':
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
   storedDataParamGroup.add_argument('--nxs', default=None, help = 'Full path to the D22 Nexus file. (Using automatic D22 measurement label for it.)')
   storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
+  storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise simulated data to the total intensity in the Nexus file.')
 
   args = parser.parse_args()
 
@@ -236,5 +246,8 @@ if __name__=='__main__':
 
   if args.iterate and not args.find_experiment_time:
     parser.error('The --iterate option can only be used when --find_experiment_time is also in use.')
+
+  if args.normalise_to_nxs and not args.nxs:
+    parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')
 
   main(args)
