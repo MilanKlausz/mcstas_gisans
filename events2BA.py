@@ -63,7 +63,7 @@ def coordTransformToSampleSystem(events, alpha_inc):
   vzRot, vyRot = np.dot(rot_matrix_inverse, [vz, vy])
   return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
 
-def propagateToSampleSurface(events, sample_xwidth, sample_zheight):
+def propagateToSampleSurface(events, sample_xwidth, sample_zheight, allow_sample_miss):
   """Propagate neutron events to y=0, the sample surface.
   Discard those neutrons which would miss the sample.
   """
@@ -76,13 +76,17 @@ def propagateToSampleSurface(events, sample_xwidth, sample_zheight):
 
   # Create a boolean mask for neutrons to select those which hit the sample
   hitSampleMask = (abs(x) < sample_xwidth*0.5) & (abs(z) < sample_zheight*0.5)
-  sampleHitEvents = np.vstack([p, x, y, z, vx, vy, vz, t]).T[hitSampleMask]
+  eventsOnSampleSurface = np.vstack([p, x, y, z, vx, vy, vz, t]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, t]).T[hitSampleMask]
 
   eventNr = len(events)
-  sampleHitEventNr = len(sampleHitEvents)
+  sampleHitEventNr = np.sum(hitSampleMask)
   if sampleHitEventNr != eventNr:
-    print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} neutrons avoided the sample!")
-  return sampleHitEvents
+    sum_weight_in = sum(p)
+    sum_weight_sample_hit = sum(p[hitSampleMask])
+    print(f"    WARNING: {eventNr - sampleHitEventNr} out of {eventNr} incident neutrons missed the sample!({sum_weight_in-sum_weight_sample_hit} out of {sum_weight_in} in terms of sum particle weight)")
+    if not allow_sample_miss:
+      print(f"    WARNING: Incident neutrons missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.") #TODO mention the option to allow them with the input parameter
+  return eventsOnSampleSurface
 
 def applyT0Correction(events, args):
   """Apply t0 TOF correction for all neutrons. A fixed t0correction value can be
@@ -217,28 +221,32 @@ def processNeutrons(neutrons, params, queue=None):
     v = np.sqrt(vx**2+vy**2+vz**2)
     wavelength = velocityToWavelength(v) #angstrom
 
-    # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
-    Ry = 2*np.random.random()-1
-    Rz = 2*np.random.random()-1
-    sim = get_simulation(sample, params['pixelNr'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
-    sim.options().setUseAvgMaterials(True)
-    sim.options().setIncludeSpecular(True)
-    # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
+    if (abs(x) > params['sample_xwidth']*0.5) or (abs(z) > params['sample_zheight']*0.5):
+      qArray = getQsAtDetector(x, y, z, t, [vx], [vy], [vz], params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection)
+      weights = np.array([p])
+    else:
+      # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
+      Ry = 2*np.random.random()-1
+      Rz = 2*np.random.random()-1
+      sim = get_simulation(sample, params['pixelNr'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+      sim.options().setUseAvgMaterials(True)
+      sim.options().setIncludeSpecular(True)
+      # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
 
-    res = sim.simulate()
-    # get probability (intensity) for all pixels
-    pout = res.array()
-    # calculate beam angle relative to coordinate system, including incident beam direction
-    alpha_f = params['angle_range']*(np.linspace(1., -1., params['pixelNr'])+Ry/(params['pixelNr']-1))
-    phi_f = phi_i+params['angle_range']*(np.linspace(-1., 1., params['pixelNr'])+Rz/(params['pixelNr']-1))
-    alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
+      res = sim.simulate()
+      # get probability (intensity) for all pixels
+      pout = res.array()
+      # calculate beam angle relative to coordinate system, including incident beam direction
+      alpha_f = params['angle_range']*(np.linspace(1., -1., params['pixelNr'])+Ry/(params['pixelNr']-1))
+      phi_f = phi_i+params['angle_range']*(np.linspace(-1., 1., params['pixelNr'])+Rz/(params['pixelNr']-1))
+      alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
-    VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
-    VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
-    VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
+      VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
+      VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
+      VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
 
-    qArray = getQsAtDetector(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection)
-    weights = pout.T.flatten()
+      qArray = getQsAtDetector(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection)
+      weights = pout.T.flatten()
     if params['raw_output']:
       q_events.append(np.column_stack([weights, qArray]))
     else: #histogrammed output format
@@ -300,7 +308,7 @@ def processNeutronsInParallel(events, params, processNumber):
   return result
 
 def createParamsDict(args, instParams):
-  """Pack parameters necessary for processing in single dictionary"""
+  """Pack parameters necessary for processing in a single dictionary"""
   beamDeclination = 0 if not 'beam_declination_angle' in instParams else instParams['beam_declination_angle']
   sampleInclination = float(np.deg2rad(args.alpha - beamDeclination))
   return {
@@ -316,7 +324,9 @@ def createParamsDict(args, instParams):
     'angle_range': args.angle_range,
     'raw_output': args.raw_output,
     'bins': args.bins,
-    'histRanges': [args.x_range, args.y_range, args.z_range]
+    'histRanges': [args.x_range, args.y_range, args.z_range],
+    'sample_xwidth': args.sample_xwidth,
+    'sample_zheight': args.sample_zheight
   }
 
 def main(args):
@@ -330,7 +340,7 @@ def main(args):
 
   ### Preconditioning ###
   events = coordTransformToSampleSystem(events, params['alpha_inc'])
-  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_zheight)
+  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
   if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
   else:
@@ -406,6 +416,7 @@ if __name__=='__main__':
   sampleGroup.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
+  sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and being directly propagated to the detectors. This option can be used to simulated overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
 
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
@@ -455,5 +466,10 @@ if __name__=='__main__':
 
   if args.all_q and args.wfm:
     parser.error(f"The --all_q option can not be used together with --wfm. (Simply because --all_q is not well maintained, but it can be changed on demand.)")
+
+  if (args.sample_xwidth == 0 or args.sample_zheight == 0) and not args.allow_sample_miss:
+    parser.error(f"One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")
+  if (args.sample_xwidth < 0 or args.sample_zheight < 0):
+    parser.error(f"The sample sizes can not be negative. (For direct beam simulation, set either of the sample sizes to zero.)")
 
   main(args)
