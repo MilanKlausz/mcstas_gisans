@@ -48,8 +48,8 @@ def getDatasets(args):
   if args.nxs:
     hist, histError, xEdges, yEdges = getStoredData(args.nxs)
     label = 'D22 measurement'
+    nxs_sum = np.sum(hist)
     if args.verbose:
-      nxs_sum = np.sum(hist)
       print(f"NXS sum: {nxs_sum}")
     datasets.append((hist, histError, xEdges, yEdges, label))
     xDataRange = [xEdges[0], xEdges[-1]]
@@ -73,9 +73,10 @@ def getDatasets(args):
 
       qyIndex = np.digitize(args.q_min, yEdges) - 1
 
-      hist, histError = handleExperimentTime(hist, histError, qyIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose)
+      hist, histError = handleExperimentTime(hist, histError, qyIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose, args.background)
+
+      hist_sum = np.sum(hist)
       if args.verbose:
-        hist_sum = np.sum(hist)
         print(f"{filename} sum: {hist_sum}")
       if args.normalise_to_nxs:
         hist *= nxs_sum / hist_sum #normalise total intensity of the sim to the nxs data
@@ -201,6 +202,7 @@ if __name__=='__main__':
   parser.add_argument('--pdf', action='store_true', help = 'Export figure as pdf.')
   parser.add_argument('--png', action='store_true', help = 'Export figure as png.')
   parser.add_argument('-t', '--experiment_time', default=None, type=int, help = 'Experiment time in seconds to scale the results up to. (e.g. 10800). Must be a positive integer.')
+  parser.add_argument('--background', default=0, type=float, help = 'Expected value of the background intensity added to each pixel after upscaling to experiment time.')
   parser.add_argument('-v', '--verbose', action='store_true', help = 'Verbose output.')
   parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
 

@@ -21,10 +21,11 @@ def checkUpscalingError(hist, hist_error, time):
   highErrorIndexes = np.where(scaledError > expectedError)
   print(f"Higher than sqrt(I) error in {len(highErrorIndexes[0])} bins out of {scaledHist.size}")
 
-def scaleToExperiment(hist, hist_error, time):
+def scaleToExperiment(hist, hist_error, time, background=0):
   """Make simulated data comparable with a real experiment of a certain length
   by scaling in time, and perturbing with a random number from a normal
-  distribution to increase the error to the experimentally expected sqrt(I)"""
+  distribution to increase the error to the experimentally expected sqrt(I).
+  The perturbation can also be used to add a background of a certain intensity"""
   from scipy.stats import norm
 
   if np.any(hist < 0):
@@ -42,7 +43,7 @@ def scaleToExperiment(hist, hist_error, time):
    scaledError[highErrorIndexes] = 0.9 * expectedError[highErrorIndexes]
 
   missingError = np.sqrt(scaledHist-np.square(scaledError)) #np.square(expectedError)=scaledHist
-  perturbedHist = scaledHist + norm.rvs(0, missingError)
+  perturbedHist = scaledHist + norm.rvs(background, missingError)
 
   # Zero out bins with negative values (possible due to the Gaussian noise)
   negativeValueIndexes = np.where(perturbedHist < 0)
@@ -99,7 +100,7 @@ def findExperimentTimeMinimum(hist, minCountNr, minCountFraction):
 
   return m.ceil(tMinNth)
 
-def handleExperimentTime(hist, hist_error, qyIndex, experimentTime, findExperimentTime, minCountNr, minCountFraction, iterate, maxIterNr, verbose):
+def handleExperimentTime(hist, hist_error, qyIndex, experimentTime, findExperimentTime, minCountNr, minCountFraction, iterate, maxIterNr, verbose, background=0):
   if findExperimentTime:
     #Find experiment time that would give at least <args.minimum_count_number> hits in
     #more than <minCountFraction> fraction of the bins
@@ -124,7 +125,7 @@ def handleExperimentTime(hist, hist_error, qyIndex, experimentTime, findExperime
   if (experimentTime is not None) and not iterate:
     print(f'Upscaling to experiment time: {experimentTime:.0f} sec ({experimentTime/(60*60):.2f} hours)')
     checkUpscalingError(hist[:,qyIndex], hist_error[:,qyIndex], experimentTime)
-    hist, hist_error = scaleToExperiment(hist, hist_error, experimentTime)
+    hist, hist_error = scaleToExperiment(hist, hist_error, experimentTime, background)
     checkBinCountCriterion(hist[:,qyIndex], minCountNr, minCountFraction, verbose=True)
 
   return hist, hist_error
