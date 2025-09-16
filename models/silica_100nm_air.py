@@ -6,7 +6,7 @@ import bornagain as ba
 from bornagain import deg, nm
 
 
-def get_sample(radius=53, latticeParameter=110, interferenceRange=5, positionVariance=20):
+def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVariance=20):
     # Define materials
     material_Air = ba.MaterialBySLD("Air", 0.0, 0.0)
     material_SiO2 = ba.MaterialBySLD("SiO2", 3.47e-06, 0.0)
