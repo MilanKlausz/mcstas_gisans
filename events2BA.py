@@ -136,14 +136,23 @@ def get_simulation(sample, pixelNr, angle_range, wavelength, alpha_i, p, Ry, Rz)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
-def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, sampleToRealCoordRotMatrix):
+def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, sampleToRealCoordRotMatrix, realToSampleCoordRotMatrix):
   """Calculate x,y,z position on the detector surface and the corresponding TOF for the sample to detector propagation"""
   #Calculate time until the detector surface with coord system rotation
+  # NOTE: under the assumption that the detector surface is vertical in the real coord system
   zRot, _ = np.dot(sampleToRealCoordRotMatrix, [z, y])
   vzRot, _ = np.matmul(sampleToRealCoordRotMatrix, np.vstack((VZ, VY))) # get [vz, vy]
 
   #propagate to detector surface perpendicular to the y-axis
   t_propagate = (sample_detector_distance - zRot) / vzRot
+
+  #Calculate the effect of gravity
+  gravityAcceleration = 9.80665 #m/s2
+  zGravityAcc, yGravityAcc = np.dot(realToSampleCoordRotMatrix, [0, -gravityAcceleration]) #TODO should not happen here
+  zGravityDrop = zGravityAcc * 0.5 * t_propagate**2
+  yGravityDrop = yGravityAcc * 0.5 * t_propagate**2
+
+  return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y + yGravityDrop), (VZ * t_propagate + z + zGravityDrop)
 
 def getDetectionCoordinate(xDet, yDet, zDet, sampleToRealCoordRotMatrix, realToSampleCoordRotMatrix):
   """Get the coordinate of the detection event from the position where the path
