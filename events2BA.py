@@ -145,9 +145,42 @@ def virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_
   #propagate to detector surface perpendicular to the y-axis
   t_propagate = (sample_detector_distance - zRot) / vzRot
 
-  return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y), (VZ * t_propagate + z)
+def getDetectionCoordinate(xDet, yDet, zDet, sampleToRealCoordRotMatrix, realToSampleCoordRotMatrix):
+  """Get the coordinate of the detection event from the position where the path
+  of the neutron intersects the plane of the detector surface.
+  Using the exact position of intersection means infinite detector resolution.
+  """
+  #TODO generalise:
+  #  pixel_size_x, pixel_size_y, sigma_x, sigma_y should be input
 
-def getQsAtDetector(x, y, z, t, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed, sampleToRealCoordRotMatrix, incidentDirection):
+  detector_size_x = 1.024 #[m]
+  detector_size_y = 1.024 #[m]
+  detector_pixel_number_x = 256
+  detector_pixel_number_y = 128
+  pixel_size_x = detector_size_x / detector_pixel_number_x
+  pixel_size_y = detector_size_y / detector_pixel_number_y
+
+  # transform from the sample-based to the real coordinate system
+  zDetReal, yDetReal = np.matmul(sampleToRealCoordRotMatrix, np.vstack((zDet, yDet))) 
+  #note: zDetReal is a fixed value due to the propagation to detector surface
+
+  # apply gaussian randomisation
+  sigma_x = 0.004/2.355 #FWHM=2.5-5[mm]
+  sigma_y = 0 #0.005/2.355 #FWHM=2.5-5[mm]
+  xDet = np.random.normal(xDet, sigma_x, size=xDet.shape)
+  yDetReal = np.random.normal(yDetReal, sigma_y, size=yDetReal.shape)
+
+  #get the coordinates of the centre of the pixel where the neutron is detected
+  xDetCoord = np.floor(xDet / pixel_size_x) * pixel_size_x + 0.5*pixel_size_x
+  yDetCoordReal = np.floor(yDetReal / pixel_size_y) * pixel_size_y + 0.5*pixel_size_y
+
+  #transform from the real to the sample-based coordinate system
+  zDetCoord, yDetCoord = np.matmul(realToSampleCoordRotMatrix, np.vstack((zDetReal, yDetCoordReal)))
+
+  return xDetCoord, yDetCoord, zDetCoord
+
+
+def getQsAtDetector(x, y, z, t, VX, VY, VZ, nominal_source_sample_distance, sample_detector_distance, notTOFInstrument, qConvFactorFixed, sampleToRealCoordRotMatrix, incidentDirection, realToSampleCoordRotMatrix):
   """Calculate Q values (x,y,z) from positions at the detector surface.
   All outgoing directions from the BornAgain simulation of a single neutron are
   handled at the same time using operations on vectors.
@@ -157,11 +190,10 @@ def getQsAtDetector(x, y, z, t, VX, VY, VZ, nominal_source_sample_distance, samp
   - For non-TOF instruments the (2*pi/(wavelength)) factor (qConvFactorFixed) is an input value.
     For TOF instruments this factor is calculated from the TOF at the detector surface position
     and the nominal distance travelled by the neutron until that position.
-
-  Note that the current implementation doesn't take detector resolution into account (infinite resolution).
   """
-  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, sampleToRealCoordRotMatrix)
-  posDetector = np.vstack((xDet, yDet, zDet)).T
+  sample_detector_tof, xDet, yDet, zDet = virtualPropagationToDetectorVectorised(x, y, z, VX, VY, VZ, sample_detector_distance, sampleToRealCoordRotMatrix, realToSampleCoordRotMatrix)
+  xDetCoord, yDetCoord, zDetCoord = getDetectionCoordinate(xDet, yDet, zDet, sampleToRealCoordRotMatrix, realToSampleCoordRotMatrix)
+  posDetector = np.vstack((xDetCoord, yDetCoord, zDetCoord)).T
   sample_detector_path_length = np.linalg.norm(posDetector, axis=1)
 
   outgoingDirection = posDetector / sample_detector_path_length[:, np.newaxis]
@@ -222,7 +254,8 @@ def processNeutrons(neutrons, params, queue=None):
     wavelength = velocityToWavelength(v) #angstrom
 
     if (abs(x) > params['sample_xwidth']*0.5) or (abs(z) > params['sample_zheight']*0.5):
-      qArray = getQsAtDetector(x, y, z, t, [vx], [vy], [vz], params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection)
+      #direct propagation of neutrons missing the sample
+      qArray = getQsAtDetector(x, y, z, t, [vx], [vy], [vz], params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection, params['realToSampleCoordRotMatrix'])
       weights = np.array([p])
     else:
       # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
@@ -245,7 +278,7 @@ def processNeutrons(neutrons, params, queue=None):
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
       VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
 
-      qArray = getQsAtDetector(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection)
+      qArray = getQsAtDetector(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), params['nominal_source_sample_distance'], params['sample_detector_distance'], notTOFInstrument, qConvFactorFixed, params['sampleToRealCoordRotMatrix'], incidentDirection, params['realToSampleCoordRotMatrix'])
       weights = pout.T.flatten()
     if params['raw_output']:
       q_events.append(np.column_stack([weights, qArray]))
@@ -316,6 +349,8 @@ def createParamsDict(args, instParams):
     'sample_detector_distance': instParams['sample_detector_distance'],
     'sampleToRealCoordRotMatrix' : np.array([[np.cos(sampleInclination), -np.sin(sampleInclination)],
                                              [np.sin(sampleInclination), np.cos(sampleInclination)]]),
+    'realToSampleCoordRotMatrix' : np.array([[np.cos(-sampleInclination), -np.sin(-sampleInclination)],
+                                             [np.sin(-sampleInclination), np.cos(-sampleInclination)]]),
     'sim_module_name': args.model,
     'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
@@ -417,7 +452,7 @@ if __name__=='__main__':
   sampleGroup.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
-  sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and being directly propagated to the detectors. This option can be used to simulated overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
+  sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and being directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
 
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instruments.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
