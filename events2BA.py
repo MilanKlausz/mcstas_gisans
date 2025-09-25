@@ -170,7 +170,7 @@ def getDetectionCoordinate(xDet, yDet, zDet, sampleToRealCoordRotMatrix, realToS
   pixel_size_y = detector_size_y / detector_pixel_number_y
 
   # transform from the sample-based to the real coordinate system
-  zDetReal, yDetReal = np.matmul(sampleToRealCoordRotMatrix, np.vstack((zDet, yDet))) 
+  zDetReal, yDetReal = np.matmul(sampleToRealCoordRotMatrix, np.vstack((zDet, yDet)))
   #note: zDetReal is a fixed value due to the propagation to detector surface
 
   # apply gaussian randomisation
@@ -231,10 +231,7 @@ def processNeutrons(neutrons, params, queue=None):
 
   sim_module = import_module('models.'+params['sim_module_name'])
   get_sample = sim_module.get_sample
-  if params['sim_module_name'] == "silica_100nm_air":
-    sample = get_sample(radius=params['silicaRadius'])
-  else:
-    sample = get_sample()
+  sample = get_sample(**params['sample_kwargs'])
 
   notTOFInstrument = params['wavelengthSelected'] is not None
   qConvFactorFixed = None if params['wavelengthSelected'] is None else qConvFactor(params['wavelengthSelected'])
@@ -349,6 +346,28 @@ def processNeutronsInParallel(events, params, processNumber):
     result = {'qHist': qHist, 'qHistWeightsSquared': qHistWeightsSquared}
   return result
 
+def parse_sample_arguments(args):
+  """Parse the --sample_arguments string into keyword arguments."""
+  if not args.sample_arguments:
+    return {}
+
+  def convert_numbers(value):
+    """Attempt to convert strings to integers or floats"""
+    try:
+        return int(value)
+    except ValueError:
+        try:
+            return float(value)
+        except ValueError:
+            return value
+
+  kwargs = {}
+  pairs = args.sample_arguments.split(';')
+  for pair in pairs:
+    key, value = pair.split('=')
+    kwargs[key.strip()] = convert_numbers(value.strip())
+  return kwargs
+
 def createParamsDict(args, instParams):
   """Pack parameters necessary for processing in a single dictionary"""
   beamDeclination = 0 if not 'beam_declination_angle' in instParams else instParams['beam_declination_angle']
@@ -361,7 +380,6 @@ def createParamsDict(args, instParams):
     'realToSampleCoordRotMatrix' : np.array([[np.cos(-sampleInclination), -np.sin(-sampleInclination)],
                                              [np.sin(-sampleInclination), np.cos(-sampleInclination)]]),
     'sim_module_name': args.model,
-    'silicaRadius': args.silicaRadius,
     'pixelNr': args.pixel_number,
     'wavelengthSelected':  None if instParams['tof_instrument'] else args.wavelengthSelected,
     'alpha_inc': float(np.deg2rad(args.alpha)),
@@ -370,7 +388,8 @@ def createParamsDict(args, instParams):
     'bins': args.bins,
     'histRanges': [args.x_range, args.y_range, args.z_range],
     'sample_xwidth': args.sample_xwidth,
-    'sample_zheight': args.sample_zheight
+    'sample_zheight': args.sample_zheight,
+    'sample_kwargs': parse_sample_arguments(args),
   }
 
 def main(args):
@@ -458,7 +477,7 @@ if __name__=='__main__':
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
   sampleGroup.add_argument('-m','--model', default="silica_100nm_air", choices=getBornAgainModels(), help = 'BornAgain model to be used.')
-  sampleGroup.add_argument('-r', '--silicaRadius', default=53, type=float, help = 'Silica particle radius for the "Silica particles on Silicon measured in air" sample model.')
+  sampleGroup.add_argument('--sample_arguments', help = 'Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
   sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and being directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
@@ -516,6 +535,12 @@ if __name__=='__main__':
     parser.error(f"One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")
   if (args.sample_xwidth < 0 or args.sample_zheight < 0):
     parser.error(f"The sample sizes can not be negative. (For direct beam simulation, set either of the sample sizes to zero.)")
+
+  if args.sample_arguments:
+    pairs = args.sample_arguments.split(';')
+    for pair in pairs:
+        if '=' not in pair:
+            parser.error(f"Invalid argument format for --sample_arguments: {pair}. Should be arg=value")
 
   if args.intensity_factor <= 0.0:
     parser.error(f"The intensity multiplication factor (--intensity_factor) must have a positive value.")
