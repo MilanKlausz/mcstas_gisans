@@ -3,7 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D
+from plotting_utilities import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D, plotQ1D_vert, extractRangeTo1D_vert
 from experiment_time_utilities import handleExperimentTime
 from d22data import getStoredData
 from input_output_utilities import unpackQHistogramFile, unpackRawQListFile
@@ -118,7 +118,7 @@ def main(args):
 
   if args.overlay:
     xPlotRange, yPlotRange, _ , maxValue = getPlotRanges(datasets, args.x_plot_range, args.y_plot_range)
-    lineColors = ['blue', 'green', 'orange','purple']
+    lineColors = ['blue', 'green', 'orange', 'purple', 'cyan', 'brown']
     for datasetIndex, dataset in enumerate(datasets):
       plot2DAxes = axesTop[datasetIndex]
       lineColor = lineColors[datasetIndex]
@@ -126,13 +126,23 @@ def main(args):
       commonMaximum = maxValue if args.individual_colorbars is False else None
       logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, intensityMax=commonMaximum, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
 
+      ### TODO in dev temp OFF ###
       qyMinIndex = np.digitize(args.q_min, yEdges) - 1
       qyMaxIndex = np.digitize(args.q_max, yEdges)
       values, errors, xBins, yLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qyMinIndex, qyMaxIndex])
       plotQ1D(values, errors, xBins, yLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, xRange=xPlotRange, savename=args.savename, output='none')
-      plot2DAxes.axhline(yEdges[qyMinIndex], color='magenta', linestyle='--', label='q_y = 0')
-      plot2DAxes.axhline(yEdges[qyMaxIndex], color='magenta', linestyle='--', label='q_y = 0')
-
+      plot2DAxes.axhline(yEdges[qyMinIndex], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished
+      plot2DAxes.axhline(yEdges[qyMaxIndex], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished
+      ### TODO in dev temp OFF ###
+      # ### TODO in dev ###
+      # qxMinIndex = np.digitize(args.q_min, xEdges) - 1
+      # qxMaxIndex = np.digitize(args.q_max, xEdges)
+      # values, errors, yBins, xLimits = extractRangeTo1D_vert(hist, histError, xEdges, yEdges, [qxMinIndex, qxMaxIndex])
+      # plotQ1D_vert(values, errors, yBins, xLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, yRange=yPlotRange, savename=args.savename, output='none')
+      # plot2DAxes.axvline(xEdges[qxMinIndex], color='magenta', linestyle='--', label='q_x = 0')
+      # plot2DAxes.axvline(xEdges[qxMaxIndex], color='magenta', linestyle='--', label='q_x = 0')
+      # ### TODO in dev ###
+  
       # ### TEMP manual work
       # xFirstPeakMin = 0.04 #TODO
       # xFirstPeakMax = 0.085 #TODO

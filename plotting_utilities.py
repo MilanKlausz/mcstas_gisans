@@ -61,6 +61,24 @@ def plotQ1D(values, errors, xEdges, yLimits, intensityMin=None, color='blue', ti
 
   showOrSave(output, savename+'_qSlice')
 
+def plotQ1D_vert(values, errors, yEdges, xLimits, intensityMin=None, color='blue', titleText=None, label='', ax=None, yRange=[-0.1, 0.3], savename='plotQ', output='show'):
+  """TODO in development"""
+  import matplotlib.pyplot as plt
+  if ax is None:
+    _, ax = plt.subplots()
+
+  ax.errorbar(yEdges, values, yerr=errors, fmt='o-', capsize=5, ecolor='red', color=color, label=label)
+
+  ax.set_xlabel('Qy [1/nm]') # Set the x-axis title
+  ax.set_ylabel('Intensity') # Set the y-axis title
+  qLimitText = f" Qx=[{xLimits[0]:.4f}1/nm, {xLimits[1]:.4f}1/nm]"
+  ax.set_title(titleText+qLimitText)
+  # ax.set_ylim(bottom=intensityMin)
+  ax.set_yscale("log")
+  ax.set_xlim(yRange)
+
+  showOrSave(output, savename+'_qSlice')
+
 def createTofSliced2dQPlots(x, y, weights, titleBase, bins_hor=300, bins_vert=200):
   # tofLimits = [0.005, 0.015, 0.025, 0.035, 0.045, 0.055, 0.065, 0.075]
   tofLimits = [0.005, 0.010, 0.015, 0.020, 0.025, 0.030, 0.035, 0.040, 0.045, 0.050, 0.055, 0.060, 0.065, 0.070, 0.075]
@@ -98,3 +116,15 @@ def extractRangeTo1D(hist, histError, xEdges, yEdges, yIndexRange):
   errors = np.sqrt(np.sum(errorsExtracted**2, axis=1))
   xBins = (xEdges[:-1] + xEdges[1:]) / 2 # Calculate bin centers from bin edges
   return values, errors, xBins, yLimits
+
+### TODO in dev ###
+def extractRangeTo1D_vert(hist, histError, xEdges, yEdges, xIndexRange):
+  """Extract a range of a 2D histogram into a 1D histogram while handling
+  the propagation of error of the corresponding histogram of uncertainties"""
+  xLimits = [xEdges[xIndexRange[0]], xEdges[xIndexRange[1]+1]]
+  valuesExtracted = hist[xIndexRange[0]:xIndexRange[1],:]
+  values = np.sum(valuesExtracted, axis=0)
+  errorsExtracted = histError[xIndexRange[0]:xIndexRange[1],:]
+  errors = np.sqrt(np.sum(errorsExtracted**2, axis=0))
+  yBins = (yEdges[:-1] + yEdges[1:]) / 2 # Calculate bin centers from bin edges
+  return values, errors, yBins, xLimits
