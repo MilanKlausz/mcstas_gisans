@@ -17,7 +17,6 @@ def get_sample():
     layer_3 = ba.Layer(material_Substrate)
 
     roughness = ba.LayerRoughness(1.0, 1.0, 5*nm)
-    roughness_silica = ba.LayerRoughness(1.0, 1.0, 5*nm)
 
     # Define sample
     sample = ba.MultiLayer()

@@ -1,5 +1,5 @@
 """
-Model for Silica particles on Silicon measured in air.
+Model for Silica particles on Silicon measured in D2O.
 """
 
 import bornagain as ba
@@ -16,10 +16,10 @@ def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVar
       packing.
     positionVariance - how much each sphere is displaced, in a random direction
       in x,y around its nominal position in the 2D lattice.
-    defectAbundance - proportion of the lattice places replaced with air
+    defectAbundance - proportion of the lattice places replaced with D2O
     """
     # Define materials
-    material_Air = ba.MaterialBySLD("Air", 0.0, 0.0)
+    material_D2O = ba.MaterialBySLD("D2O", 6.35e-06, 0.0) #6.35e-06 / 6.35-06 ?
     material_SiO2 = ba.MaterialBySLD("SiO2", 3.47e-06, 0.0)
     material_Silicon = ba.MaterialBySLD("Silicon", 2.07e-06, 0.0) #Substrate
 
@@ -28,7 +28,9 @@ def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVar
 
     # Define particles
     particle = ba.Particle(material_SiO2, ff)
-    particle_defect = ba.Particle(material_Air, ff)
+    particle.translate(0, 0, -2*radius*nm)
+    particle_defect = ba.Particle(material_D2O, ff)
+    particle_defect.translate(0, 0, -2*radius*nm)
 
     # Define 2D lattices
     lattice = ba.BasicLattice2D(latticeParameter*nm, latticeParameter*nm, 120*deg, 0*deg)
@@ -45,14 +47,11 @@ def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVar
     layout.addParticle(particle_defect, defectAbundance)
     layout.setInterference(iff)
 
-    # Define roughness of the SiO2 layer
-    # roughness = ba.LayerRoughness(1.0, 1.0, 5*nm)
-
     # Define layers
-    layer_1 = ba.Layer(material_Air)
-    layer_1.addLayout(layout)
-    layer_2 = ba.Layer(material_SiO2, 1.8*nm)
-    layer_3 = ba.Layer(material_Silicon)
+    layer_1 = ba.Layer(material_Silicon)
+    layer_2 = ba.Layer(material_SiO2, 1.8*nm) #1.5*nm or 1.8?
+    layer_3 = ba.Layer(material_D2O)
+    layer_3.addLayout(layout)
 
     # Define sample
     sample = ba.MultiLayer()
