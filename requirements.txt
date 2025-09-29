@@ -1,0 +1,6 @@
+bornagain==21.1
+numpy>=1.0,<2.0
+mcpl
+matplotlib
+h5py
+scipy

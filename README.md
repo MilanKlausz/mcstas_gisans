@@ -1,3 +1,6 @@
+mcstas_gisan : BornAgain GISANS simulation with beam from McStas
+----------------------------------------------------------------
+
 This project facilitates the modelling and analysis of GISANS (Grazing
 Incidence Small Angle Neutron Scattering) samples after the McStas simulation
 of an instrument up until the sample position. It provides scripts and
@@ -17,3 +20,13 @@ with a plotting script.
 
 Detailed documentation of installation and usage can be found at:
 https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/edit?usp=sharing
+
+# Third-Party files
+
+This project includes the following third-party files:
+
+- src/mcstas (directory) 
+  - Contains McStas models and corresponding files from various authors
+  - Copyright and attribution:
+    - Each file contains its own author information in the header
+    - For licensing information, please contact the individual authors of each file

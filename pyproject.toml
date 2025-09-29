@@ -1,0 +1,40 @@
+
+[project]
+name = "mcstas_gisans"
+version = "1.1.0"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name="Milán Klausz" },
+  { name="Artur Glavic" },
+]
+maintainers = [
+  {name = "Milán Klausz"}
+]
+description = "BornAgain GISANS simulation with beam from McStas"
+requires-python = ">=3.11.0,<3.12.0"
+dependencies = [
+  "numpy>=1.0,<2.0",
+  "mcpl",
+  "bornagain==21.1",
+]
+[project.optional-dependencies]
+plot = ['matplotlib']
+fit = ['matplotlib', 'scipy']
+all = ['matplotlib', 'scipy', 'h5py']
+
+[project.urls]
+Documentation = "https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/edit?usp=sharing"
+Issues = "https://github.com/MilanKlausz/mcstas_gisans/issues"
+
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+mcstas_gisans = "mcstas_gisans.events2BA:main"
+mcstas_gisans_plot = "mcstas_gisans.plotQ:main"
+mcstas_gisans_fit_monitor = "mcstas_gisans.mcstasMonitorFitting:main"
+

@@ -3,7 +3,10 @@
 *.exe
 *.zip
 *.c
-__pycache__
 
 *png
 *.npz
+
+*.egg-info/
+build/
+__pycache__/

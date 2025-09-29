@@ -1,6 +1,6 @@
 
 import numpy as np
-from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
+from .neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
 from importlib import import_module
 
 def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detector_distance):
@@ -114,7 +114,7 @@ def processNeutronsNonVectorised(events, get_simulation, sc, savename):
   np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
   saveOutgoingEvents = False
   if saveOutgoingEvents:
-    from input_output_utilities import write_events_mcpl
+    from .input_output_utilities import write_events_mcpl
     deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
     write_events_mcpl(out_events, savename, deweight)
   return

@@ -7,7 +7,6 @@ processes them through BornAgain simulations to generate Q values for each
 neutron, and saves the result for further analysis or plotting.
 """
 
-from importlib import import_module
 import numpy as np
 from multiprocessing import cpu_count, Queue
 import multiprocessing
@@ -16,10 +15,10 @@ from pathlib import Path
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
-from instruments import instrumentParameters, wfmRequiredKeys
-from mcstasMonitorFitting import fitGaussianToMcstasMonitor
-from input_output_utilities import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
+from .neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
+from .instruments import instrumentParameters, wfmRequiredKeys
+from .input_output_utilities import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
+from .get_models import getSampleModels, getSampleModule 
 
 def getTofFilteringLimits(args, pars):
   """
@@ -43,6 +42,7 @@ def getTofFilteringLimits(args, pars):
       else:
         figureOutput = args.figure_output # None or 'show'
       mcstasDir = Path(args.filename).resolve().parent
+      from .mcstasMonitorFitting import fitGaussianToMcstasMonitor
       fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.input_tof_range_factor)
       tofLimits[0] = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       tofLimits[1] = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
@@ -106,11 +106,12 @@ def applyT0Correction(events, args):
       tofLimits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
       t0monitor = instrumentParameters[args.instrument]['t0_monitor_name']
     else: # Wavelength Frame Multiplication (WFM)
-      from instruments import getSubpulseTofLimits
+      from .instruments import getSubpulseTofLimits
       tofLimits = getSubpulseTofLimits(args.wavelength)
       t0monitor = instrumentParameters[args.instrument]['wfm_t0_monitor_name']
     print(f"Applying T0 correction based on McStas monitor: {t0monitor}")
     mcstasDir = Path(args.filename).resolve().parent
+    from .mcstasMonitorFitting import fitGaussianToMcstasMonitor
     fit = fitGaussianToMcstasMonitor(mcstasDir, t0monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.t0_wavelength_rebin)
     t0correction = fit['mean'] * 1e-6
   print(f"T0 correction value: {t0correction} second")
@@ -228,10 +229,8 @@ def processNeutrons(neutrons, params, queue=None):
      either returned (old raw format), or histogrammed and added to a cumulative
      histogram where all other neutrons result are added.
   """
-
-  sim_module = import_module('models.'+params['sim_module_name'])
-  get_sample = sim_module.get_sample
-  sample = get_sample(**params['sample_kwargs'])
+  sim_module = getSampleModule(params["sim_module_name"])
+  sample = sim_module.get_sample(**params['sample_kwargs'])
 
   notTOFInstrument = params['wavelengthSelected'] is not None
   qConvFactorFixed = None if params['wavelengthSelected'] is None else qConvFactor(params['wavelengthSelected'])
@@ -392,67 +391,7 @@ def createParamsDict(args, instParams):
     'sample_kwargs': parse_sample_arguments(args),
   }
 
-def main(args):
-  """The actual script execution after the input arguments are parsed."""
-  #parameters necessary for neutron processing
-  params = createParamsDict(args, instrumentParameters[args.instrument])
-
-  ### Getting neutron events from the MCPL file ###
-  mcplTofLimits = getTofFilteringLimits(args, instrumentParameters[args.instrument])
-  events = getNeutronEvents(args.filename, mcplTofLimits, args.intensity_factor)
-
-  ### Preconditioning ###
-  events = coordTransformToSampleSystem(events, params['alpha_inc'])
-  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
-  if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
-    print("No T0 correction is applied.")
-  else:
-    events = applyT0Correction(events, args)
-
-  ### BornAgain simulation ###
-  savename = f"q_events_pix{params['pixelNr']}" if args.savename == '' else args.savename
-  print('Number of events being processed: ', len(events))
-
-  if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
-    from old_processing import processNeutronsNonVectorised
-    processNeutronsNonVectorised(events, get_simulation, params, savename)
-    return #early return
-
-  if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially, mainly intended for profiling
-    result = processNeutrons(events, params)
-  else:
-    processNumber = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
-    result = processNeutronsInParallel(events, params, processNumber)
-
-  ### Create Output ###
-  if args.raw_output: #raw list of Q events (old output)
-    qArray = result
-    saveRawQListFile(savename, qArray)
-    return # no further processing, early return
-
-  ## Create Q histogram with corresponding uncertainty array (new output format)
-  qHist = result['qHist']
-  qHistWeightsSquared = result['qHistWeightsSquared']
-  qHistError = np.sqrt(qHistWeightsSquared)
-
-  #Get the bin edges of the histograms
-  edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
-               for b, r in zip(params['bins'], params['histRanges'])]
-
-  saveQHistogramFile(savename, qHist, qHistError, edges)
-
-  if args.quick_plot:
-    hist2D = np.sum(qHist, axis=2)
-    from plotting_utilities import logPlot2d
-    logPlot2d(hist2D, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
-
-if __name__=='__main__':
-  def getBornAgainModels():
-    """Get all the Born Again sample models from the ./models directory."""
-    import sys
-    scriptDir = Path(sys.argv[0]).resolve().parent
-    return[f.stem for f in Path(scriptDir / 'models').iterdir() if f.is_file() and f.stem != '__init__']
-
+def main():
   import argparse
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
@@ -476,7 +415,7 @@ if __name__=='__main__':
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-  sampleGroup.add_argument('-m','--model', default="silica_100nm_air", choices=getBornAgainModels(), help = 'BornAgain model to be used.')
+  sampleGroup.add_argument('--model', default="silica_100nm_air", choices=getSampleModels(), help = 'BornAgain model to be used.')
   sampleGroup.add_argument('--sample_arguments', help = 'Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
@@ -545,4 +484,59 @@ if __name__=='__main__':
   if args.intensity_factor <= 0.0:
     parser.error(f"The intensity multiplication factor (--intensity_factor) must have a positive value.")
 
-  main(args)
+
+  """The actual script execution after the input arguments are parsed."""
+  #parameters necessary for neutron processing
+  params = createParamsDict(args, instrumentParameters[args.instrument])
+
+  ### Getting neutron events from the MCPL file ###
+  mcplTofLimits = getTofFilteringLimits(args, instrumentParameters[args.instrument])
+  events = getNeutronEvents(args.filename, mcplTofLimits, args.intensity_factor)
+
+  ### Preconditioning ###
+  events = coordTransformToSampleSystem(events, params['alpha_inc'])
+  events = propagateToSampleSurface(events, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
+  if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
+    print("No T0 correction is applied.")
+  else:
+    events = applyT0Correction(events, args)
+
+  ### BornAgain simulation ###
+  savename = f"q_events_pix{params['pixelNr']}" if args.savename == '' else args.savename
+  print('Number of events being processed: ', len(events))
+
+  if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
+    from .old_processing import processNeutronsNonVectorised
+    processNeutronsNonVectorised(events, get_simulation, params, savename)
+    return #early return
+
+  if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially, mainly intended for profiling
+    result = processNeutrons(events, params)
+  else:
+    processNumber = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+    result = processNeutronsInParallel(events, params, processNumber)
+
+  ### Create Output ###
+  if args.raw_output: #raw list of Q events (old output)
+    qArray = result
+    saveRawQListFile(savename, qArray)
+    return # no further processing, early return
+
+  ## Create Q histogram with corresponding uncertainty array (new output format)
+  qHist = result['qHist']
+  qHistWeightsSquared = result['qHistWeightsSquared']
+  qHistError = np.sqrt(qHistWeightsSquared)
+
+  #Get the bin edges of the histograms
+  edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
+               for b, r in zip(params['bins'], params['histRanges'])]
+
+  saveQHistogramFile(savename, qHist, qHistError, edges)
+
+  if args.quick_plot:
+    hist2D = np.sum(qHist, axis=2)
+    from .plotting_utilities import logPlot2d
+    logPlot2d(hist2D, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
+
+if __name__=='__main__':
+  main()

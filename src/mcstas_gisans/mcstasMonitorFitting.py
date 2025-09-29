@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
-from mcstas_reader import McSim
-import matplotlib.pyplot as plt
+from .mcstas_reader import McSim
 from scipy.optimize import curve_fit
 import numpy as np
 import argparse
-import matplotlib
 
 def Gaussian(x, a, x0, sigma):
   return a * np.exp(-(x - x0)**2 / (2 * sigma**2))
@@ -70,10 +68,11 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
   xHalfMaximumHigher = mean + fwhm * 0.5
 
   if(figureOutput is not None):
+    import matplotlib.pyplot as plt
     if figureOutput == 'show':
-      matplotlib.use('TkAgg')
+      plt.switch_backend('TkAgg')
     else:
-      matplotlib.use('agg')
+      plt.switch_backend('Agg')
     plt.rcParams.update({'font.size': 15})
 
     _, (ax1, ax2) = plt.subplots(2, figsize=(12, 12), sharex=True)
@@ -123,10 +122,10 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
 
   return {'mean': mean, 'fwhm': fwhm}
 
-if __name__=='__main__':
+def main():
   parser = argparse.ArgumentParser(description = 'Calculate and visualise the FWHM of the TOF distribution of neutrons with a certain wavelength from a TOF_Lambda McStas monitor.')
   parser.add_argument('dirname', help = 'Directory name with the monitor dat file.')
-  parser.add_argument('-m', '--monitor', default='Mcpl_TOF_Lambda', required=False, help = 'Directory name with the monitor dat file.')
+  parser.add_argument('-m', '--monitor', default='Mcpl_TOF_Lambda', required=False, help = 'Name of the monitor.')
   parser.add_argument('-w', '--wavelength', default=6.0, type=float, required=False, help = 'Neutron wavelength of interest.')
   parser.add_argument('-s', '--savename', default='fwhm', required=False, help = 'Output image filename.')
   parser.add_argument('-f', '--figure_output', default='show', choices=['show', 'png', 'pdf', 'None', 'none'], help = 'Figure output format. In case of show, no output file will be created.')
@@ -157,3 +156,7 @@ if __name__=='__main__':
   tof_min = (fit['mean'] - fit['fwhm'] * 0.5) * 1e-3
   tof_max = (fit['mean'] + fit['fwhm'] * 0.5) * 1e-3
   print('events2BA.py TOF filtering command: ', f"--tof_min={tof_min:.3f} --tof_max={tof_max:.3f}")
+
+
+if __name__=='__main__':
+  main()
