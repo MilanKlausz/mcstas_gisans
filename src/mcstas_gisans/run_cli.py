@@ -25,7 +25,6 @@ def create_argparser():
   outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qy range of the histogram. (In vertical plane bottom to top)')
   outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-1000, 1000], help='Qz range of the histogram. (In horizontal plane back to forward)')
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
-  outputGroup.add_argument('--all_q', default=False, action='store_true', help = 'Calculate and save multiple Q values, each with different levels of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g. divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
@@ -83,9 +82,6 @@ def parse_args(parser):
   if args.t0_fixed:
     if args.t0_wavelength_rebin:
       parser.error(f"The --t0_fixed option can not be used together with --t0_wavelength_rebin ")
-
-  if args.all_q and args.wfm:
-    parser.error(f"The --all_q option can not be used together with --wfm. (Simply because --all_q is not well maintained, but it can be changed on demand.)")
 
   if (args.sample_xwidth == 0 or args.sample_zheight == 0) and not args.allow_sample_miss:
     parser.error(f"One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")

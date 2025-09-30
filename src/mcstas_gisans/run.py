@@ -415,11 +415,6 @@ def main():
   savename = f"q_events_pix{params['pixelNr']}" if args.savename == '' else args.savename
   print('Number of events being processed: ', len(events))
 
-  if args.all_q: #old, non-vectorised, non-parallel processing, resulting in multiple q values with different definitions
-    from .old_processing import processNeutronsNonVectorised
-    processNeutronsNonVectorised(events, get_simulation, params, savename)
-    return #early return
-
   if args.no_parallel: #not using parallel processing, iterating over each neutron sequentially, mainly intended for profiling
     result = processNeutrons(events, params)
   else:
