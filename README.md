@@ -1,4 +1,4 @@
-mcstas_gisan : BornAgain GISANS simulation with beam from McStas
+mcstas_gisans : BornAgain GISANS simulation with beam from McStas
 ----------------------------------------------------------------
 
 This project facilitates the modelling and analysis of GISANS (Grazing
