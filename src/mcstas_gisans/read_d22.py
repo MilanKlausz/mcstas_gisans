@@ -1,5 +1,6 @@
+
 """
-Read data from measurements at D22(ILL) from nxs files
+Read data from measurements at D22(ILL) from nxs files (hard-coded)
 """
 
 import h5py

@@ -1,6 +1,13 @@
 
+"""
+Old non-vectorised non-parallel processing version of the simulation processing
+function resulting in multiple q values with different definitions.
+Kept for the multiple q value output that helps the understanding of processing
+steps, but it is not maintained and should probably be removed.
+"""
+
 import numpy as np
-from .neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
+from .neutron_calculations import velocityToWavelength, calcWavelength, qConvFactor
 from importlib import import_module
 
 def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detector_distance):
@@ -19,7 +26,7 @@ def virtualPropagationToDetector(x, y, z, vx, vy, vz, rot_matrix, sample_detecto
   return x, y, z, t_propagate
 
 def processNeutronsNonVectorised(events, get_simulation, sc, savename):
-  sim_module = import_module('models.'+sc['sim_module_name'])
+  sim_module = import_module('samples.'+sc['sim_module_name'])
   get_sample = sim_module.get_sample
 
   misses = 0
@@ -114,7 +121,7 @@ def processNeutronsNonVectorised(events, get_simulation, sc, savename):
   np.savez_compressed(f"{savename}_q_events_calc_detector", q_events_calc_detector=q_events_calc_detector)
   saveOutgoingEvents = False
   if saveOutgoingEvents:
-    from .input_output_utilities import write_events_mcpl
+    from .input_output import write_events_mcpl
     deweight = False #Ensure final weight of 1 using splitting and Russian Roulette
     write_events_mcpl(out_events, savename, deweight)
   return

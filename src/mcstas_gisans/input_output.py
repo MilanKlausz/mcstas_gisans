@@ -6,7 +6,7 @@ Output particles into an MCPL file using np2mcpl
 
 import sys
 import numpy as np
-from .neutron_utilities import VS2E
+from .neutron_calculations import VS2E
 import mcpl
 
 def getVelocity(ux, uy, uz, ekin):

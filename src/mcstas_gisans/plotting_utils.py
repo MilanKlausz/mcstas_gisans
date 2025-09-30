@@ -1,5 +1,5 @@
 """
-Plotting utilities
+Collection of plotting functions
 """
 
 import numpy as np

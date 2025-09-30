@@ -1,5 +1,5 @@
 """
-Define the sample model to be used with events2BA.py
+Define the sample model to be used with mg_run
 See BornAgain documentation for the definition of the sample.
 """
 

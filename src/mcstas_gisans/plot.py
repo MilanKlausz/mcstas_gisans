@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
+"""
+Main plotting script to create 2D/1D Q plots from simulation results
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .plotting_utilities import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D, plotQ1D_vert, extractRangeTo1D_vert
-from .experiment_time_utilities import handleExperimentTime
-from .input_output_utilities import unpackQHistogramFile, unpackRawQListFile
+from .plotting_utils import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D, plotQ1D_vert, extractRangeTo1D_vert
+from .experiment_time import handleExperimentTime
+from .input_output import unpackQHistogramFile, unpackRawQListFile
 
 def getPlotRanges(datasets, xPlotRange, yPlotRange):
   """Get plot ranges. Return ranges if provided, otherwise find the minimum and
@@ -45,7 +49,7 @@ def getDatasets(args):
   yDataRange = args.y_range
 
   if args.nxs:
-    from .d22data import getStoredData
+    from .read_d22 import getStoredData
     hist, histError, xEdges, yEdges = getStoredData(args.nxs)
     label = 'D22 measurement'
     nxs_sum = np.sum(hist)

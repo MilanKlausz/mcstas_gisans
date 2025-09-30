@@ -34,7 +34,7 @@ requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-mcstas_gisans = "mcstas_gisans.events2BA:main"
-mcstas_gisans_plot = "mcstas_gisans.plotQ:main"
-mcstas_gisans_fit_monitor = "mcstas_gisans.mcstasMonitorFitting:main"
+mg_run = "mcstas_gisans.run:main"
+mg_plot = "mcstas_gisans.plot:main"
+mg_fit_monitor = "mcstas_gisans.fit_monitor:main"
 

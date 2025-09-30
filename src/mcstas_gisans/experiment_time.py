@@ -1,5 +1,6 @@
 """
-Utilities to make simulated data comparable with a real experiment
+Utilities to make simulated data comparable with a real experiment by scaling
+the results and adjusting the uncertainties.
 """
 
 import numpy as np

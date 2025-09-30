@@ -15,10 +15,10 @@ from pathlib import Path
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from .neutron_utilities import velocityToWavelength, calcWavelength, qConvFactor
+from .neutron_calculations import velocityToWavelength, calcWavelength, qConvFactor
 from .instruments import instrumentParameters, wfmRequiredKeys
-from .input_output_utilities import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
-from .get_models import getSampleModels, getSampleModule 
+from .input_output import getNeutronEvents, saveQHistogramFile, saveRawQListFile, printTofLimits
+from .get_samples import getSampleModels, getSampleModule 
 
 def getTofFilteringLimits(args, pars):
   """
@@ -42,7 +42,7 @@ def getTofFilteringLimits(args, pars):
       else:
         figureOutput = args.figure_output # None or 'show'
       mcstasDir = Path(args.filename).resolve().parent
-      from .mcstasMonitorFitting import fitGaussianToMcstasMonitor
+      from .fit_monitor import fitGaussianToMcstasMonitor
       fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=pars['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.input_tof_range_factor)
       tofLimits[0] = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       tofLimits[1] = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
@@ -111,7 +111,7 @@ def applyT0Correction(events, args):
       t0monitor = instrumentParameters[args.instrument]['wfm_t0_monitor_name']
     print(f"Applying T0 correction based on McStas monitor: {t0monitor}")
     mcstasDir = Path(args.filename).resolve().parent
-    from .mcstasMonitorFitting import fitGaussianToMcstasMonitor
+    from .fit_monitor import fitGaussianToMcstasMonitor
     fit = fitGaussianToMcstasMonitor(mcstasDir, t0monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.t0_wavelength_rebin)
     t0correction = fit['mean'] * 1e-6
   print(f"T0 correction value: {t0correction} second")
@@ -535,7 +535,7 @@ def main():
 
   if args.quick_plot:
     hist2D = np.sum(qHist, axis=2)
-    from .plotting_utilities import logPlot2d
+    from .plotting_utils import logPlot2d
     logPlot2d(hist2D, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
 
 if __name__=='__main__':

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+"""
+McStas TOFLambda_monitor fitting tool. Gets fitted Gaussian function parameters
+for the simulations, but can also be used to visualize the fittings.
+"""
+
 from .mcstas_reader import McSim
 from scipy.optimize import curve_fit
 import numpy as np
@@ -155,7 +160,7 @@ def main():
   print(f"FWHM={fit['fwhm']:.3f}")
   tof_min = (fit['mean'] - fit['fwhm'] * 0.5) * 1e-3
   tof_max = (fit['mean'] + fit['fwhm'] * 0.5) * 1e-3
-  print('events2BA.py TOF filtering command: ', f"--tof_min={tof_min:.3f} --tof_max={tof_max:.3f}")
+  print('mg_run TOF filtering arguments: ', f"--tof_min={tof_min:.3f} --tof_max={tof_max:.3f}")
 
 
 if __name__=='__main__':
