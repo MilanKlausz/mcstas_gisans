@@ -14,7 +14,7 @@ def create_argparser():
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
   parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
-  parser.add_argument('--wavelengthSelected', default=6.0, type=float, help = 'Wavelength (mean) in Angstrom selected by the velocity selector. Only used for non-time-of-flight instruments.')
+  parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
   parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
 
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
@@ -54,7 +54,7 @@ def parse_args(parser):
   args = parser.parse_args()
 
   if args.wfm and any(key not in instrumentParameters[args.instrument] for key in wfmRequiredKeys):
-    parser.error(f"wfm option is not enabled for the {args.instrument} instrument! Set the required instrument parameters in instruments.py!")
+    parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
 
   if args.figure_output:
     if not args.wavelength:
@@ -64,24 +64,27 @@ def parse_args(parser):
     if args.no_mcpl_filtering:
       parser.error(f"The --figure_output option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
 
+  if not instrumentParameters[args.instrument]['tof_instrument'] and not args.wavelength_selected:
+    parser.error(f"For non-TOF instruments the --wavelength_selected parameter is required.")
+
   if args.no_t0_correction:
     if args.t0_fixed:
-      parser.error(f"The --no_t0_correction option can not be used together with --t0_fixed ")
+      parser.error(f"The --no_t0_correction option can not be used together with --t0_fixed.")
     if args.t0_wavelength_rebin:
-      parser.error(f"The --no_t0_correction option can not be used together with --t0_wavelength_rebin ")
+      parser.error(f"The --no_t0_correction option can not be used together with --t0_wavelength_rebin.")
     if args.wfm:
-      parser.error(f"The --no_t0_correction option can not be used together with --wfm ")
-  else:
+      parser.error(f"The --no_t0_correction option can not be used together with --wfm.")
+  elif instrumentParameters[args.instrument]['tof_instrument']:
     if not args.wavelength:
       parser.error(f"The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
 
-  if not args.no_mcpl_filtering:
+  if not args.no_mcpl_filtering and instrumentParameters[args.instrument]['tof_instrument']:
     if not args.wavelength:
-      parser.error(f"The --wavelength must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering")
+      parser.error(f"The --wavelength must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
 
   if args.t0_fixed:
     if args.t0_wavelength_rebin:
-      parser.error(f"The --t0_fixed option can not be used together with --t0_wavelength_rebin ")
+      parser.error(f"The --t0_fixed option can not be used together with --t0_wavelength_rebin.")
 
   if (args.sample_xwidth == 0 or args.sample_zheight == 0) and not args.allow_sample_miss:
     parser.error(f"One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")
@@ -92,7 +95,7 @@ def parse_args(parser):
     pairs = args.sample_arguments.split(';')
     for pair in pairs:
         if '=' not in pair:
-            parser.error(f"Invalid argument format for --sample_arguments: {pair}. Should be arg=value")
+            parser.error(f"Invalid argument format for --sample_arguments: {pair}. Should be arg=value.")
 
   if args.intensity_factor <= 0.0:
     parser.error(f"The intensity multiplication factor (--intensity_factor) must have a positive value.")

@@ -39,7 +39,7 @@ def pack_parameters(args):
                                              [np.sin(-sample_inclination), np.cos(-sample_inclination)]]),
     'sim_module_name': args.model,
     'pixelNr': args.pixel_number,
-    'wavelengthSelected':  None if inst_params['tof_instrument'] else args.wavelengthSelected,
+    'wavelength_selected':  None if inst_params['tof_instrument'] else args.wavelength_selected,
     'alpha_inc': float(np.deg2rad(args.alpha)),
     'angle_range': args.angle_range,
     'raw_output': args.raw_output,

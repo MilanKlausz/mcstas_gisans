@@ -85,10 +85,10 @@ def calculate_q(x, y, z, t, VX, VY, VZ, incident_direction, params):
 
   outgoing_direction = detection_coordinate / sample_detector_path_length[:, np.newaxis]
 
-  if params['wavelengthSelected'] is None: #TOF instruments
+  if params['wavelength_selected'] is None: #TOF instruments
     wavelength = calculate_wavelength(t + sample_detector_tof, params['nominal_source_sample_distance'] + sample_detector_path_length)
     qFactor = qConvFactor(wavelength)[:, np.newaxis]
   else: #not TOF instruments
-    qFactor = qConvFactor(params['wavelengthSelected'])
+    qFactor = qConvFactor(params['wavelength_selected'])
 
   return (outgoing_direction - incident_direction) * qFactor
