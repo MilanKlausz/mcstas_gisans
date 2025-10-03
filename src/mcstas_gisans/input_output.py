@@ -6,71 +6,69 @@ Output particles into an MCPL file using np2mcpl
 
 import sys
 import numpy as np
-from .neutron_calculations import VS2E
 import mcpl
 
-def getVelocity(ux, uy, uz, ekin):
-  """Convert normalised direction vector and kinetic energy to velocity"""
-  norm = np.sqrt(ekin * 1e9 / VS2E)
-  return [ux*norm, uy*norm, uz*norm]
+from .neutron_calculations import get_velocity_vector
 
-def printTofLimits(mcplTofLimits):
+def print_tof_limits(tof_limits):
   """Small utility function to print out TOF limits used for filtering"""
-  if mcplTofLimits == [float('-inf'), float('inf')]:
+  if tof_limits == [float('-inf'), float('inf')]:
     print(f"No TOF filtering applied. Processing all neutrons from the input file.")
   else:
-    print(f"Using MCPL input TOF limits: : {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]")
+    print(f"Using MCPL input TOF limits: : {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]")
 
-def getNeutronEvents(filename, mcplTofLimits, intensity_factor):
-  """Read neutron events from an MCPL file or a .dat file (created with the
+def get_particles(filename, tof_limits, intensity_factor):
+  """
+  Read particles from an MCPL file or a .dat file (created with the
   Virtual_output McStas component). In case of an MCPL file, convert units and
-  apply filtering based on the time (TOF) field using the provided limits."""
-  print(f'Reading events from {filename}...')
-  printTofLimits(mcplTofLimits)
+  apply filtering based on the time (TOF) field using the provided limits.
+  """
+  print(f'Reading particles from {filename}...')
+  print_tof_limits(tof_limits)
   if filename.endswith('.mcpl') or filename.endswith('.mcpl.gz'):
     with mcpl.MCPLFile(filename) as myfile:
-      events = np.array(
+      particles = np.array(
         [(p.weight * intensity_factor,
           p.x/100, p.y/100, p.z/100, #convert cm->m
-          *getVelocity(p.ux, p.uy, p.uz, p.ekin),
+          *get_velocity_vector(p.ux, p.uy, p.uz, p.ekin),
           p.time*1e-3 #convert ms->s
-          ) for p in myfile.particles if (p.weight>1e-5 and mcplTofLimits[0] < p.time and p.time < mcplTofLimits[1])]
+          ) for p in myfile.particles if (p.weight>1e-5 and tof_limits[0] < p.time and p.time < tof_limits[1])]
         )
   elif filename.endswith('.dat'): #legacy file type
-    events = np.loadtxt(filename)
+    particles = np.loadtxt(filename)
   else:
     sys.exit("Wrong input file extension. Expected: '.mcpl', '.mcpl.gz' or '.dat'" )
-  if len(events)==0:
-    if mcplTofLimits != [float('-inf'), float('inf')]:
-      sys.exit(f"No neutrons found in the input file ({filename}) within the TOF filtering limits: {mcplTofLimits[0]:.3f} - {mcplTofLimits[1]:.3f} [millisecond]!")
+  if len(particles)==0:
+    if tof_limits != [float('-inf'), float('inf')]:
+      sys.exit(f"No neutrons found in the input file ({filename}) within the TOF filtering limits: {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]!")
     else:
       sys.exit(f"No neutrons found in the input file {filename}.")
-  return events
+  return particles
 
-def saveQHistogramFile(savename, qHist, qHistError, edges):
+def save_q_histogram_file(savename, qHist, qHistError, edges):
   """Save the histograms are corresponding bin edges in an NPZ file"""
   np.savez_compressed(savename, hist=qHist, error=qHistError, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
   print(f"Created {savename}.npz")
 
 def unpackQHistogramFile(npFile):
   """Unpack the content (histograms are corresponding bin edges) of an NPZ file
-  created with the saveQHistogramFile function"""
-  hist = npFile['hist'] #keys are hardcoded in the saveQHistogramFile function
+  created with the save_q_histogram_file function"""
+  hist = npFile['hist'] #keys are hardcoded in the save_q_histogram_file function
   histError = npFile['error']
   xEdges = npFile['xEdges']
   yEdges = npFile['yEdges']
   zEdges = npFile['zEdges']
   return hist, histError, xEdges, yEdges, zEdges
 
-def saveRawQListFile(savename, qArray):
+def save_raw_q_list_file(savename, qArray):
   """Save the list of Q events in an NPZ file"""
   np.savez_compressed(savename, qArray=qArray)
   print(f"Created {savename}.npz with raw Q events.")
 
-def unpackRawQListFile(npFile):
+def unpack_raw_q_list_file(npFile):
   """Unpack the content (list of Q events) of an NPZ file created with the
-  saveRawQListFile function"""
-  npFileArrayKey = npFile.files[0] #might as well use hardcoded 'qArray' key from saveRawQListFile function
+  save_raw_q_list_file function"""
+  npFileArrayKey = npFile.files[0] #might as well use hardcoded 'qArray' key from save_raw_q_list_file function
   qArray = npFile[npFileArrayKey]
   weights = qArray[:, 0]
   x = qArray[:, 1]

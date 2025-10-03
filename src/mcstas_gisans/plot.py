@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from .plotting_utils import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D, plotQ1D_vert, extractRangeTo1D_vert
 from .experiment_time import handleExperimentTime
-from .input_output import unpackQHistogramFile, unpackRawQListFile
+from .input_output import unpackQHistogramFile, unpack_raw_q_list_file
 
 def getPlotRanges(datasets, xPlotRange, yPlotRange):
   """Get plot ranges. Return ranges if provided, otherwise find the minimum and
@@ -70,7 +70,7 @@ def getDatasets(args):
           xDataRange = [xEdges[0], xEdges[-1]]
           yDataRange = [yEdges[0], yEdges[-1]]
         else: #old 'raw data' file with a list of unhistogrammed qEvents
-          x, y, _, weights = unpackRawQListFile(npFile)
+          x, y, _, weights = unpack_raw_q_list_file(npFile)
           bins_hor = args.bins[0] if not args.nxs else len(xEdges)-1 #override bin number to match stored data for better comparison
           bins_vert = args.bins[1] if not args.nxs else len(yEdges)-1
           hist, histError, xEdges, yEdges = create2dHistogram(x, y, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)

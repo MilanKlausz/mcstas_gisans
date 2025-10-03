@@ -4,7 +4,7 @@ Collection of plotting functions
 
 import numpy as np
 import math as m
-# from neutron_utilities import calcWavelength
+# from neutron_utilities import calculate_wavelength
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 
@@ -91,7 +91,7 @@ def createTofSliced2dQPlots(x, y, weights, titleBase, bins_hor=300, bins_vert=20
     # print(time[tofRange[0]<time])
     if(len(xtmp)>0):
       titleText = f"tofMin={tofRange[0]}_tofMax={tofRange[1]}"
-      # titleText = f"lambdaMin={calcWavelength(tofRange[0]):.2f}_lambdaMax={calcWavelength(tofRange[1]):.2f}" #FIXME pathLength is not known for all instruments at this point
+      # titleText = f"lambdaMin={calculate_wavelength(tofRange[0]):.2f}_lambdaMax={calculate_wavelength(tofRange[1]):.2f}" #FIXME pathLength is not known for all instruments at this point
       logPlot2d(xtmp, ytmp, wtmp, bins_hor, bins_vert, titleBase+titleText)
   logPlot2d(x, y, weights, bins_hor, bins_vert, titleBase)
   # logPlot2d(x, y, weights, bins_hor, bins_vert, titleBase+'Full range')

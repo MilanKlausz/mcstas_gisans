@@ -3,7 +3,7 @@
 Create and run argparse command line interface for the run script
 """
 import argparse
-from .instruments import instrumentParameters
+from .instruments import instrumentParameters, wfmRequiredKeys
 from .get_samples import getSampleModels
 
 def create_argparser():
