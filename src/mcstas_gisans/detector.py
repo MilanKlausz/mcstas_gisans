@@ -1,5 +1,7 @@
+
 """
-Contains detector related calculations
+This module defines the Detector class, which facilitates the determination of
+of detection coordinates.
 """
 
 import numpy as np
@@ -110,3 +112,22 @@ class Detector:
     yDetCoord, zDetCoord = self.transform_to_bornagain_coordinate_system(yDetCoordReal, zDetReal)
 
     return xDetCoord, yDetCoord, zDetCoord
+
+  def get_detector_angle_maximum(self, sample_detector_distance):
+    """Calculate the maximum opening angle covered by the detector"""
+    x_maximum = max(abs(self.min_edge_x), abs(self.max_edge_x))
+    angle_x_maximum = np.arctan(x_maximum / sample_detector_distance)
+    angle_x_maximum_deg = np.rad2deg(angle_x_maximum)
+
+    #angle in y direction should be defined in the bornagain coord system
+    y_top_nexus = self.max_edge_y
+    y_bottom_nexus = self.min_edge_y
+
+    y_top, z_top = self.transform_to_bornagain_coordinate_system(y_top_nexus, sample_detector_distance)
+    y_bottom, z_bottom = self.transform_to_bornagain_coordinate_system(y_bottom_nexus, sample_detector_distance)
+
+    y_angle_top =  np.arctan(y_top / z_top)[0]
+    y_angle_bottom =  np.arctan(y_bottom / z_bottom)[0]
+
+    angle_y_maximum_deg = np.rad2deg(max(y_angle_bottom, y_angle_top))
+    return angle_x_maximum_deg, angle_y_maximum_deg

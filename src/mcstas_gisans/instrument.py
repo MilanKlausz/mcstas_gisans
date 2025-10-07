@@ -1,4 +1,9 @@
 
+"""
+This module defines the Instrument class, which is mainly intended for
+scattering vector (q) related calculations.
+"""
+
 import numpy as np
 
 from .detector import Detector
@@ -90,10 +95,4 @@ class Instrument:
     print("specular_peak_expected_q", specular_peak_expected_q)
 
   def get_detector_angle_maximum(self):
-    """Calculate the maximum opening angle covered by the detector"""
-    x_maximum = max(abs(self.detector.min_edge_x), abs(self.detector.max_edge_x))
-    y_maximum = max(abs(self.detector.min_edge_y), abs(self.detector.max_edge_y))
-    #TODO this should be calculated in the bornAgain coord sysytem!
-    angle_x_maximum = np.arctan(x_maximum / self.sample_detector_distance)
-    angle_y_maximum = np.arctan(y_maximum / self.sample_detector_distance)
-    return np.rad2deg(angle_x_maximum), np.rad2deg(angle_y_maximum)
+    return self.detector.get_detector_angle_maximum(self.sample_detector_distance)
