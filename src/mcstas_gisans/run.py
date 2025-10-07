@@ -52,8 +52,8 @@ def process_particles(particles, params, queue=None):
      either returned (old raw format), or histogrammed and added to a cumulative
      histogram where all other incident particle results are added.
   """
-  sim_module = getSampleModule(params["sim_module_name"])
-  sample = sim_module.get_sample(**params['sample_kwargs'])
+  sim_module = getSampleModule(params['sample'].sim_module_name)
+  sample = sim_module.get_sample(**params['sample'].sample_kwargs)
 
   if params['raw_output']:
     q_events = [] #p, Qx, Qy, Qz, t
@@ -76,7 +76,7 @@ def process_particles(particles, params, queue=None):
     v = np.sqrt(vx**2+vy**2+vz**2)
     wavelength = velocityToWavelength(v) #angstrom
 
-    if (abs(x) > params['sample_xwidth']*0.5) or (abs(z) > params['sample_zheight']*0.5):
+    if params['sample'].sample_missed(x,z):
       # Particles missed the sample so the q value is calculated after propagation
       # to the detector surface without scattering simulation
       qArray = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])

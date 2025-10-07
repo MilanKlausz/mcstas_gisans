@@ -1,30 +1,7 @@
 
-import numpy as np
-
 from .instrument_defaults import instrument_defaults, default_detector
 from .instrument import Instrument
-
-def parse_sample_arguments(args):
-  """Parse the --sample_arguments string into keyword arguments."""
-  if not args.sample_arguments:
-    return {}
-
-  def convert_numbers(value):
-    """Attempt to convert strings to integers or floats"""
-    try:
-        return int(value)
-    except ValueError:
-        try:
-            return float(value)
-        except ValueError:
-            return value
-
-  kwargs = {}
-  pairs = args.sample_arguments.split(';')
-  for pair in pairs:
-    key, value = pair.split('=')
-    kwargs[key.strip()] = convert_numbers(value.strip())
-  return kwargs
+from .sample import Sample
 
 def pack_parameters(args):
   """Pack parameters necessary for processing in a single dictionary"""
@@ -46,16 +23,14 @@ def pack_parameters(args):
   angle_x_maximum, angle_y_maximum = instrument.get_detector_angle_maximum()
   angle_range = args.angle_range if args.angle_range else [angle_x_maximum, angle_y_maximum]
 
+  sample = Sample(args.sample_xwidth, args.sample_zheight, args.model, args.sample_arguments)
+
   return {
-    'sim_module_name': args.model,
     'outgoing_direction_number': args.outgoing_direction_number,
-    'alpha_inc': float(np.deg2rad(args.alpha)),
     'angle_range': angle_range,
     'raw_output': args.raw_output,
     'bins': hist_bins,
     'hist_ranges': hist_ranges,
-    'sample_xwidth': args.sample_xwidth,
-    'sample_zheight': args.sample_zheight,
-    'sample_kwargs': parse_sample_arguments(args),
+    'sample': sample,
     'instrument': instrument
   }
