@@ -7,16 +7,23 @@ import h5py
 import numpy as np
 from numpy import pi, sin, arctan
 
+from .detector import Detector
+from .instruments import instrumentParameters
+
 def getStoredData(filepath='073174.nxs'):
   """
   Read data from measurements at D22(ILL) from nxs files.It is hardcoded
   and not meant to be used for any other data in the current state.
   """
   # Constants
-  lambda_angstrom = 6  # Wavelength in angstroms
-  detector_distance_mm = 17600  # Distance from sample to detector in mm
-  pixel_size_x_mm = 4  # Pixel size in x-direction in mm
-  pixel_size_y_mm = 8  # Pixel size in y-direction in mm
+  wavelength_selected = 6.0 # Wavelength in angstroms
+
+  if filepath.endswith("073174.nxs"): #silica_100nm_air
+    alpha_inc_deg = 0.24
+  elif filepath.endswith("73378.nxs"):  #silica_100nm_D2O
+    alpha_inc_deg = 0.35 #0.35
+  else:
+    alpha_inc_deg = 0.0
 
   # Open the NeXus file
   with h5py.File(filepath, 'r') as file:
@@ -24,26 +31,17 @@ def getStoredData(filepath='073174.nxs'):
   hist = detector_data[:,:,0]
   hist_error = np.sqrt(hist)
 
-  # Compute q-values for x and y axes
-  x_pixels = np.arange(0, detector_data.shape[1] + 1) # Start from 0
-  y_pixels = np.arange(0, detector_data.shape[0] + 1) # Start from 0
+  inst_params = instrumentParameters['d22']
 
-  # Convert pixel index to mm
-  x_mm = x_pixels * pixel_size_x_mm
-  y_mm = y_pixels * pixel_size_y_mm
+  alpha_inc = float(np.deg2rad(alpha_inc_deg))
+  sample_inclination = alpha_inc
+  nominal_source_sample_distance = inst_params['nominal_source_sample_distance']
 
-  # Apply offset to centre the direct beam (based on 073162.nxs)
-  x_mm = x_mm - x_mm.max()/2 - (pixel_size_x_mm * 3)
-  # y_mm = y_mm - y_mm.max()/2 + (pixel_size_y_mm * 37) #no gravity
-  y_mm = y_mm - y_mm.max()/2 + (pixel_size_y_mm * 36) #with gravity
+  detector = Detector(inst_params['detector'], sample_inclination, alpha_inc, nominal_source_sample_distance, wavelength_selected)
 
-  # Convert mm to q
-  theta_x = arctan(x_mm / detector_distance_mm)
-  theta_y = arctan(y_mm / detector_distance_mm)
-  q_x = (4 * pi / lambda_angstrom) * sin(theta_x / 2)
-  q_y = (4 * pi / lambda_angstrom) * sin(theta_y / 2)
+  q_min, q_max = detector.calculate_q_limits()
 
-  q_x *= 10 #from 1/A to 1/nm
-  q_y *= 10 #from 1/A to 1/nm
+  q_x = np.linspace(q_min[0], q_max[0], num=(detector_data.shape[1]+1))
+  q_y = np.linspace(q_min[1], q_max[1], num=(detector_data.shape[0]+1))
 
   return hist.T, hist_error.T, q_x, q_y
