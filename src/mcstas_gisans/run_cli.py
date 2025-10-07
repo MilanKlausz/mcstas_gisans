@@ -13,9 +13,9 @@ def create_argparser():
   parser.add_argument('-i','--instrument', required=True, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
-  parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
+  parser.add_argument('-n','--outgoing_direction_number', default=20, type=int, help = 'Number of outgoing directions (in both x and y) within the sampled angle range of the BornAgain simulation.')
   parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
-  parser.add_argument('--angle_range', default=1.7, type=float, help = 'Scattering angle covered by the simulation. [deg]')
+  parser.add_argument('--angle_range', nargs=2, type=float, help = 'Horizontal and vertical scattering angles covered by the simulation. [deg]')
 
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
@@ -40,7 +40,7 @@ def create_argparser():
   mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
   mcplFilteringGroup.add_argument('--input_tof_limits', nargs=2, type=float, help = 'TOF limits for selecting neutrons from the MCPL file [millisecond]. When provided, fitting to the McStas monitor is not attempted.')
   mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help = 'Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
-  mcplFilteringGroup.add_argument('--figure_output', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation. Only works with McStas monitor fitting.')
+  mcplFilteringGroup.add_argument('--tof_filtering_figure', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation. Only works with McStas monitor fitting.')
 
   t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the wavelength parameter in the MCPL filtering is provided.')
   t0correctionGroup.add_argument('--t0_fixed', default=None, type=float, help = 'Fix t0 correction value that is subtracted from the neutron TOFs. [s]')
@@ -56,13 +56,13 @@ def parse_args(parser):
   if args.wfm and any(key not in instrument_defaults[args.instrument] for key in wfmRequiredKeys):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
 
-  if args.figure_output:
+  if args.tof_filtering_figure:
     if not args.wavelength:
-      parser.error(f"The --figure_output option can only be used if a central wavelength (--wavelength) for fitting is provided.")
+      parser.error(f"The --tof_filtering_figure option can only be used if a central wavelength (--wavelength) for fitting is provided.")
     if args.input_tof_limits:
-      parser.error(f"The --figure_output option can not be used when the TOF range is provided with --input_tof_limits.")
+      parser.error(f"The --tof_filtering_figure option can not be used when the TOF range is provided with --input_tof_limits.")
     if args.no_mcpl_filtering:
-      parser.error(f"The --figure_output option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
+      parser.error(f"The --tof_filtering_figure option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
 
   if instrument_defaults[args.instrument]['tof_instrument']: #tof instrument
     if args.wavelength_selected:
@@ -72,6 +72,15 @@ def parse_args(parser):
       parser.error(f"The --wavelength parameter should not be used for non-TOF instruments. Use the --wavelength_selected parameter instead.")
     if not args.wavelength_selected:
       parser.error(f"For non-TOF instruments the --wavelength_selected parameter is required.")
+
+  if not args.wavelength and not args.wavelength_selected:
+    """Automatic Q histogram limits rely on a wavelength of interest"""
+    if not args.x_range:
+      parser.error(f"The --x_range parameter is required if neither the --wavelength nor the --wavelength_selected is used.")
+    if not args.y_range:
+      parser.error(f"The --y_range parameter is required if neither the --wavelength nor the --wavelength_selected is used.")
+    if not args.z_range:
+      parser.error(f"The --z_range parameter is required if neither the --wavelength nor the --wavelength_selected is used.")
 
   if args.no_t0_correction:
     if args.t0_fixed:

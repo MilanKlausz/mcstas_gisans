@@ -28,15 +28,11 @@ def parse_sample_arguments(args):
 
 def pack_parameters(args):
   """Pack parameters necessary for processing in a single dictionary"""
-  inst_params = instrument_defaults[args.instrument]
-  beam_declination = 0 if not 'beam_declination_angle' in inst_params else inst_params['beam_declination_angle']
-  sample_inclination = float(np.deg2rad(args.alpha - beam_declination))
-  nominal_source_sample_distance = inst_params['nominal_source_sample_distance'] - (0 if not args.wfm else inst_params['wfm_virtual_source_distance'])
-  
-  alpha_inc = float(np.deg2rad(args.alpha))
-  detector_params = detector_params = inst_params.get('detector', default_detector)
-  print('detector_params:', detector_params)
-  instrument = Instrument(detector_params, inst_params['sample_detector_distance'], sample_inclination, alpha_inc,  nominal_source_sample_distance, args.wavelength_selected)
+  instr_params = instrument_defaults[args.instrument]
+  detector_params = instr_params.get('detector', default_detector) #add default detector if needed
+  #TODO input arguments should be in place to override the detector and instrument parameters
+  instr_params['detector'] = detector_params
+  instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.wfm)
 
   wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
   q_min, q_max = instrument.calculate_q_limits(wavelength)
@@ -46,12 +42,15 @@ def pack_parameters(args):
     args.z_range if args.z_range else [-1000, 1000]
   ]
   hist_bins = args.bins if args.bins else [instrument.detector.pixels_x, instrument.detector.pixels_y, 1]
-  
+
+  angle_x_maximum, angle_y_maximum = instrument.get_detector_angle_maximum()
+  angle_range = args.angle_range if args.angle_range else [angle_x_maximum, angle_y_maximum]
+
   return {
     'sim_module_name': args.model,
-    'pixelNr': args.pixel_number,
-    'alpha_inc': alpha_inc,
-    'angle_range': args.angle_range,
+    'outgoing_direction_number': args.outgoing_direction_number,
+    'alpha_inc': float(np.deg2rad(args.alpha)),
+    'angle_range': angle_range,
     'raw_output': args.raw_output,
     'bins': hist_bins,
     'hist_ranges': hist_ranges,

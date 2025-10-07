@@ -31,14 +31,7 @@ def getStoredData(filepath='073174.nxs'):
   hist = detector_data[:,:,0]
   hist_error = np.sqrt(hist)
 
-  inst_params = instrument_defaults['d22']
-
-  alpha_inc = float(np.deg2rad(alpha_inc_deg))
-  sample_inclination = alpha_inc
-  nominal_source_sample_distance = inst_params['nominal_source_sample_distance']
-  sample_detector_distance = inst_params['sample_detector_distance']
-  instrument = Instrument(inst_params['detector'], sample_detector_distance, sample_inclination, alpha_inc, nominal_source_sample_distance, wavelength_selected)
-
+  instrument = Instrument(instrument_defaults['d22'], alpha_inc_deg, wavelength_selected)
   q_min, q_max = instrument.calculate_q_limits()
 
   q_x = np.linspace(q_min[0], q_max[0], num=(detector_data.shape[1]+1))

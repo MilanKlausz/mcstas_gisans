@@ -24,7 +24,7 @@ instrument_defaults = {
   },
   'loki': {
     'nominal_source_sample_distance' : 23.6,
-    'sample_detector_distance' : 5, #can be 5-10m
+    'sample_detector_distance' : 10, #can be 5-10m
     'tof_instrument' : True,
     'mcpl_monitor_name' : 'Mcpl_TOF_Lambda',
     't0_monitor_name' : 'Source_TOF_Lambda',

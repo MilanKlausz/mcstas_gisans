@@ -21,20 +21,20 @@ from .get_samples import getSampleModule
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
-def get_simulation(sample, pixelNr, angle_range, wavelength, alpha_i, p, Ry, Rz):
+def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, Ry, Rz):
   """
-  Create a simulation with pixelNr pixels that cover an angular range of
+  Create a simulation with pixel_number pixels that cover an angular range of
   angle_range degrees. The Ry and Rz values are relative rotations of the
-  detector within one pixel to finely define the outgoing direction of events.
+  detector within one pixel to finely sample the outgoing direction space.
   """
   beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-  dRy = Ry*angle_range*deg/(pixelNr-1)
-  dRz = Rz*angle_range*deg/(pixelNr-1)
+  dRy = Ry*angle_range[1]*deg/(pixel_number-1)
+  dRz = Rz*angle_range[0]*deg/(pixel_number-1)
 
   # Define detector
-  detector = ba.SphericalDetector(pixelNr, -angle_range*deg+dRz, angle_range*deg+dRz,
-                                  pixelNr, -angle_range*deg+dRy, angle_range*deg+dRy)
+  detector = ba.SphericalDetector(pixel_number, -angle_range[0]*deg+dRz, angle_range[0]*deg+dRz,
+                                  pixel_number, -angle_range[1]*deg+dRy, angle_range[1]*deg+dRy)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
@@ -77,26 +77,29 @@ def process_particles(particles, params, queue=None):
     wavelength = velocityToWavelength(v) #angstrom
 
     if (abs(x) > params['sample_xwidth']*0.5) or (abs(z) > params['sample_zheight']*0.5):
-      # direct propagation of particles missing the sample
+      # Particles missed the sample so the q value is calculated after propagation
+      # to the detector surface without scattering simulation
       qArray = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])
       weights = np.array([p])
     else:
-      # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
+      # Calculate scattering probability for (outgoing_direction_number)^2
+      # outgoing beams. The outgoing direction grid is evenly spaced within the
+      # sampled angle range, but random angle offset of the whole grid in both
+      # directions is applied for better sampling of the outgoing directions
       Ry = 2*np.random.random()-1
       Rz = 2*np.random.random()-1
-      sim = get_simulation(sample, params['pixelNr'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+      sim = get_simulation(sample, params['outgoing_direction_number'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
       sim.options().setUseAvgMaterials(True)
       sim.options().setIncludeSpecular(True)
       # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
-
       res = sim.simulate()
-      # get probability (intensity) for all pixels
-      pout = res.array()
-      # calculate beam angle relative to coordinate system, including incident beam direction
-      alpha_f = params['angle_range']*(np.linspace(1., -1., params['pixelNr'])+Ry/(params['pixelNr']-1))
-      phi_f = phi_i+params['angle_range']*(np.linspace(-1., 1., params['pixelNr'])+Rz/(params['pixelNr']-1))
-      alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
 
+      # get probability (intensity) for all outgoing directions
+      pout = res.array()
+      # calculate the components of the velocity vector for all outgoing directions
+      alpha_f = params['angle_range'][1]*(np.linspace(1., -1., params['outgoing_direction_number'])+Ry/(params['outgoing_direction_number']-1))
+      phi_f = phi_i+params['angle_range'][0]*(np.linspace(-1., 1., params['outgoing_direction_number'])+Rz/(params['outgoing_direction_number']-1))
+      alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
       VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
       VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
@@ -177,7 +180,7 @@ def main():
   particles = precondition(particles, args)
 
   ### BornAgain simulation ###
-  savename = f"q_events_pix{args.pixel_number}" if args.savename == '' else args.savename
+  savename = f"q_events_pix{args.outgoing_direction_number}" if args.savename == '' else args.savename
   print('Number of particles being processed: ', len(particles))
 
   #pack parameters necessary for processing
