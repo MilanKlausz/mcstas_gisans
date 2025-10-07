@@ -13,7 +13,7 @@ def velocityToWavelength(velocity):
 def calculate_wavelength(tof, dist):
   return V2L * tof / dist # Angstrom
 
-def qConvFactor(wavelength):
+def calculate_wavenumber(wavelength):
   return 2*np.pi/(wavelength*0.1) # wavelength Angstrom to nm conversion
 
 def get_velocity_vector(ux, uy, uz, ekin):

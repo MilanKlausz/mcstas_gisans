@@ -20,10 +20,10 @@ def create_argparser():
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create a raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
-  outputGroup.add_argument('--bins', nargs=3, type=int, default=[256, 128, 1], help='Number of histogram bins in x,y,z directions.')
-  outputGroup.add_argument('--x_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qx range of the histogram. (In horizontal plane right to left)')
-  outputGroup.add_argument('--y_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qy range of the histogram. (In vertical plane bottom to top)')
-  outputGroup.add_argument('--z_range', nargs=2, type=float, default=[-1000, 1000], help='Qz range of the histogram. (In horizontal plane back to forward)')
+  outputGroup.add_argument('--bins', nargs=3, type=int, help='Number of histogram bins in x,y,z directions.')
+  outputGroup.add_argument('--x_range', nargs=2, type=float, help='Qx range of the histogram. (In horizontal plane right to left). Default calculated from detector parameters.')
+  outputGroup.add_argument('--y_range', nargs=2, type=float, help='Qy range of the histogram. (In vertical plane bottom to top). Default calculated from detector parameters.')
+  outputGroup.add_argument('--z_range', nargs=2, type=float, help='Qz range of the histogram. (In horizontal plane back to forward). Default wide enough to include everything.')
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
@@ -64,8 +64,14 @@ def parse_args(parser):
     if args.no_mcpl_filtering:
       parser.error(f"The --figure_output option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
 
-  if not instrumentParameters[args.instrument]['tof_instrument'] and not args.wavelength_selected:
-    parser.error(f"For non-TOF instruments the --wavelength_selected parameter is required.")
+  if instrumentParameters[args.instrument]['tof_instrument']: #tof instrument
+    if args.wavelength_selected:
+      parser.error(f"The --wavelength_selected parameter should not be used for TOF instruments. Use the --wavelength parameter instead.")
+  else:
+    if args.wavelength:
+      parser.error(f"The --wavelength parameter should not be used for non-TOF instruments. Use the --wavelength_selected parameter instead.")
+    if not args.wavelength_selected:
+      parser.error(f"For non-TOF instruments the --wavelength_selected parameter is required.")
 
   if args.no_t0_correction:
     if args.t0_fixed:

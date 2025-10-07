@@ -17,10 +17,9 @@ from bornagain import deg, angstrom
 from .neutron_calculations import velocityToWavelength
 from .input_output import get_particles, save_q_histogram_file, save_raw_q_list_file
 from .preconditioning import precondition
-from .get_samples import getSampleModule 
+from .get_samples import getSampleModule
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
-from .detector import calculate_q
 
 def get_simulation(sample, pixelNr, angle_range, wavelength, alpha_i, p, Ry, Rz):
   """
@@ -62,8 +61,6 @@ def process_particles(particles, params, queue=None):
     q_hist = np.zeros(tuple(params['bins']))
     q_hist_weights_squared = np.zeros(tuple(params['bins']))
 
-  incidentDirection = np.array([0, -np.sin(params['alpha_inc']), np.cos(params['alpha_inc'])]) #for Q calculation
-
   ## Carry out BornAgain simulation for all incident particle one-by-one
   for id, particle in enumerate(particles):
     if id%200==0:
@@ -80,8 +77,8 @@ def process_particles(particles, params, queue=None):
     wavelength = velocityToWavelength(v) #angstrom
 
     if (abs(x) > params['sample_xwidth']*0.5) or (abs(z) > params['sample_zheight']*0.5):
-      #direct propagation of particles missing the sample
-      qArray = calculate_q(x, y, z, t, [vx], [vy], [vz], incidentDirection, params)
+      # direct propagation of particles missing the sample
+      qArray = params['detector'].calculate_q(x, y, z, t, [vx], [vy], [vz])
       weights = np.array([p])
     else:
       # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
@@ -104,13 +101,13 @@ def process_particles(particles, params, queue=None):
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
       VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
 
-      qArray = calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten(), incidentDirection, params)
+      qArray = params['detector'].calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
     if params['raw_output']:
       q_events.append(np.column_stack([weights, qArray]))
     else: #histogrammed output format
-      q_hist_of_particle, _ = np.histogramdd(qArray, weights=weights, bins=params['bins'], range=params['histRanges'])
-      q_hist_weights_squared_of_particle, _ = np.histogramdd(qArray, weights=weights**2, bins=params['bins'], range=params['histRanges'])
+      q_hist_of_particle, _ = np.histogramdd(qArray, weights=weights, bins=params['bins'], range=params['hist_ranges'])
+      q_hist_weights_squared_of_particle, _ = np.histogramdd(qArray, weights=weights**2, bins=params['bins'], range=params['hist_ranges'])
       q_hist += q_hist_of_particle
       q_hist_weights_squared += q_hist_weights_squared_of_particle
 
@@ -205,14 +202,14 @@ def main():
 
   #Get the bin edges of the histograms
   edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
-               for b, r in zip(params['bins'], params['histRanges'])]
+               for b, r in zip(params['bins'], params['hist_ranges'])]
 
   save_q_histogram_file(savename, qHist, qHistError, edges)
 
   if args.quick_plot:
     hist2D = np.sum(qHist, axis=2)
     from .plotting_utils import logPlot2d
-    logPlot2d(hist2D, edges[0], edges[1], xRange=params['histRanges'][0], yRange=params['histRanges'][1], output='show')
+    logPlot2d(hist2D, edges[0], edges[1], xRange=params['hist_ranges'][0], yRange=params['hist_ranges'][1], output='show')
 
 if __name__=='__main__':
   main()
