@@ -5,7 +5,7 @@ Preconditioning the particles before the BornAgain simulation
 import numpy as np
 from pathlib import Path
 
-from .instruments import instrumentParameters
+from .instrument_defaults import instrument_defaults
 
 def transform_to_sample_system(events, alpha_inc_deg):
   """Apply coordinate transformation to express neutron parameters in a
@@ -60,11 +60,11 @@ def apply_t0_correction(events, args):
   else: #T0 correction based on McStas (TOFLambda) monitor
     if not args.wfm:
       tof_limits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
-      t0_monitor = instrumentParameters[args.instrument]['t0_monitor_name']
+      t0_monitor = instrument_defaults[args.instrument]['t0_monitor_name']
     else: # Wavelength Frame Multiplication (WFM)
-      from .instruments import getSubpulseTofLimits
+      from .instrument_defaults import getSubpulseTofLimits
       tof_limits = getSubpulseTofLimits(args.wavelength)
-      t0_monitor = instrumentParameters[args.instrument]['wfm_t0_monitor_name']
+      t0_monitor = instrument_defaults[args.instrument]['wfm_t0_monitor_name']
     print(f"Applying T0 correction based on McStas monitor: {t0_monitor}")
     mcstas_directory = Path(args.filename).resolve().parent
     from .fit_monitor import fitGaussianToMcstasMonitor
@@ -86,7 +86,7 @@ def precondition(events, args):
   """
   events = transform_to_sample_system(events, args.alpha)
   events = propagate_to_sample_surface(events, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
-  if args.no_t0_correction or not instrumentParameters[args.instrument]['tof_instrument']:
+  if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
   else:
     events = apply_t0_correction(events, args)

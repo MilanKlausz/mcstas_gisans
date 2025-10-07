@@ -1,8 +1,8 @@
 
 import numpy as np
 
-from .instruments import instrumentParameters
-from .detector import Detector
+from .instrument_defaults import instrument_defaults, default_detector
+from .instrument import Instrument
 
 def parse_sample_arguments(args):
   """Parse the --sample_arguments string into keyword arguments."""
@@ -28,22 +28,24 @@ def parse_sample_arguments(args):
 
 def pack_parameters(args):
   """Pack parameters necessary for processing in a single dictionary"""
-  inst_params = instrumentParameters[args.instrument]
+  inst_params = instrument_defaults[args.instrument]
   beam_declination = 0 if not 'beam_declination_angle' in inst_params else inst_params['beam_declination_angle']
   sample_inclination = float(np.deg2rad(args.alpha - beam_declination))
   nominal_source_sample_distance = inst_params['nominal_source_sample_distance'] - (0 if not args.wfm else inst_params['wfm_virtual_source_distance'])
   
   alpha_inc = float(np.deg2rad(args.alpha))
-  detector = Detector(inst_params['detector'], sample_inclination, alpha_inc,  nominal_source_sample_distance, args.wavelength_selected)
+  detector_params = detector_params = inst_params.get('detector', default_detector)
+  print('detector_params:', detector_params)
+  instrument = Instrument(detector_params, inst_params['sample_detector_distance'], sample_inclination, alpha_inc,  nominal_source_sample_distance, args.wavelength_selected)
 
   wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
-  q_min, q_max = detector.calculate_q_limits(wavelength)
+  q_min, q_max = instrument.calculate_q_limits(wavelength)
   hist_ranges = [
     args.x_range if args.x_range else [q_min[0], q_max[0]],
     args.y_range if args.y_range else [q_min[1], q_max[1]],
     args.z_range if args.z_range else [-1000, 1000]
   ]
-  hist_bins = args.bins if args.bins else [detector.pixels_x, detector.pixels_y, 1]
+  hist_bins = args.bins if args.bins else [instrument.detector.pixels_x, instrument.detector.pixels_y, 1]
   
   return {
     'sim_module_name': args.model,
@@ -56,5 +58,5 @@ def pack_parameters(args):
     'sample_xwidth': args.sample_xwidth,
     'sample_zheight': args.sample_zheight,
     'sample_kwargs': parse_sample_arguments(args),
-    'detector': detector
+    'instrument': instrument
   }

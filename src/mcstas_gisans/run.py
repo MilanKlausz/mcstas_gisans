@@ -78,7 +78,7 @@ def process_particles(particles, params, queue=None):
 
     if (abs(x) > params['sample_xwidth']*0.5) or (abs(z) > params['sample_zheight']*0.5):
       # direct propagation of particles missing the sample
-      qArray = params['detector'].calculate_q(x, y, z, t, [vx], [vy], [vz])
+      qArray = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])
       weights = np.array([p])
     else:
       # calculate (pixelNr)^2 outgoing beams with a random angle within one pixel range
@@ -101,7 +101,7 @@ def process_particles(particles, params, queue=None):
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
       VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
 
-      qArray = params['detector'].calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
+      qArray = params['instrument'].calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
     if params['raw_output']:
       q_events.append(np.column_stack([weights, qArray]))

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .instruments import instrumentParameters
+from .instrument_defaults import instrument_defaults
 from .input_output import print_tof_limits
 
 def get_tof_filtering_limits(args):
@@ -17,7 +17,7 @@ def get_tof_filtering_limits(args):
        defined by fitting a Gaussian function and getting a single FWHM range
        centred around the mean TOF value.
   """
-  instParams = instrumentParameters[args.instrument]
+  instParams = instrument_defaults[args.instrument]
   tofLimits = [float('-inf'), float('inf')]
   if instParams['tof_instrument'] and not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
     if args.input_tof_limits:

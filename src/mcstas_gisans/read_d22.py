@@ -7,8 +7,8 @@ import h5py
 import numpy as np
 from numpy import pi, sin, arctan
 
-from .detector import Detector
-from .instruments import instrumentParameters
+from .instrument import Instrument
+from .instrument_defaults import instrument_defaults
 
 def getStoredData(filepath='073174.nxs'):
   """
@@ -31,15 +31,15 @@ def getStoredData(filepath='073174.nxs'):
   hist = detector_data[:,:,0]
   hist_error = np.sqrt(hist)
 
-  inst_params = instrumentParameters['d22']
+  inst_params = instrument_defaults['d22']
 
   alpha_inc = float(np.deg2rad(alpha_inc_deg))
   sample_inclination = alpha_inc
   nominal_source_sample_distance = inst_params['nominal_source_sample_distance']
+  sample_detector_distance = inst_params['sample_detector_distance']
+  instrument = Instrument(inst_params['detector'], sample_detector_distance, sample_inclination, alpha_inc, nominal_source_sample_distance, wavelength_selected)
 
-  detector = Detector(inst_params['detector'], sample_inclination, alpha_inc, nominal_source_sample_distance, wavelength_selected)
-
-  q_min, q_max = detector.calculate_q_limits()
+  q_min, q_max = instrument.calculate_q_limits()
 
   q_x = np.linspace(q_min[0], q_max[0], num=(detector_data.shape[1]+1))
   q_y = np.linspace(q_min[1], q_max[1], num=(detector_data.shape[0]+1))

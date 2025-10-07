@@ -3,14 +3,14 @@
 Create and run argparse command line interface for the run script
 """
 import argparse
-from .instruments import instrumentParameters, wfmRequiredKeys
+from .instrument_defaults import instrument_defaults, wfmRequiredKeys
 from .get_samples import getSampleModels
 
 def create_argparser():
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
   parser.add_argument('--intensity_factor', default=1.0, type=float, help = 'A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
-  parser.add_argument('-i','--instrument', required=True, choices=list(instrumentParameters.keys()), help = 'Instrument (from instruments.py).')
+  parser.add_argument('-i','--instrument', required=True, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
   parser.add_argument('-n','--pixel_number', default=10, type=int, help = 'Number of pixels in x and y direction of the "detector".')
@@ -53,7 +53,7 @@ def create_argparser():
 def parse_args(parser):
   args = parser.parse_args()
 
-  if args.wfm and any(key not in instrumentParameters[args.instrument] for key in wfmRequiredKeys):
+  if args.wfm and any(key not in instrument_defaults[args.instrument] for key in wfmRequiredKeys):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
 
   if args.figure_output:
@@ -64,7 +64,7 @@ def parse_args(parser):
     if args.no_mcpl_filtering:
       parser.error(f"The --figure_output option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
 
-  if instrumentParameters[args.instrument]['tof_instrument']: #tof instrument
+  if instrument_defaults[args.instrument]['tof_instrument']: #tof instrument
     if args.wavelength_selected:
       parser.error(f"The --wavelength_selected parameter should not be used for TOF instruments. Use the --wavelength parameter instead.")
   else:
@@ -80,11 +80,11 @@ def parse_args(parser):
       parser.error(f"The --no_t0_correction option can not be used together with --t0_wavelength_rebin.")
     if args.wfm:
       parser.error(f"The --no_t0_correction option can not be used together with --wfm.")
-  elif instrumentParameters[args.instrument]['tof_instrument']:
+  elif instrument_defaults[args.instrument]['tof_instrument']:
     if not args.wavelength:
       parser.error(f"The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
 
-  if not args.no_mcpl_filtering and instrumentParameters[args.instrument]['tof_instrument']:
+  if not args.no_mcpl_filtering and instrument_defaults[args.instrument]['tof_instrument']:
     if not args.wavelength:
       parser.error(f"The --wavelength must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
 
