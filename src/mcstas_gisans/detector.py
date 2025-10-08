@@ -7,7 +7,7 @@ of detection coordinates.
 import numpy as np
 
 class Detector:
-  def __init__(self, det_params, sample_inclination):
+  def __init__(self, det_params, sample_inclination, sample_orientation, no_gravity):
     self.size_x = det_params['size'][0]
     self.size_y = det_params['size'][1]
     self.centre_centre_offset_x = det_params['centre_offset'][0]
@@ -33,6 +33,26 @@ class Detector:
 
     self.nexus_to_bornagain_rotation_matrix = np.array([[np.cos(-sample_inclination), -np.sin(-sample_inclination)],
                                                         [np.sin(-sample_inclination), np.cos(-sample_inclination)]])
+
+    self.sample_orientation = sample_orientation
+    self.no_gravity = no_gravity
+    if not no_gravity:
+      self.gravity_acceleration_vector = self.calculate_gravity_vector(sample_orientation)
+
+  def calculate_gravity_vector(self, sample_orientation):
+    """ Calculate the gravity vector in bornagain coord system for different sample orientations """
+    gravity_acceleration = 9.80665 #m/s2
+    match sample_orientation:
+      case 0:
+        gravity_vector_nexus = [gravity_acceleration, 0.0, 0.0]
+      case 1:
+        gravity_vector_nexus = [0.0, -gravity_acceleration, 0.0]
+      case 2:
+        gravity_vector_nexus = [-gravity_acceleration, 0.0, 0.0]
+
+    y_gravity_bornagain, z_gravity_bornagain = self.transform_to_bornagain_coordinate_system(gravity_vector_nexus[1], gravity_vector_nexus[2])
+
+    return np.array([gravity_vector_nexus[0], y_gravity_bornagain[0], z_gravity_bornagain[0]])
 
   def apply_position_smearing(self, x, y):
     """ Apply Gaussian smearing to coordinates. """
@@ -69,11 +89,11 @@ class Detector:
 
   def calculate_gravity_drop(self, t_propagate):
     """Calculate the effect of gravity during the propagation to detector surface"""
-    gravityAcceleration = 9.80665 #m/s2
-    yGravityAcc, zGravityAcc = self.transform_to_bornagain_coordinate_system(-gravityAcceleration, 0)
-    zGravityDrop = zGravityAcc * 0.5 * t_propagate**2
-    yGravityDrop = yGravityAcc * 0.5 * t_propagate**2
-    return yGravityDrop, zGravityDrop
+    t_propagate_square_half = 0.5 * t_propagate**2
+    x_drop = self.gravity_acceleration_vector[0] * t_propagate_square_half
+    y_drop = self.gravity_acceleration_vector[1] * t_propagate_square_half
+    z_drop = self.gravity_acceleration_vector[2] * t_propagate_square_half
+    return x_drop, y_drop, z_drop
 
   def detector_plane_intersection(self, x, y, z, VX, VY, VZ, sample_detector_distance):
     """
@@ -87,10 +107,16 @@ class Detector:
     _ , vzRot = self.transform_to_nexus_coordinate_system(VY, VZ)
     t_propagate = (sample_detector_distance - zRot) / vzRot
 
-    # Calculate the effect of gravity
-    yGravityDrop, zGravityDrop = self.calculate_gravity_drop(t_propagate)
+    x_intersection = VX * t_propagate + x
+    y_intersection = VY * t_propagate + y
+    z_intersection = VZ * t_propagate + z
+    if not self.no_gravity:
+      x_drop, y_drop, z_drop = self.calculate_gravity_drop(t_propagate)
+      x_intersection += x_drop
+      y_intersection += y_drop
+      z_intersection += z_drop
 
-    return t_propagate, (VX * t_propagate + x), (VY * t_propagate + y + yGravityDrop), (VZ * t_propagate + z + zGravityDrop)
+    return t_propagate, x_intersection, y_intersection, z_intersection
 
   def calculate_detection_coordinate(self, xDet, yDet, zDet):
     """

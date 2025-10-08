@@ -7,14 +7,31 @@ from pathlib import Path
 
 from .instrument_defaults import instrument_defaults
 
-def transform_to_sample_system(particles, alpha_inc_deg):
+def sample_orientation_transform(particles, sample_orientation):
+  """
+  Transform particle parameters in accordance with the sample orientation to
+  handle vertical sample by +-90 degree rotation along the nexus z-axis
+  """
+  p, x, y, z, vx, vy, vz, t = particles.T
+  match sample_orientation:
+    case 0:
+      """Beam hitting vertical sample from the left: -90 deg rotation"""
+      return p, -y, x, z, -vy, vx, vz, t
+    case 1:
+      """Horizontal sample: no rotation"""
+      return p, x, y, z, vx, vy, vz, t
+    case 2:
+      """Beam hitting vertical sample from the right: -90 deg rotation"""
+      return p, y, -x, z, vy, -vx, vz, t
+
+def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation):
   """Apply coordinate transformation to express particle parameters in a
   coordinate system with the sample in the centre and being horizontal.
   """
   alpha_inc = float(np.deg2rad(alpha_inc_deg))
   rotation_matrix = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],
                               [np.sin(-alpha_inc), np.cos(-alpha_inc)]])
-  p, x, y, z, vx, vy, vz, t = particles.T
+  p, x, y, z, vx, vy, vz, t = sample_orientation_transform(particles, sample_orientation)
   zRot, yRot = np.dot(rotation_matrix, [z, y])
   vzRot, vyRot = np.dot(rotation_matrix, [vz, vy])
   return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
@@ -84,7 +101,7 @@ def precondition(particles, args):
   2) Propagate particles to the sample surface
   3) Optionally apply T0 (time-of-flight) correction
   """
-  particles = transform_to_sample_system(particles, args.alpha)
+  particles = transform_to_sample_system(particles, args.alpha, args.sample_orientation)
   particles = propagate_to_sample_surface(particles, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
   if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")

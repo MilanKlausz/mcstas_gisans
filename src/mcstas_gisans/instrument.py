@@ -10,10 +10,10 @@ from .detector import Detector
 from .neutron_calculations import calculate_neutron_wavelength, calculate_wavenumber
 
 class Instrument:
-  def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, wfm=False):
+  def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, sample_orientation, wfm=False, no_gravity=False):
     beam_declination = instr_params.get('beam_declination_angle', 0)
     sample_inclination = float(np.deg2rad(alpha_inc_deg - beam_declination))
-    self.detector = Detector(instr_params['detector'], sample_inclination)
+    self.detector = Detector(instr_params['detector'], sample_inclination, sample_orientation, no_gravity)
 
     #TODO there should be a user warning for wft=True but no instr_params['wfm_virtual_source_distance']
     self.nominal_source_sample_distance = instr_params['nominal_source_sample_distance'] - (0 if not wfm else instr_params['wfm_virtual_source_distance'])
@@ -25,7 +25,6 @@ class Instrument:
     self.is_tof_instrument = instr_params['tof_instrument']
     if not self.is_tof_instrument:
       self.wavenumber_fixed = calculate_wavenumber(wavelength_selected)
-
 
   def get_wavenumber(self, wavelength):
     """ Return the wavenumber that is fixed in case of non-TOF instrument """

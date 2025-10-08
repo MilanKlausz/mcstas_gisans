@@ -31,7 +31,8 @@ def getStoredData(filepath='073174.nxs'):
   hist = detector_data[:,:,0]
   hist_error = np.sqrt(hist)
 
-  instrument = Instrument(instrument_defaults['d22'], alpha_inc_deg, wavelength_selected)
+  sample_orientation = 1 #horizontal sample
+  instrument = Instrument(instrument_defaults['d22'], alpha_inc_deg, wavelength_selected, sample_orientation)
   q_min, q_max = instrument.calculate_q_limits()
 
   q_x = np.linspace(q_min[0], q_max[0], num=(detector_data.shape[1]+1))

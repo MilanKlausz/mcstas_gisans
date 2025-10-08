@@ -9,7 +9,7 @@ def pack_parameters(args):
   detector_params = instr_params.get('detector', default_detector) #add default detector if needed
   #TODO input arguments should be in place to override the detector and instrument parameters
   instr_params['detector'] = detector_params
-  instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.wfm)
+  instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.sample_orientation, args.wfm, args.no_gravity)
 
   wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
   q_min, q_max = instrument.calculate_q_limits(wavelength)

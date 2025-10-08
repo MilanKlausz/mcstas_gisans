@@ -16,6 +16,8 @@ def create_argparser():
   parser.add_argument('-n','--outgoing_direction_number', default=20, type=int, help = 'Number of outgoing directions (in both x and y) within the sampled angle range of the BornAgain simulation.')
   parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
   parser.add_argument('--angle_range', nargs=2, type=float, help = 'Horizontal and vertical scattering angles covered by the simulation. [deg]')
+  parser.add_argument('--no_gravity', default=False, action='store_true', help = 'Do not take into account gravity.')
+
 
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
@@ -27,6 +29,7 @@ def create_argparser():
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
+  sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
   sampleGroup.add_argument('--model', default="silica_100nm_air", choices=get_sample_models(), help = 'BornAgain model to be used.')
   sampleGroup.add_argument('--sample_arguments', help = 'Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
