@@ -7,45 +7,45 @@ from pathlib import Path
 
 from .instrument_defaults import instrument_defaults
 
-def transform_to_sample_system(events, alpha_inc_deg):
-  """Apply coordinate transformation to express neutron parameters in a
+def transform_to_sample_system(particles, alpha_inc_deg):
+  """Apply coordinate transformation to express particle parameters in a
   coordinate system with the sample in the centre and being horizontal.
   """
   alpha_inc = float(np.deg2rad(alpha_inc_deg))
   rotation_matrix = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],
                               [np.sin(-alpha_inc), np.cos(-alpha_inc)]])
-  p, x, y, z, vx, vy, vz, t = events.T
+  p, x, y, z, vx, vy, vz, t = particles.T
   zRot, yRot = np.dot(rotation_matrix, [z, y])
   vzRot, vyRot = np.dot(rotation_matrix, [vz, vy])
   return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
 
-def propagate_to_sample_surface(events, sample_xwidth, sample_zheight, allow_sample_miss):
+def propagate_to_sample_surface(particles, sample_xwidth, sample_zheight, allow_sample_miss):
   """Propagate particles to y=0, the sample surface.
   Discard those which would miss the sample.
   """
-  p, x, y, z, vx, vy, vz, t = events.T
+  p, x, y, z, vx, vy, vz, t = particles.T
   t_propagate = -y/vy # y+vy*t_propagate=0 (where y is the initial position)
   x += vx * t_propagate
   y += vy * t_propagate
   z += vz * t_propagate
   t += t_propagate
 
-  # Create a boolean mask for neutrons to select those which hit the sample
+  # Create a boolean mask for the particles to select those which hit the sample
   hit_sample_mask = (abs(x) < sample_xwidth*0.5) & (abs(z) < sample_zheight*0.5)
   events_on_sample_surface = np.vstack([p, x, y, z, vx, vy, vz, t]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, t]).T[hit_sample_mask]
 
-  event_number = len(events)
+  event_number = len(particles)
   sample_hit_event_number = np.sum(hit_sample_mask)
   if sample_hit_event_number != event_number:
     sum_weight_in = sum(p)
     sum_weight_sample_hit = sum(p[hit_sample_mask])
-    print(f"    WARNING: {event_number - sample_hit_event_number} out of {event_number} incident neutrons missed the sample!({sum_weight_in-sum_weight_sample_hit} out of {sum_weight_in} in terms of sum particle weight)")
+    print(f"    WARNING: {event_number - sample_hit_event_number} out of {event_number} incident particles missed the sample!({sum_weight_in-sum_weight_sample_hit} out of {sum_weight_in} in terms of sum particle weight)")
     if not allow_sample_miss:
-      print(f"    WARNING: Incident neutrons missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.") #TODO mention the option to allow them with the input parameter
+      print(f"    WARNING: Incident particles missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.") #TODO mention the option to allow them with the input parameter
   return events_on_sample_surface
 
-def apply_t0_correction(events, args):
-  """Apply t0 TOF correction for all neutrons. A fixed t0correction value can be
+def apply_t0_correction(particles, args):
+  """Apply t0 TOF correction for all particles. A fixed t0correction value can be
   given to be subtracted, or a McStas TOFLambda monitor result with a selected
   wavelength is used, in which case t0correction is retrieved as the mean value
   from fitting a Gaussian function to the TOF spectrum of the wavelength bin
@@ -62,33 +62,33 @@ def apply_t0_correction(events, args):
       tof_limits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
       t0_monitor = instrument_defaults[args.instrument]['t0_monitor_name']
     else: # Wavelength Frame Multiplication (WFM)
-      from .instrument_defaults import getSubpulseTofLimits
-      tof_limits = getSubpulseTofLimits(args.wavelength)
+      from .instrument_defaults import get_saga_subpulse_tof_limits
+      tof_limits = get_saga_subpulse_tof_limits(args.wavelength)
       t0_monitor = instrument_defaults[args.instrument]['wfm_t0_monitor_name']
     print(f"Applying T0 correction based on McStas monitor: {t0_monitor}")
     mcstas_directory = Path(args.filename).resolve().parent
-    from .fit_monitor import fitGaussianToMcstasMonitor
-    fit = fitGaussianToMcstasMonitor(mcstas_directory, t0_monitor, args.wavelength, tofLimits=tof_limits, wavelength_rebin=args.t0_wavelength_rebin)
+    from .fit_monitor import fit_gaussian_to_mcstas_monitor
+    fit = fit_gaussian_to_mcstas_monitor(mcstas_directory, t0_monitor, args.wavelength, tof_limits=tof_limits, wavelength_rebin=args.t0_wavelength_rebin)
     t0_correction = fit['mean'] * 1e-6
   print(f"T0 correction value: {t0_correction} second")
 
-  p, x, y, z, vx, vy, vz, t = events.T
+  p, x, y, z, vx, vy, vz, t = particles.T
   t -= t0_correction
-  events = np.vstack([p, x, y, z, vx, vy, vz, t]).T
-  return events
+  particles = np.vstack([p, x, y, z, vx, vy, vz, t]).T
+  return particles
 
-def precondition(events, args):
+def precondition(particles, args):
   """
   Precondition particles (beam) to bridge the gap between Mcstas and BornAgain
   1) Apply coordinate transformation
   2) Propagate particles to the sample surface
   3) Optionally apply T0 (time-of-flight) correction
   """
-  events = transform_to_sample_system(events, args.alpha)
-  events = propagate_to_sample_surface(events, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
+  particles = transform_to_sample_system(particles, args.alpha)
+  particles = propagate_to_sample_surface(particles, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
   if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
   else:
-    events = apply_t0_correction(events, args)
+    particles = apply_t0_correction(particles, args)
 
-  return events
+  return particles

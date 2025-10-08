@@ -18,23 +18,23 @@ def get_tof_filtering_limits(args):
        centred around the mean TOF value.
   """
   instParams = instrument_defaults[args.instrument]
-  tofLimits = [float('-inf'), float('inf')]
+  tof_limits = [float('-inf'), float('inf')]
   if instParams['tof_instrument'] and not args.no_mcpl_filtering and (args.input_tof_limits or args.wavelength):
     if args.input_tof_limits:
-      tofLimits = args.input_tof_limits
+      tof_limits = args.input_tof_limits
     else:
       if args.tof_filtering_figure in ['png', 'pdf']:
-        figureOutput = f"{args.savename}.{args.tof_filtering_figure}"
+        figure_output = f"{args.savename}.{args.tof_filtering_figure}"
       else:
-        figureOutput = args.tof_filtering_figure # None or 'show'
-      mcstasDir = Path(args.filename).resolve().parent
-      from .fit_monitor import fitGaussianToMcstasMonitor
-      fit = fitGaussianToMcstasMonitor(dirname=mcstasDir, monitor=instParams['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.input_tof_range_factor)
-      tofLimits[0] = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
-      tofLimits[1] = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+        figure_output = args.tof_filtering_figure # None or 'show'
+      mcstas_dir = Path(args.filename).resolve().parent
+      from .fit_monitor import fit_gaussian_to_mcstas_monitor
+      fit = fit_gaussian_to_mcstas_monitor(dirname=mcstas_dir, monitor=instParams['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figure_output=figure_output, tof_range_factor=args.input_tof_range_factor)
+      tof_limits[0] = (fit['mean'] - fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
+      tof_limits[1] = (fit['mean'] + fit['fwhm'] * 0.5 * args.input_tof_range_factor) * 1e-3
       if args.tof_filtering_figure is not None:
       # Terminate the script execution because 'only plotting' has been selected by the user
         import sys
-        print_tof_limits(tofLimits)
+        print_tof_limits(tof_limits)
         sys.exit()
-  return tofLimits
+  return tof_limits

@@ -13,27 +13,27 @@ from .mcstas_reader import McSim
 def Gaussian(x, a, x0, sigma):
   return a * np.exp(-(x - x0)**2 / (2 * sigma**2))
 
-def fitGaussian(x,y):
+def fit_gaussian(x,y):
   mean = sum(x * y) / sum(y)
   sigma = np.sqrt(sum(y * (x - mean)**2) / sum(y))
   popt, _ = curve_fit(Gaussian, x, y, p0=[max(y), mean, sigma])
   return popt
 
-def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,None], wavelength_rebin=None, figureOutput=None, tofRangeFactor=1):
+def fit_gaussian_to_mcstas_monitor(dirname, monitor, wavelength, tof_limits=[None,None], wavelength_rebin=None, figure_output=None, tof_range_factor=1):
   """
   Fit Gaussian function to a 1D TOF spectrum from 2D TOFLambda_monitor result.
   The TOF spectrum of the wavelength bin that includes the 'wavelength' input
   value is used. The reliability of the Gaussian fitting can be increased by
   first rebinning the 2D histogram along the wavelength axis by a provided
   factor (wavelength_rebin). The TOF ranged used for the fitting can be limited
-  by the 'tofLimits' input values. Can generate figure output about the fitting.
+  by the 'tof_limits' input values. Can generate figure output about the fitting.
   """
   data = np.array(McSim(str(dirname))[monitor].data)
   info = McSim(str(dirname))[monitor].info
 
   limits=list(map(float, info['xylimits'].split()))
-  tofMin, tofMax, lambdaMin, lambdaMax = limits
-  lambdaBinNumber, tofBinNumber = data.shape
+  tof_min, tof_max, lambda_min, lambda_max = limits
+  lambda_bin_number, tof_bin_number = data.shape
   # dTof = tofMax - tofMax / tofBinNumber
   # dLambda = lambdaMax - lambdaMin / lambdaBinNumber
 
@@ -41,39 +41,39 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
     #Rebin along the wavelength axis to get better statistics
     print('Rebinning monitor:')
     print('  original shape: ', data.shape)
-    if(lambdaBinNumber % wavelength_rebin != 0):
+    if(lambda_bin_number % wavelength_rebin != 0):
       import sys
-      sys.exit(f'Cannot rebin easily from {lambdaBinNumber} by a factor of {wavelength_rebin}')
+      sys.exit(f'Cannot rebin easily from {lambda_bin_number} by a factor of {wavelength_rebin}')
     else:
-      reshaped_arr = data.reshape(int(lambdaBinNumber/wavelength_rebin), wavelength_rebin, int(tofBinNumber))
+      reshaped_arr = data.reshape(int(lambda_bin_number/wavelength_rebin), wavelength_rebin, int(tof_bin_number))
       data = reshaped_arr.sum(axis=1)
-      lambdaBinNumber, tofBinNumber = data.shape
+      lambda_bin_number, tof_bin_number = data.shape
       print('  new shape: ', data.shape)
 
-  wavelengthBinEdges = np.linspace(lambdaMin, lambdaMax, num=lambdaBinNumber+1, endpoint=True)
-  wavelengthIndex = np.digitize(wavelength, wavelengthBinEdges) - 1
-  tofForSelectedWavelength = data[wavelengthIndex]
+  wavelength_bin_edges = np.linspace(lambda_min, lambda_max, num=lambda_bin_number+1, endpoint=True)
+  wavelength_index = np.digitize(wavelength, wavelength_bin_edges) - 1
+  selected_wavelength_tof = data[wavelength_index]
 
-  tofBins = np.linspace(tofMin, tofMax, num=tofBinNumber)
+  tof_bins = np.linspace(tof_min, tof_max, num=tof_bin_number)
   # Create an index mask to allow fitting on a limited range (that defaults to the full range)
-  if tofLimits[0] is None:
-    tofLimits[0] = tofMin
-  if tofLimits[1] is None:
-    tofLimits[1] = tofMax
-  tofLimitMask = (float(tofLimits[0]) <= tofBins) & (tofBins <= float(tofLimits[1]))
+  if tof_limits[0] is None:
+    tof_limits[0] = tof_min
+  if tof_limits[1] is None:
+    tof_limits[1] = tof_max
+  tof_limit_mask = (float(tof_limits[0]) <= tof_bins) & (tof_bins <= float(tof_limits[1]))
 
-  popt = fitGaussian(tofBins[tofLimitMask], tofForSelectedWavelength[tofLimitMask])
+  popt = fit_gaussian(tof_bins[tof_limit_mask], selected_wavelength_tof[tof_limit_mask])
   a, mean, sigma = popt
-  halfMaximum = a / 2.0
+  half_maximum = a / 2.0
 
   # Calculate the x-values where the Gaussian curve reaches the half-maximum value
   fwhm = 2 * sigma * np.sqrt(2 * np.log(2))
-  xHalfMaximumLower = mean - fwhm * 0.5
-  xHalfMaximumHigher = mean + fwhm * 0.5
+  x_half_maximum_lower = mean - fwhm * 0.5
+  x_half_maximum_higher = mean + fwhm * 0.5
 
-  if(figureOutput is not None):
+  if(figure_output is not None):
     import matplotlib.pyplot as plt
-    if figureOutput == 'show':
+    if figure_output == 'show':
       plt.switch_backend('TkAgg')
     else:
       plt.switch_backend('Agg')
@@ -85,44 +85,44 @@ def fitGaussianToMcstasMonitor(dirname, monitor, wavelength, tofLimits=[None,Non
     ax1.imshow(data, origin='lower', extent=limits, aspect='auto', cmap='jet')
 
     ## Plot a single slice of the 2D data (the TOF of the neutrons of the selected wavelength)
-    ax2.plot(tofBins, tofForSelectedWavelength, marker='o', linestyle='-', label=f'Slice at {wavelength} $\AA$')
+    ax2.plot(tof_bins, selected_wavelength_tof, marker='o', linestyle='-', label=f'Slice at {wavelength} $\AA$')
     ax2.set_xlabel(info['xlabel'].replace('[\\gms]', f'[$\mu$s]'))
     ax2.set_ylabel(f"Intensity at {wavelength} $\AA$")
-    ax2.set_xlim(tofMin, tofMax)
+    ax2.set_xlim(tof_min, tof_max)
 
     ## Plot fitted Gaussian and related lines (mean, FHWM, intensity at the half of maxium)
-    ax2.plot(tofBins[tofLimitMask], Gaussian(tofBins[tofLimitMask], *popt), 'r-', label='Gaussian fit')
-    ax2.axhline(y=halfMaximum, color='darkgreen', linestyle='dotted', linewidth=3, alpha=.7, label='Half of maximum')
+    ax2.plot(tof_bins[tof_limit_mask], Gaussian(tof_bins[tof_limit_mask], *popt), 'r-', label='Gaussian fit')
+    ax2.axhline(y=half_maximum, color='darkgreen', linestyle='dotted', linewidth=3, alpha=.7, label='Half of maximum')
 
     ylim = ax2.get_ylim()
-    ax2.vlines(x=xHalfMaximumLower, ymin=ylim[0], ymax=ylim[1], colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7, label='FWHM')
-    ax2.vlines(x=xHalfMaximumHigher, ymin=ylim[0], ymax=ylim[1], colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7)
+    ax2.vlines(x=x_half_maximum_lower, ymin=ylim[0], ymax=ylim[1], colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7, label='FWHM')
+    ax2.vlines(x=x_half_maximum_higher, ymin=ylim[0], ymax=ylim[1], colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7)
     ax2.vlines(x=mean, ymin=ylim[0], ymax=ylim[1], colors='purple', linestyles='dotted', linewidth=3, alpha=.7, label='Mean TOF')
 
-    ax1.vlines(x=xHalfMaximumLower, ymin=lambdaMin, ymax=lambdaMax, colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7, label='FWHM')
-    ax1.vlines(x=xHalfMaximumHigher, ymin=lambdaMin, ymax=lambdaMax, colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7)
+    ax1.vlines(x=x_half_maximum_lower, ymin=lambda_min, ymax=lambda_max, colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7, label='FWHM')
+    ax1.vlines(x=x_half_maximum_higher, ymin=lambda_min, ymax=lambda_max, colors='limegreen', linestyles='dotted', linewidth=3, alpha=.7)
     ax1.set_xlabel(info['xlabel'].replace('[\\gms]', f'[$\mu$s]'))
     ax1.tick_params()
     ax1.tick_params(axis='x', labelbottom=True)
     ax1.set_ylabel(info['ylabel'].replace('[AA]', f'[$\AA$]'))
 
     ## Add extra lines for the TOF limits if they are not the same as the FWHM lines
-    if tofRangeFactor != 1:
-      tofLimitMin = mean - fwhm * 0.5 * tofRangeFactor
-      tofLimitfMax = mean + fwhm * 0.5 * tofRangeFactor
-      ax2.vlines(x=tofLimitMin, ymin=ylim[0], ymax=ylim[1], colors='magenta', linestyles='dotted', linewidth=3, alpha=.7, label='TOF limits')
-      ax2.vlines(x=tofLimitfMax, ymin=ylim[0], ymax=ylim[1], colors='magenta', linestyles='dotted', linewidth=3, alpha=.7)
-      ax1.vlines(x=tofLimitMin, ymin=lambdaMin, ymax=lambdaMax, colors='magenta', linestyles='dotted', linewidth=3, alpha=.7, label='TOF limits')
-      ax1.vlines(x=tofLimitfMax, ymin=lambdaMin, ymax=lambdaMax, colors='magenta', linestyles='dotted', linewidth=3, alpha=.7)
+    if tof_range_factor != 1:
+      tof_limit_min = mean - fwhm * 0.5 * tof_range_factor
+      tof_limit_max = mean + fwhm * 0.5 * tof_range_factor
+      ax2.vlines(x=tof_limit_min, ymin=ylim[0], ymax=ylim[1], colors='magenta', linestyles='dotted', linewidth=3, alpha=.7, label='TOF limits')
+      ax2.vlines(x=tof_limit_max, ymin=ylim[0], ymax=ylim[1], colors='magenta', linestyles='dotted', linewidth=3, alpha=.7)
+      ax1.vlines(x=tof_limit_min, ymin=lambda_min, ymax=lambda_max, colors='magenta', linestyles='dotted', linewidth=3, alpha=.7, label='TOF limits')
+      ax1.vlines(x=tof_limit_max, ymin=lambda_min, ymax=lambda_max, colors='magenta', linestyles='dotted', linewidth=3, alpha=.7)
 
     ax2.legend()
     ax1.legend()
     plt.tight_layout()
-    if(figureOutput == 'show'):
+    if(figure_output == 'show'):
       plt.show()
     else:
-      plt.savefig(figureOutput)
-      print(f"  Created {figureOutput}")
+      plt.savefig(figure_output)
+      print(f"  Created {figure_output}")
 
   return {'mean': mean, 'fwhm': fwhm}
 
@@ -131,20 +131,20 @@ def main():
   parser = create_argparser()
   args = parse_args(parser)
 
-  tofLimits = [None, None]
+  tof_limits = [None, None]
   if args.tof_min is not None:
-      tofLimits[0] = float(args.tof_min)
+      tof_limits[0] = float(args.tof_min)
   if args.tof_max is not None:
-      tofLimits[1] = float(args.tof_max)
+      tof_limits[1] = float(args.tof_max)
 
   if args.figure_output in ['None', 'none']:
-    figureOutput = None
+    figure_output = None
   elif args.figure_output in ['pdf', 'png']:
-    figureOutput = f"{args.savename}.{args.figure_output}"
+    figure_output = f"{args.savename}.{args.figure_output}"
   else:
-    figureOutput = 'show'
+    figure_output = 'show'
 
-  fit = fitGaussianToMcstasMonitor(args.dirname, args.monitor, args.wavelength, tofLimits=tofLimits, wavelength_rebin=args.wavelength_rebin, figureOutput=figureOutput, tofRangeFactor=args.tof_range_factor)
+  fit = fit_gaussian_to_mcstas_monitor(args.dirname, args.monitor, args.wavelength, tof_limits=tof_limits, wavelength_rebin=args.wavelength_rebin, figure_output=figure_output, tof_range_factor=args.tof_range_factor)
 
   print(f"Mean={fit['mean']:.3f}")
   print(f"FWHM={fit['fwhm']:.3f}")

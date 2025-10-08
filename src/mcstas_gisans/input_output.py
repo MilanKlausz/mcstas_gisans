@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import mcpl
 
-from .neutron_calculations import get_velocity_vector
+from .neutron_calculations import get_neutron_velocity_vector
 
 def print_tof_limits(tof_limits):
   """Small utility function to print out TOF limits used for filtering"""
@@ -30,7 +30,7 @@ def get_particles(filename, tof_limits, intensity_factor):
       particles = np.array(
         [(p.weight * intensity_factor,
           p.x/100, p.y/100, p.z/100, #convert cm->m
-          *get_velocity_vector(p.ux, p.uy, p.uz, p.ekin),
+          *get_neutron_velocity_vector(p.ux, p.uy, p.uz, p.ekin),
           p.time*1e-3 #convert ms->s
           ) for p in myfile.particles if (p.weight>1e-5 and tof_limits[0] < p.time and p.time < tof_limits[1])]
         )
@@ -45,31 +45,31 @@ def get_particles(filename, tof_limits, intensity_factor):
       sys.exit(f"No neutrons found in the input file {filename}.")
   return particles
 
-def save_q_histogram_file(savename, qHist, qHistError, edges):
+def save_q_histogram_file(savename, q_hist, q_hist_error, edges):
   """Save the histograms are corresponding bin edges in an NPZ file"""
-  np.savez_compressed(savename, hist=qHist, error=qHistError, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
+  np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
   print(f"Created {savename}.npz")
 
-def unpackQHistogramFile(npFile):
+def unpackQHistogramFile(np_file):
   """Unpack the content (histograms are corresponding bin edges) of an NPZ file
   created with the save_q_histogram_file function"""
-  hist = npFile['hist'] #keys are hardcoded in the save_q_histogram_file function
-  histError = npFile['error']
-  xEdges = npFile['xEdges']
-  yEdges = npFile['yEdges']
-  zEdges = npFile['zEdges']
-  return hist, histError, xEdges, yEdges, zEdges
+  hist = np_file['hist'] #keys are hardcoded in the save_q_histogram_file function
+  hist_error = np_file['error']
+  xEdges = np_file['xEdges']
+  yEdges = np_file['yEdges']
+  zEdges = np_file['zEdges']
+  return hist, hist_error, xEdges, yEdges, zEdges
 
 def save_raw_q_list_file(savename, qArray):
   """Save the list of Q events in an NPZ file"""
   np.savez_compressed(savename, qArray=qArray)
   print(f"Created {savename}.npz with raw Q events.")
 
-def unpack_raw_q_list_file(npFile):
+def unpack_raw_q_list_file(np_file):
   """Unpack the content (list of Q events) of an NPZ file created with the
   save_raw_q_list_file function"""
-  npFileArrayKey = npFile.files[0] #might as well use hardcoded 'qArray' key from save_raw_q_list_file function
-  qArray = npFile[npFileArrayKey]
+  np_file_array_key = np_file.files[0] #might as well use hardcoded 'qArray' key from save_raw_q_list_file function
+  qArray = np_file[np_file_array_key]
   weights = qArray[:, 0]
   x = qArray[:, 1]
   y = qArray[:, 2]

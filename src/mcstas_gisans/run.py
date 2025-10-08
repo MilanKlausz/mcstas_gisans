@@ -14,10 +14,10 @@ import multiprocessing
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from .neutron_calculations import velocityToWavelength
+from .neutron_calculations import neutron_velocity_to_wavelength
 from .input_output import get_particles, save_q_histogram_file, save_raw_q_list_file
 from .preconditioning import precondition
-from .get_samples import getSampleModule
+from .get_samples import get_sample_module
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
@@ -52,7 +52,7 @@ def process_particles(particles, params, queue=None):
      either returned (old raw format), or histogrammed and added to a cumulative
      histogram where all other incident particle results are added.
   """
-  sim_module = getSampleModule(params['sample'].sim_module_name)
+  sim_module = get_sample_module(params['sample'].sim_module_name)
   sample = sim_module.get_sample(**params['sample'].sample_kwargs)
 
   if params['raw_output']:
@@ -74,12 +74,12 @@ def process_particles(particles, params, queue=None):
     alpha_i = np.rad2deg(np.arctan(-vy/vz)) #[deg]
     phi_i = np.rad2deg(np.arctan(vx/vz)) #[deg], not used in sim, added to phi_f
     v = np.sqrt(vx**2+vy**2+vz**2)
-    wavelength = velocityToWavelength(v) #angstrom
+    wavelength = neutron_velocity_to_wavelength(v) #angstrom
 
     if params['sample'].sample_missed(x,z):
       # Particles missed the sample so the q value is calculated after propagation
       # to the detector surface without scattering simulation
-      qArray = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])
+      q_array = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])
       weights = np.array([p])
     else:
       # Calculate scattering probability for (outgoing_direction_number)^2
@@ -104,13 +104,13 @@ def process_particles(particles, params, queue=None):
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
       VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
 
-      qArray = params['instrument'].calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
+      q_array = params['instrument'].calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
     if params['raw_output']:
-      q_events.append(np.column_stack([weights, qArray]))
+      q_events.append(np.column_stack([weights, q_array]))
     else: #histogrammed output format
-      q_hist_of_particle, _ = np.histogramdd(qArray, weights=weights, bins=params['bins'], range=params['hist_ranges'])
-      q_hist_weights_squared_of_particle, _ = np.histogramdd(qArray, weights=weights**2, bins=params['bins'], range=params['hist_ranges'])
+      q_hist_of_particle, _ = np.histogramdd(q_array, weights=weights, bins=params['bins'], range=params['hist_ranges'])
+      q_hist_weights_squared_of_particle, _ = np.histogramdd(q_array, weights=weights**2, bins=params['bins'], range=params['hist_ranges'])
       q_hist += q_hist_of_particle
       q_hist_weights_squared += q_hist_weights_squared_of_particle
 
@@ -124,7 +124,7 @@ def process_particles(particles, params, queue=None):
   else:
     return result
 
-def process_particles_parallelly(events, params, process_number):
+def process_particles_parallelly(particles, params, process_number):
   """
   Spawn parallel processes to carry out the BornAgain simulation and subsequent
   calculation of the incident particles.
@@ -135,16 +135,16 @@ def process_particles_parallelly(events, params, process_number):
   results = []
   queue = Queue() #a queue to get results from each process
 
-  eventNumber = len(events)
-  chunkSize = eventNumber // process_number
-  def getEventsChunk(processIndex):
+  particle_number = len(particles)
+  chunk_size = particle_number // process_number
+  def get_particles_chunk(process_index):
     """Distribute the events array among the processes as evenly as possible"""
-    start = processIndex * chunkSize
-    end = (processIndex + 1) * chunkSize if processIndex < process_number - 1 else eventNumber
-    return events[start:end]
+    start = process_index * chunk_size
+    end = (process_index + 1) * chunk_size if process_index < process_number - 1 else particle_number
+    return particles[start:end]
 
   for i in range(process_number):
-    p = multiprocessing.Process(target=process_particles, args=(getEventsChunk(i), params, queue,))
+    p = multiprocessing.Process(target=process_particles, args=(get_particles_chunk(i), params, queue,))
     processes.append(p)
     p.start()
 
@@ -159,12 +159,12 @@ def process_particles_parallelly(events, params, process_number):
   if params['raw_output']: #merge lists of raw Q events of the processes
     result = [item for sublist in results for item in sublist]
   else: #merge the histogram results of the processes
-    qHist = np.zeros(tuple(params['bins']))
-    qHistWeightsSquared = np.zeros(tuple(params['bins']))
-    for processResult in results:
-      qHist += processResult['qHist']
-      qHistWeightsSquared += processResult['qHistWeightsSquared']
-    result = {'qHist': qHist, 'qHistWeightsSquared': qHistWeightsSquared}
+    q_hist = np.zeros(tuple(params['bins']))
+    q_hist_weights_squared = np.zeros(tuple(params['bins']))
+    for process_result in results:
+      q_hist += process_result['qHist']
+      q_hist_weights_squared += process_result['qHistWeightsSquared']
+    result = {'qHist': q_hist, 'qHistWeightsSquared': q_hist_weights_squared}
   return result
 
 def main():
@@ -194,23 +194,23 @@ def main():
 
   ### Create Output ###
   if args.raw_output: #raw list of Q events (old output)
-    qArray = result
-    save_raw_q_list_file(savename, qArray)
+    q_array = result
+    save_raw_q_list_file(savename, q_array)
     return # no further processing, early return
 
   ## Create Q histogram with corresponding uncertainty array (new output format)
-  qHist = result['qHist']
-  qHistWeightsSquared = result['qHistWeightsSquared']
-  qHistError = np.sqrt(qHistWeightsSquared)
+  q_hist = result['qHist']
+  q_hist_weights_squared = result['qHistWeightsSquared']
+  q_hist_error = np.sqrt(q_hist_weights_squared)
 
   #Get the bin edges of the histograms
   edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
                for b, r in zip(params['bins'], params['hist_ranges'])]
 
-  save_q_histogram_file(savename, qHist, qHistError, edges)
+  save_q_histogram_file(savename, q_hist, q_hist_error, edges)
 
   if args.quick_plot:
-    hist2D = np.sum(qHist, axis=2)
+    hist2D = np.sum(q_hist, axis=2)
     from .plotting_utils import logPlot2d
     logPlot2d(hist2D, edges[0], edges[1], xRange=params['hist_ranges'][0], yRange=params['hist_ranges'][1], output='show')
 

@@ -3,8 +3,8 @@
 Create and run argparse command line interface for the run script
 """
 import argparse
-from .instrument_defaults import instrument_defaults, wfmRequiredKeys
-from .get_samples import getSampleModels
+from .instrument_defaults import instrument_defaults, required_keys_for_wfm
+from .get_samples import get_sample_models
 
 def create_argparser():
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -28,7 +28,7 @@ def create_argparser():
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-  sampleGroup.add_argument('--model', default="silica_100nm_air", choices=getSampleModels(), help = 'BornAgain model to be used.')
+  sampleGroup.add_argument('--model', default="silica_100nm_air", choices=get_sample_models(), help = 'BornAgain model to be used.')
   sampleGroup.add_argument('--sample_arguments', help = 'Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
@@ -53,7 +53,7 @@ def create_argparser():
 def parse_args(parser):
   args = parser.parse_args()
 
-  if args.wfm and any(key not in instrument_defaults[args.instrument] for key in wfmRequiredKeys):
+  if args.wfm and any(key not in instrument_defaults[args.instrument] for key in required_keys_for_wfm):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
 
   if args.tof_filtering_figure:

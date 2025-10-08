@@ -7,7 +7,7 @@ scattering vector (q) related calculations.
 import numpy as np
 
 from .detector import Detector
-from .neutron_calculations import calculate_wavelength, calculate_wavenumber
+from .neutron_calculations import calculate_neutron_wavelength, calculate_wavenumber
 
 class Instrument:
   def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, wfm=False):
@@ -47,7 +47,7 @@ class Instrument:
     """
     sample_detector_tof, x_detector_plane, y_detector_plane, z_detector_plane = self.detector.detector_plane_intersection(x, y, z, VX, VY, VZ, self.sample_detector_distance)
     x_detection, y_detection, z_detection = self.detector.calculate_detection_coordinate(x_detector_plane, y_detector_plane, z_detector_plane)
-    
+
     detection_coordinate = np.vstack((x_detection, y_detection, z_detection)).T
     sample_detector_path_length = np.linalg.norm(detection_coordinate, axis=1)
     outgoing_direction = detection_coordinate / sample_detector_path_length[:, np.newaxis]
@@ -55,7 +55,7 @@ class Instrument:
     if self.is_tof_instrument:
       tof_total = t + sample_detector_tof
       path_length_total = self.nominal_source_sample_distance + sample_detector_path_length
-      wavelength = calculate_wavelength(tof_total, path_length_total)
+      wavelength = calculate_neutron_wavelength(tof_total, path_length_total)
       wavenumber = calculate_wavenumber(wavelength)[:, np.newaxis]
     else: #not TOF instruments
       wavenumber = self.wavenumber_fixed

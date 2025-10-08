@@ -9,7 +9,7 @@ Instrument parameters used for data reduction
 #   'wfm_virtual_source_distance'
 
 # 'detector' property is not required, but if added, it is expected to have
-# all properties listed in the default_detector object below 
+# all properties listed in the default_detector object below
 
 instrument_defaults = {
   'saga': {
@@ -56,28 +56,28 @@ default_detector = {
 }
 
 #required keys in the instrument_defaults to enable WFM(wavelength frame multiplication) mode
-wfmRequiredKeys = ['wfm_t0_monitor_name', 'wfm_virtual_source_distance']
+required_keys_for_wfm = ['wfm_t0_monitor_name', 'wfm_virtual_source_distance']
 
 # temporary hard-coded sub-pulse tof limits for the SAGA instrument
-sagaSubpulseTofLimits = [
+saga_subpulse_tof_limits = [
   [10200, 12000],
   [12000, 14300],
   [14300, 16100],
   [16100, 18000]
 ]
 
-def getSubpulseTofLimits(wavelength):
+def get_saga_subpulse_tof_limits(wavelength):
   """
   Get hard-coded TOF limits of a WFM sub-pulse in between the WFM choppers
-  for the SAGA instument, depending on the wavelength
+  for the SAGA instrument, depending on the wavelength
   """
   if wavelength < 5.15:
-    subpulseId = 0
+    subpulse_id = 0
   elif wavelength < 6.15:
-    subpulseId = 1
+    subpulse_id = 1
   elif wavelength < 7.1:
-    subpulseId = 2
+    subpulse_id = 2
   else:
-    subpulseId = 3
+    subpulse_id = 3
 
-  return sagaSubpulseTofLimits[subpulseId]
+  return saga_subpulse_tof_limits[subpulse_id]
