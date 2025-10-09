@@ -32,5 +32,7 @@ def pack_parameters(args):
     'bins': hist_bins,
     'hist_ranges': hist_ranges,
     'sample': sample,
-    'instrument': instrument
+    'instrument': instrument,
+    'use_avg_materials': args.use_avg_materials,
+    'include_specular': args.include_specular,
   }

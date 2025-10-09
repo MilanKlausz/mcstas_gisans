@@ -62,6 +62,8 @@ def process_particles(particles, params, queue=None):
   raw_output = params['raw_output']
   hist_ranges = params['hist_ranges']
   bins = params['bins']
+  use_avg_materials = params['use_avg_materials']
+  include_specular = params['include_specular']
 
   if raw_output:
     q_events = [] #p, Qx, Qy, Qz, t
@@ -97,8 +99,8 @@ def process_particles(particles, params, queue=None):
       rand_y = 2*np.random.random()-1
       rand_z = 2*np.random.random()-1
       sim = get_simulation(sample_model, outgoing_direction_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z)
-      sim.options().setUseAvgMaterials(True)
-      sim.options().setIncludeSpecular(True)
+      sim.options().setUseAvgMaterials(use_avg_materials)
+      sim.options().setIncludeSpecular(include_specular)
       # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
       res = sim.simulate()
 
