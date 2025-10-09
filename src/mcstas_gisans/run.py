@@ -20,20 +20,21 @@ from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
-def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, Ry, Rz):
+def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z):
   """
   Create a simulation with pixel_number pixels that cover an angular range of
-  angle_range degrees. The Ry and Rz values are relative rotations of the
-  detector within one pixel to finely sample the outgoing direction space.
+  angle_range degrees. The rand_deg_y and rand_deg_z values are relative
+  rotations of the detector within one pixel to finely sample the outgoing
+  direction space.
   """
   beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-  dRy = Ry*angle_range[1]*deg/(pixel_number-1)
-  dRz = Rz*angle_range[0]*deg/(pixel_number-1)
+  rand_deg_y = rand_y*angle_range[1]*deg/(pixel_number-1)
+  rand_deg_z = rand_z*angle_range[0]*deg/(pixel_number-1)
 
   # Define detector
-  detector = ba.SphericalDetector(pixel_number, -angle_range[0]*deg+dRz, angle_range[0]*deg+dRz,
-                                  pixel_number, -angle_range[1]*deg+dRy, angle_range[1]*deg+dRy)
+  detector = ba.SphericalDetector(pixel_number, -angle_range[0]*deg + rand_deg_z, angle_range[0]*deg + rand_deg_z,
+                                  pixel_number, -angle_range[1]*deg + rand_deg_y, angle_range[1]*deg + rand_deg_y)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
@@ -52,14 +53,21 @@ def process_particles(particles, params, queue=None):
      histogram where all other incident particle results are added.
   """
   sample = params['sample']
-  sample_module = sample.get_sample_module()
-  sample_model = sample_module.get_sample(**sample.sample_kwargs)
+  sample_module = sample.get_module()
+  sample_model = sample_module.get_sample(**sample.kwargs)
 
-  if params['raw_output']:
+  calculate_q = params['instrument'].calculate_q
+  outgoing_direction_number = params['outgoing_direction_number']
+  angle_range = params['angle_range']
+  raw_output = params['raw_output']
+  hist_ranges = params['hist_ranges']
+  bins = params['bins']
+
+  if raw_output:
     q_events = [] #p, Qx, Qy, Qz, t
   else:
-    q_hist = np.zeros(tuple(params['bins']))
-    q_hist_weights_squared = np.zeros(tuple(params['bins']))
+    q_hist = np.zeros(tuple(bins))
+    q_hist_weights_squared = np.zeros(bins)
 
   ## Carry out BornAgain simulation for all incident particle one-by-one
   for id, particle in enumerate(particles):
@@ -79,16 +87,16 @@ def process_particles(particles, params, queue=None):
     if sample.sample_missed(x,z):
       # Particles missed the sample so the q value is calculated after propagation
       # to the detector surface without scattering simulation
-      q_array = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])
+      q_array = calculate_q(x, y, z, t, [vx], [vy], [vz])
       weights = np.array([p])
     else:
       # Calculate scattering probability for (outgoing_direction_number)^2
       # outgoing beams. The outgoing direction grid is evenly spaced within the
       # sampled angle range, but random angle offset of the whole grid in both
       # directions is applied for better sampling of the outgoing directions
-      Ry = 2*np.random.random()-1
-      Rz = 2*np.random.random()-1
-      sim = get_simulation(sample_model, params['outgoing_direction_number'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+      rand_y = 2*np.random.random()-1
+      rand_z = 2*np.random.random()-1
+      sim = get_simulation(sample_model, outgoing_direction_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z)
       sim.options().setUseAvgMaterials(True)
       sim.options().setIncludeSpecular(True)
       # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
@@ -97,24 +105,24 @@ def process_particles(particles, params, queue=None):
       # get probability (intensity) for all outgoing directions
       pout = res.array()
       # calculate the components of the velocity vector for all outgoing directions
-      alpha_f = params['angle_range'][1]*(np.linspace(1., -1., params['outgoing_direction_number'])+Ry/(params['outgoing_direction_number']-1))
-      phi_f = phi_i+params['angle_range'][0]*(np.linspace(-1., 1., params['outgoing_direction_number'])+Rz/(params['outgoing_direction_number']-1))
+      alpha_f = angle_range[1] * (np.linspace(1., -1., outgoing_direction_number) + rand_y / (outgoing_direction_number - 1))
+      phi_f = phi_i + angle_range[0] * (np.linspace(-1., 1., outgoing_direction_number) + rand_z / (outgoing_direction_number - 1))
       alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
       VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
       VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
 
-      q_array = params['instrument'].calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
+      q_array = calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
-    if params['raw_output']:
+    if raw_output:
       q_events.append(np.column_stack([weights, q_array]))
     else: #histogrammed output format
-      q_hist_of_particle, _ = np.histogramdd(q_array, weights=weights, bins=params['bins'], range=params['hist_ranges'])
-      q_hist_weights_squared_of_particle, _ = np.histogramdd(q_array, weights=weights**2, bins=params['bins'], range=params['hist_ranges'])
+      q_hist_of_particle, _ = np.histogramdd(q_array, weights=weights, bins=bins, range=hist_ranges)
+      q_hist_weights_squared_of_particle, _ = np.histogramdd(q_array, weights=weights**2, bins=bins, range=hist_ranges)
       q_hist += q_hist_of_particle
       q_hist_weights_squared += q_hist_weights_squared_of_particle
 
-  if params['raw_output']:
+  if raw_output:
     result = [item for sublist in q_events for item in sublist] #flatten sublists
   else:
     result = {'qHist': q_hist, 'qHistWeightsSquared': q_hist_weights_squared}

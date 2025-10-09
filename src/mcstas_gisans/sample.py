@@ -13,11 +13,11 @@ BUILTIN_SAMPLE_DIR = 'bornagain_samples'
 class Sample:
   def __init__(self, sample_xwidth, sample_zheight, sim_module_name, sample_arguments):
     self.sim_module_name = sim_module_name
-    self.get_sample_module = self._resolve_sample_source()
+    self.get_module = self._resolve_sample_source()
           
-    self.sample_xwidth = sample_xwidth
-    self.sample_zheight = sample_zheight
-    self.sample_kwargs = self.parse_sample_arguments(sample_arguments) if sample_arguments else {}
+    self.x_width = sample_xwidth
+    self.z_height = sample_zheight
+    self.kwargs = self.parse_sample_arguments(sample_arguments) if sample_arguments else {}
 
   @staticmethod
   def get_models_dir():
@@ -56,7 +56,7 @@ class Sample:
 
   def sample_missed(self, x, z):
     """Decide if position is within the area of the sample surface"""
-    return (abs(x) > 0.5 * self.sample_xwidth) or (abs(z) > 0.5 * self.sample_zheight)
+    return (abs(x) > 0.5 * self.x_width) or (abs(z) > 0.5 * self.z_height)
 
   def _resolve_sample_source(self):
       """
