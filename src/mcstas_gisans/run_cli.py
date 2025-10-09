@@ -4,7 +4,9 @@ Create and run argparse command line interface for the run script
 """
 import argparse
 from .instrument_defaults import instrument_defaults, required_keys_for_wfm
-from .get_samples import get_sample_models
+from .sample import Sample
+builtin_samples = Sample.list_builtin_samples()
+builtin_str = ', '.join(builtin_samples)
 
 def create_argparser():
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -29,10 +31,10 @@ def create_argparser():
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
-  sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
-  sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-  sampleGroup.add_argument('--model', default="silica_100nm_air", choices=get_sample_models(), help = 'BornAgain model to be used.')
+  sampleGroup.add_argument( '--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
   sampleGroup.add_argument('--sample_arguments', help = 'Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
+  sampleGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
+  sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
   sampleGroup.add_argument('--sample_xwidth', default=0.06, type=float, help = 'Size of sample perpendicular to beam. [m]')
   sampleGroup.add_argument('--sample_zheight', default=0.08, type=float, help = 'Size of sample along the beam. [m]')
   sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and being directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')

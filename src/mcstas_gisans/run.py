@@ -17,7 +17,6 @@ from bornagain import deg, angstrom
 from .neutron_calculations import neutron_velocity_to_wavelength
 from .input_output import get_particles, save_q_histogram_file, save_raw_q_list_file
 from .preconditioning import precondition
-from .get_samples import get_sample_module
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
@@ -52,8 +51,9 @@ def process_particles(particles, params, queue=None):
      either returned (old raw format), or histogrammed and added to a cumulative
      histogram where all other incident particle results are added.
   """
-  sim_module = get_sample_module(params['sample'].sim_module_name)
-  sample = sim_module.get_sample(**params['sample'].sample_kwargs)
+  sample = params['sample']
+  sample_module = sample.get_sample_module()
+  sample_model = sample_module.get_sample(**sample.sample_kwargs)
 
   if params['raw_output']:
     q_events = [] #p, Qx, Qy, Qz, t
@@ -76,7 +76,7 @@ def process_particles(particles, params, queue=None):
     v = np.sqrt(vx**2+vy**2+vz**2)
     wavelength = neutron_velocity_to_wavelength(v) #angstrom
 
-    if params['sample'].sample_missed(x,z):
+    if sample.sample_missed(x,z):
       # Particles missed the sample so the q value is calculated after propagation
       # to the detector surface without scattering simulation
       q_array = params['instrument'].calculate_q(x, y, z, t, [vx], [vy], [vz])
@@ -88,7 +88,7 @@ def process_particles(particles, params, queue=None):
       # directions is applied for better sampling of the outgoing directions
       Ry = 2*np.random.random()-1
       Rz = 2*np.random.random()-1
-      sim = get_simulation(sample, params['outgoing_direction_number'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
+      sim = get_simulation(sample_model, params['outgoing_direction_number'], params['angle_range'], wavelength, alpha_i, p, Ry, Rz)
       sim.options().setUseAvgMaterials(True)
       sim.options().setIncludeSpecular(True)
       # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
