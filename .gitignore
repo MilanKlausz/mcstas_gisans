@@ -5,7 +5,10 @@
 *.c
 
 *png
+# ingore simulation outputs
 *.npz
+# allow simulation output used as an example
+!data/paper/bornagain_output/*.npz
 
 *.egg-info/
 build/

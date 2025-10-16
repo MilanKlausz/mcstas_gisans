@@ -1,0 +1,4 @@
+# This directory is required for generated example outputs.
+# Output files are ignored by design.
+*
+!.gitignore

@@ -25,7 +25,7 @@ https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/
 
 This project includes the following third-party files:
 
-- resources/mcstas_models (directory) 
+- resources/mcstas_models (directory)
   - Contains McStas models and corresponding files from various authors
   - Copyright and attribution:
     - Each file contains its own author information in the header

@@ -1,0 +1,291 @@
+mcstas simulation description file for ILL_H512_D22.
+Date:    Tue Oct 14 09:06:06 2025
+Program:  3.5.16, git
+
+begin instrument: ILL_H512_D22
+  File: d22_20250913_1e13_new2/mccode
+  Source: ILL_H512_D22.instr
+  Parameters:  lambda(double) dlambda(double) D22_collimation(double) D22_sample(string)
+  Trace_enabled: yes
+  Default_main: yes
+  Embedded_runtime: yes
+end instrument
+
+begin simulation: d22_20250913_1e13_new2
+  Format: McCode with text headers
+  URL: http://www.mccode.org
+  Creator:  3.5.16, git
+  Instrument: ILL_H512_D22.instr
+  Ncount: 10000000000000
+  Trace: no
+  Gravitation: no
+  Seed: 1760425566173043
+  Directory: d22_20250913_1e13_new2
+  Nodes: 560
+  Param: lambda=6
+  Param: dlambda=0.6
+  Param: D22_collimation=17.6
+  Param: D22_sample=H2O_liq.qSq
+end simulation
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H5
+  position: 0 0 2.155
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H5_1760425566.x_y
+  statistics: X0=1.76773e-09; dX=0.0351549; Y0=-3.79971e-09; dY=0.034302;
+  signal: Min=8.37112e+08; Max=1.27814e+09; Mean=1.2514e+09;
+  values: 3.1285e+12 1.16063e+06 7.67613e+12
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.0615 0.0615 -0.06 0.06
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_origin
+  position: -0.0415 0 2.155
+  title:  Intensity Divergence Divergence Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_origin_1760425566.hd_vd
+  statistics: X0=0.489426; dX=1.40724; Y0=1.68197e-07; dY=1.65904;
+  signal: Min=0; Max=1.2191e+09; Mean=2.05611e+08;
+  values: 5.14028e+11 470617 1.25758e+12
+  xvar: Ho
+  yvar: Ve
+  xlabel: Hor. Divergence [deg]
+  ylabel: Vert. Divergence [deg]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -6 6 -6 6
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_Obt_Out
+  position: -0.178935 0 8.08841
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_Obt_Out_1760425566.x_y
+  statistics: X0=-2.36632e-05; dX=0.0114801; Y0=-6.31428e-08; dY=0.0358686;
+  signal: Min=2.37761e+07; Max=4.08913e+07; Mean=3.45864e+07;
+  values: 8.6466e+10 188819 9.22164e+11
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.02 0.02 -0.06 0.06
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_S2_Out
+  position: -0.240102 0 10.6977
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_S2_Out_1760425566.x_y
+  statistics: X0=0.00035404; dX=0.0115071; Y0=1.29233e-09; dY=0.0348328;
+  signal: Min=2.26213e+07; Max=3.29896e+07; Mean=2.924e+07;
+  values: 7.30999e+10 182228 7.77056e+11
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.02 0.02 -0.06 0.06
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_split_2
+  position: -0.240102 0.0325 10.6977
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_split_2_1760425566.x_y
+  statistics: X0=0.000354103; dX=0.0115071; Y0=0.000188459; dY=0.0159278;
+  signal: Min=9.52872e+06; Max=1.52411e+07; Mean=1.34105e+07;
+  values: 3.35262e+10 123474 3.56176e+11
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.02 0.02 -0.0275 0.0275
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_split_1
+  position: -0.240102 -0.0325 10.6977
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_split_1_1760425566.x_y
+  statistics: X0=0.000354002; dX=0.0115071; Y0=-0.000188494; dY=0.0159277;
+  signal: Min=9.52229e+06; Max=1.52451e+07; Mean=1.34104e+07;
+  values: 3.35261e+10 123474 3.56176e+11
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.02 0.02 -0.0275 0.0275
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H512_VTE
+  position: -0.804306 0.0325 31.603
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H512_VTE_1760425566.x_y
+  statistics: X0=0.000464194; dX=0.0115493; Y0=1.66439e-05; dY=0.0159101;
+  signal: Min=0; Max=3.6849e+07; Mean=1.06365e+07;
+  values: 2.65913e+10 114507 3.33452e+11
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.03 0.03 -0.06 0.06
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: D22_PreV
+  position: -1.08823 0.0325 40.6926
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: D22_PreV_1760425566.x_y
+  statistics: X0=-0.000594298; dX=0.0115118; Y0=-3.19647e-06; dY=0.0144536;
+  signal: Min=7.59958e+06; Max=9.58972e+06; Mean=8.82633e+06;
+  values: 2.20658e+10 112792 2.33281e+11
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.02 0.02 -0.025 0.025
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(100, 100)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_D22_Sample_Div
+  position: -1.74176 0.0325 61.2822
+  title:  Intensity Divergence Divergence Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_D22_Sample_Div_1760425566.hd_vd
+  statistics: X0=0.000286298; dX=0.019998; Y0=7.66208e-05; dY=0.0199999;
+  signal: Min=0; Max=3594.74; Mean=1.41409;
+  values: 14140.9 73.6827 49177
+  xvar: Ho
+  yvar: Ve
+  xlabel: Hor. Divergence [deg]
+  ylabel: Vert. Divergence [deg]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -2 2 -2 2
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(50, 50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_D22_Sample_XY
+  position: -1.74176 0.0325 61.2822
+  title:  Intensity Position Position Monitor (Square) per bin
+  Ncount: 9999999999920
+  filename: H51_D22_Sample_XY_1760425566.x_y
+  statistics: X0=3.63311e-05; dX=0.00407476; Y0=-1.58945e-06; dY=0.000499997;
+  signal: Min=0; Max=223.139; Mean=5.65637;
+  values: 14140.9 73.6827 49177
+  xvar: x 
+  yvar: y 
+  xlabel: x [m]
+  ylabel: y [m]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: -0.01 0.01 -0.025 0.025
+  variables: I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_1d(50)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: H51_D22_Sample_L
+  position: -1.74176 0.0325 61.2822
+  title: Wavelength [Angs] monitor
+  Ncount: 9999999999920
+  filename: H51_D22_Sample_L_1760425566.L
+  statistics: X0=5.96149; dX=0.247321;
+  signal: Min=0; Max=3960.75; Mean=282.818;
+  values: 14140.9 73.6827 49177
+  xvar: L
+  yvar: (I,I_err)
+  xlabel: Wavelength [Angs]
+  ylabel: Intensity [n/s/bin]
+  xlimits: 1 10
+  variables: L I I_err N
+end data
+
+begin data
+  Date: Tue Oct 14 19:08:49 2025 (1760461729)
+  type: array_2d(200, 150)
+  Source: ILL_H512_D22 (ILL_H512_D22.instr)
+  component: Mcpl_TOF_Lambda
+  position: -1.74176 0.0325 61.2822
+  title: TOF-wavelength monitor
+  Ncount: 9999999999920
+  filename: Mcpl_TOF_Lambda.dat
+  statistics: X0=92392.2; dX=3743.32; Y0=5.962; dY=0.241564;
+  signal: Min=0; Max=138.695; Mean=0.471028;
+  values: 14130.8 73.6813 48479
+  xvar: Ti
+  yvar: Wa
+  xlabel: Time-of-flight [\gms]
+  ylabel: Wavelength [AA]
+  zvar: I
+  zlabel: Signal per bin
+  xylimits: 84000 104000 5 7
+  variables: I I_err N
+end data
