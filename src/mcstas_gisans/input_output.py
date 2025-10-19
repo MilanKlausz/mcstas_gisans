@@ -1,14 +1,13 @@
 """
 Read particles from MCPL files (or .dat file)
 Output Q histogram files (or raw Q list files)
-Output particles into an MCPL file using np2mcpl
+Unpack the Q histogram files
 """
 
-import sys
 import numpy as np
 import mcpl
 
-from .neutron_calculations import get_neutron_velocity_vector
+from .neutron_calculations import get_particle_converter
 
 def print_tof_limits(tof_limits):
   """Small utility function to print out TOF limits used for filtering"""
@@ -27,23 +26,23 @@ def get_particles(filename, tof_limits, intensity_factor):
   print_tof_limits(tof_limits)
   if filename.endswith('.mcpl') or filename.endswith('.mcpl.gz'):
     with mcpl.MCPLFile(filename) as myfile:
+      convert_particle_properties, particle_type = get_particle_converter(myfile.opt_universalpdgcode)
       particles = np.array(
-        [(p.weight * intensity_factor,
-          p.x/100, p.y/100, p.z/100, #convert cm->m
-          *get_neutron_velocity_vector(p.ux, p.uy, p.uz, p.ekin),
-          p.time*1e-3 #convert ms->s
-          ) for p in myfile.particles if (p.weight>1e-5 and tof_limits[0] < p.time and p.time < tof_limits[1])]
+        [convert_particle_properties(p, intensity_factor) for p in myfile.particles 
+         if (p.weight > 1e-5 and tof_limits[0] < p.time and p.time < tof_limits[1])]
         )
   elif filename.endswith('.dat'): #legacy file type
     particles = np.loadtxt(filename)
   else:
+    import sys
     sys.exit("Wrong input file extension. Expected: '.mcpl', '.mcpl.gz' or '.dat'" )
   if len(particles)==0:
+    import sys
     if tof_limits != [float('-inf'), float('inf')]:
       sys.exit(f"No neutrons found in the input file ({filename}) within the TOF filtering limits: {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]!")
     else:
       sys.exit(f"No neutrons found in the input file {filename}.")
-  return particles
+  return particles, particle_type
 
 def save_q_histogram_file(savename, q_hist, q_hist_error, edges):
   """Save the histograms are corresponding bin edges in an NPZ file"""

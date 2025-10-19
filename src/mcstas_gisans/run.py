@@ -14,7 +14,6 @@ import multiprocessing
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from .neutron_calculations import neutron_velocity_to_wavelength
 from .input_output import get_particles, save_q_histogram_file, save_raw_q_list_file
 from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
@@ -80,11 +79,10 @@ def process_particles(particles, params, queue=None):
     # not in the BornAgain coord system (X - forward, Y - left, Z - up),
     # but with the SphericalDetector, BornAgain only deals with alpha_i (input),
     # alpha_f and phi_f (output), which are the same if calculated correctly
-    p, x, y, z, vx, vy, vz, t = particle
+    p, x, y, z, vx, vy, vz, wavelength, t = particle
     alpha_i = np.rad2deg(np.arctan(-vy/vz)) #[deg]
     phi_i = np.rad2deg(np.arctan(vx/vz)) #[deg], not used in sim, added to phi_f
     v = np.sqrt(vx**2+vy**2+vz**2)
-    wavelength = neutron_velocity_to_wavelength(v) #angstrom
 
     if sample.sample_missed(x,z):
       # Particles missed the sample so the q value is calculated after propagation
@@ -184,7 +182,7 @@ def main():
 
   ### Get particles from the MCPL file ###
   tof_limits = get_tof_filtering_limits(args)
-  particles = get_particles(args.filename, tof_limits, args.intensity_factor)
+  particles, particle_type = get_particles(args.filename, tof_limits, args.intensity_factor)
 
   ### Preconditioning the particles ###
   particles = precondition(particles, args)
@@ -194,7 +192,7 @@ def main():
   print('Number of particles being processed: ', len(particles))
 
   #pack parameters necessary for processing
-  params = pack_parameters(args)
+  params = pack_parameters(args, particle_type)
 
   if args.no_parallel: #not using parallel processing, iterating over each particle sequentially, mainly intended for profiling
     result = process_particles(particles, params)

@@ -12,17 +12,17 @@ def sample_orientation_transform(particles, sample_orientation):
   Transform particle parameters in accordance with the sample orientation to
   handle vertical sample by +-90 degree rotation along the nexus z-axis
   """
-  p, x, y, z, vx, vy, vz, t = particles.T
+  p, x, y, z, vx, vy, vz, w, t = particles.T
   match sample_orientation:
     case 0:
       """Beam hitting vertical sample from the left: -90 deg rotation"""
-      return p, -y, x, z, -vy, vx, vz, t
+      return p, -y, x, z, -vy, vx, vz, w, t
     case 1:
       """Horizontal sample: no rotation"""
-      return p, x, y, z, vx, vy, vz, t
+      return p, x, y, z, vx, vy, vz, w, t
     case 2:
       """Beam hitting vertical sample from the right: -90 deg rotation"""
-      return p, y, -x, z, vy, -vx, vz, t
+      return p, y, -x, z, vy, -vx, vz, w, t
 
 def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation):
   """Apply coordinate transformation to express particle parameters in a
@@ -31,16 +31,16 @@ def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation):
   alpha_inc = float(np.deg2rad(alpha_inc_deg))
   rotation_matrix = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],
                               [np.sin(-alpha_inc), np.cos(-alpha_inc)]])
-  p, x, y, z, vx, vy, vz, t = sample_orientation_transform(particles, sample_orientation)
+  p, x, y, z, vx, vy, vz, w, t = sample_orientation_transform(particles, sample_orientation)
   zRot, yRot = np.dot(rotation_matrix, [z, y])
   vzRot, vyRot = np.dot(rotation_matrix, [vz, vy])
-  return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, t]).T
+  return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, w, t]).T
 
 def propagate_to_sample_surface(particles, sample_xwidth, sample_zheight, allow_sample_miss):
   """Propagate particles to y=0, the sample surface.
   Discard those which would miss the sample.
   """
-  p, x, y, z, vx, vy, vz, t = particles.T
+  p, x, y, z, vx, vy, vz, w, t = particles.T
   t_propagate = -y/vy # y+vy*t_propagate=0 (where y is the initial position)
   x += vx * t_propagate
   y += vy * t_propagate
@@ -49,7 +49,7 @@ def propagate_to_sample_surface(particles, sample_xwidth, sample_zheight, allow_
 
   # Create a boolean mask for the particles to select those which hit the sample
   hit_sample_mask = (abs(x) < sample_xwidth*0.5) & (abs(z) < sample_zheight*0.5)
-  events_on_sample_surface = np.vstack([p, x, y, z, vx, vy, vz, t]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, t]).T[hit_sample_mask]
+  events_on_sample_surface = np.vstack([p, x, y, z, vx, vy, vz, w, t]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, w, t]).T[hit_sample_mask]
 
   event_number = len(particles)
   sample_hit_event_number = np.sum(hit_sample_mask)
@@ -89,9 +89,9 @@ def apply_t0_correction(particles, args):
     t0_correction = fit['mean'] * 1e-6
   print(f"T0 correction value: {t0_correction} second")
 
-  p, x, y, z, vx, vy, vz, t = particles.T
+  p, x, y, z, vx, vy, vz, w, t = particles.T
   t -= t0_correction
-  particles = np.vstack([p, x, y, z, vx, vy, vz, t]).T
+  particles = np.vstack([p, x, y, z, vx, vy, vz, w, t]).T
   return particles
 
 def precondition(particles, args):
