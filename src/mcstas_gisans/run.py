@@ -182,7 +182,7 @@ def main():
 
   ### Get particles from the MCPL file ###
   tof_limits = get_tof_filtering_limits(args)
-  particles, particle_type = get_particles(args.filename, tof_limits, args.intensity_factor)
+  particles, particle_type = get_particles(args.filename, args.intensity_factor, tof_limits, args.input_weight_limit)
 
   ### Preconditioning the particles ###
   particles = precondition(particles, args)

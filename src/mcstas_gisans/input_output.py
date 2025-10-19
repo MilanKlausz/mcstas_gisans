@@ -16,7 +16,7 @@ def print_tof_limits(tof_limits):
   else:
     print(f"Using MCPL input TOF limits: : {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]")
 
-def get_particles(filename, tof_limits, intensity_factor):
+def get_particles(filename, intensity_factor, tof_limits, input_weight_limit):
   """
   Read particles from an MCPL file or a .dat file (created with the
   Virtual_output McStas component). In case of an MCPL file, convert units and
@@ -29,7 +29,8 @@ def get_particles(filename, tof_limits, intensity_factor):
       convert_particle_properties, particle_type = get_particle_converter(myfile.opt_universalpdgcode)
       particles = np.array(
         [convert_particle_properties(p, intensity_factor) for p in myfile.particles 
-         if (p.weight > 1e-5 and tof_limits[0] < p.time and p.time < tof_limits[1])]
+         if (p.weight > input_weight_limit and
+             tof_limits[0] < p.time and p.time < tof_limits[1])]
         )
   elif filename.endswith('.dat'): #legacy file type
     particles = np.loadtxt(filename)
