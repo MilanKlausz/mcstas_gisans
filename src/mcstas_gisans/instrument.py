@@ -7,7 +7,7 @@ scattering vector (q) related calculations.
 import numpy as np
 
 from .detector import Detector
-from .neutron_calculations import calculate_neutron_wavelength, calculate_wavenumber
+from .particle_calculations import calculate_neutron_wavelength, calculate_wavenumber
 
 class Instrument:
   def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, sample_orientation, wfm=False, no_gravity=False):

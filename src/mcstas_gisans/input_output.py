@@ -7,12 +7,12 @@ Unpack the Q histogram files
 import numpy as np
 import mcpl
 
-from .neutron_calculations import get_particle_converter
+from .particle_calculations import get_particle_converter
 
 def print_tof_limits(tof_limits):
   """Small utility function to print out TOF limits used for filtering"""
   if tof_limits == [float('-inf'), float('inf')]:
-    print(f"No TOF filtering applied. Processing all neutrons from the input file.")
+    print(f"No TOF filtering applied. Processing all particles from the input file.")
   else:
     print(f"Using MCPL input TOF limits: : {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]")
 
@@ -40,9 +40,9 @@ def get_particles(filename, intensity_factor, tof_limits, input_weight_limit):
   if len(particles)==0:
     import sys
     if tof_limits != [float('-inf'), float('inf')]:
-      sys.exit(f"No neutrons found in the input file ({filename}) within the TOF filtering limits: {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]!")
+      sys.exit(f"No particles found in the input file ({filename}) within the TOF filtering limits: {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]!")
     else:
-      sys.exit(f"No neutrons found in the input file {filename}.")
+      sys.exit(f"No particles found in the input file {filename}.")
   return particles, particle_type
 
 def save_q_histogram_file(savename, q_hist, q_hist_error, edges):
