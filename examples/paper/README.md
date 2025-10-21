@@ -104,9 +104,9 @@ directory and intensity factor can be added to the third **MCSTAS INPUT** option
 
 In case one wishes to finish the direct beam simulation, it can be done (in
 a shell with the conda environment activated) by the following command
-using the *--allow_sample_miss* and *--sample_xwidth 0.0* options:
+using the *--allow_sample_miss* and *--sample_size_y 0.0* options:
 ```bash
-  mg_run "data/paper/mcstas_output/d22_20250913_1e13/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_xwidth 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_20250913_1e13"
+  mg_run "data/paper/mcstas_output/d22_20250913_1e13/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_20250913_1e13"
 ```
 
 Then the plotting script can be used compare the simulation result to the
@@ -125,7 +125,7 @@ that will result in correct simulated intensity (still normalised to 1 sec)
 Then the plotting comparison can be done using the *--experiment_time* option
 to upscale the simulated result to the 60 second direct beam experiment time
 ```bash
-  mg_run "data/paper/mcstas_output/d22_20250913_1e13/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_xwidth 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_20250913_1e13" --intensity_factor 0.1421
+  mg_run "data/paper/mcstas_output/d22_20250913_1e13/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_20250913_1e13" --intensity_factor 0.1421
   mg_plot --filename "examples/paper/output/direct_beam_d22_20250913_1e13.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --y_plot_range -0.1 0.3 --x_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60
 ```
 

@@ -41,8 +41,8 @@ WAVELENGTH=6.0
 ###############################################################################
 ############################### SAMPLE SETTINGS ###############################
 ###############################################################################
-SAMPLE_XWIDTH=0.06
-SAMPLE_ZHEIGHT=0.08
+SAMPLE_SIZE_Y=0.06 #sample width
+SAMPLE_SIZE_X=0.08 #sample height
 INCIDENT_ANGLE=0.24
 SAMPLE_MODEL=silica_100nm_air #built-in (src/mcstas_gisans/bornagain_samples)
 ## sample parameters for silica_100nm_air sample model
@@ -70,7 +70,7 @@ D22_NXS_FILE="data/paper/d22_measurement/073174.nxs"
 ###############################################################################
 ## run simulation
 mg_run $MCPL_FILE_PATH --instrument $INSTRUMENT --intensity_factor $INTENSITY_FACTOR --wavelength_selected $WAVELENGTH \
-  --model $SAMPLE_MODEL --sample_arguments "$SAMPLE_ARGS" --sample_xwidth $SAMPLE_XWIDTH --sample_zheight $SAMPLE_ZHEIGHT \
+  --model $SAMPLE_MODEL --sample_arguments "$SAMPLE_ARGS" --sample_size_y $SAMPLE_SIZE_Y --sample_size_x $SAMPLE_SIZE_X \
   --alpha $INCIDENT_ANGLE --outgoing_direction_number $OUTGOING_DIRECTION_NUMBER --allow_sample_miss \
   --include_specular --use_avg_materials \
   --savename $OUTPUT_FILE_PATH

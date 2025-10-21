@@ -24,7 +24,7 @@ def pack_parameters(args, particle_type):
   angle_x_maximum, angle_y_maximum = instrument.get_detector_angle_maximum()
   angle_range = args.angle_range if args.angle_range else [angle_x_maximum, angle_y_maximum]
 
-  sample = Sample(args.sample_xwidth, args.sample_zheight, args.model, args.sample_arguments)
+  sample = Sample(args.sample_size_y, args.sample_size_x, args.model, args.sample_arguments)
 
   return {
     'outgoing_direction_number': args.outgoing_direction_number,

@@ -36,7 +36,7 @@ def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation):
   vzRot, vyRot = np.dot(rotation_matrix, [vz, vy])
   return np.vstack([p, x, yRot, zRot, vx, vyRot, vzRot, w, t]).T
 
-def propagate_to_sample_surface(particles, sample_xwidth, sample_zheight, allow_sample_miss):
+def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_sample_miss):
   """Propagate particles to y=0, the sample surface.
   Discard those which would miss the sample.
   """
@@ -48,7 +48,7 @@ def propagate_to_sample_surface(particles, sample_xwidth, sample_zheight, allow_
   t += t_propagate
 
   # Create a boolean mask for the particles to select those which hit the sample
-  hit_sample_mask = (abs(x) < sample_xwidth*0.5) & (abs(z) < sample_zheight*0.5)
+  hit_sample_mask = (abs(x) < sample_size_y*0.5) & (abs(z) < sample_size_x*0.5)
   events_on_sample_surface = np.vstack([p, x, y, z, vx, vy, vz, w, t]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, w, t]).T[hit_sample_mask]
 
   event_number = len(particles)
@@ -102,7 +102,7 @@ def precondition(particles, args):
   3) Optionally apply T0 (time-of-flight) correction
   """
   particles = transform_to_sample_system(particles, args.alpha, args.sample_orientation)
-  particles = propagate_to_sample_surface(particles, args.sample_xwidth, args.sample_zheight, args.allow_sample_miss)
+  particles = propagate_to_sample_surface(particles, args.sample_size_y, args.sample_size_x, args.allow_sample_miss)
   if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
   else:
