@@ -30,3 +30,9 @@ This project includes the following third-party files:
   - Copyright and attribution:
     - Each file contains its own author information in the header
     - For licensing information, please contact the individual authors of each file
+
+- data/paper/d22_measurement (directory)
+  - Contains Nexus data files from a GISANS measurement at the D22 instrument at Institut Laue-Langevin
+  - Original source: http://dx.doi.org/10.5291/ILL-DATA.8-02-912
+  - Copyright and attribution:
+    - Nicolò Paracini; H Boyd; CARDENAS; Christopher J. Garvey; GUTFREUND Philipp; LARSSON Johan; PORCAR Lionel and WOLFF Maximilian. (2021). Effect of membrane curvature on lipid in-plane sorting: A GISANS study of nanoparticle supported lipid bilayers.. Institut Laue-Langevin (ILL) doi:10.5291/ILL-DATA.8-02-912
