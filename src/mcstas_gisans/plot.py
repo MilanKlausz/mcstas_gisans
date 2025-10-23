@@ -7,26 +7,26 @@ Main plotting script to create 2D/1D Q plots from simulation results
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .plotting_utils import plotQ1D, logPlot2d, create2dHistogram, extractRangeTo1D, plotQ1D_vert, extractRangeTo1D_vert
-from .experiment_time import handleExperimentTime
-from .input_output import unpackQHistogramFile, unpack_raw_q_list_file
+from .plotting_utils import plot_q_1d, log_plot_2d, create_2d_histogram, extract_range_to_1d#, extract_range_to_1d_vertical
+from .experiment_time import handle_experiment_time
+from .input_output import unpack_q_histogram_file, unpack_raw_q_list_file
 
-def getPlotRanges(datasets, xPlotRange, yPlotRange):
+def get_plot_ranges(datasets, y_plot_range, z_plot_range):
   """Get plot ranges. Return ranges if provided, otherwise find the minimum and
   maximum from the datasets."""
-  if not xPlotRange:
-    xEdgeMin = min([xEdges[0] for _,_,xEdges,_,_ in datasets])
-    xEdgeMax = max([xEdges[-1] for _,_,xEdges,_,_ in datasets])
-    xPlotRange = [xEdgeMin, xEdgeMax]
-  if not yPlotRange:
-    yEdgeMin = min([yEdges[0] for _,_,_,yEdges,_ in datasets])
-    yEdgeMax = max([yEdges[-1] for _,_,_,yEdges,_ in datasets])
-    yPlotRange = [yEdgeMin, yEdgeMax]
-  minValue = min([hist.min().min() for hist,_,_,_,_ in datasets])
-  maxValue = max([hist.max().max() for hist,_,_,_,_ in datasets])
-  return xPlotRange, yPlotRange, minValue, maxValue
+  if not y_plot_range:
+    y_edge_min = min([y_edges[0] for _,_,y_edges,_,_ in datasets])
+    y_edge_max = max([y_edges[-1] for _,_,y_edges,_,_ in datasets])
+    y_plot_range = [y_edge_min, y_edge_max]
+  if not z_plot_range:
+    z_edge_min = min([z_edges[0] for _,_,_,z_edges,_ in datasets])
+    z_edge_max = max([z_edges[-1] for _,_,_,z_edges,_ in datasets])
+    z_plot_range = [z_edge_min, z_edge_max]
+  min_value = min([hist.min().min() for hist,_,_,_,_ in datasets])
+  max_value = max([hist.max().max() for hist,_,_,_,_ in datasets])
+  return y_plot_range, z_plot_range, min_value, max_value
 
-def getOverlayPlotAxes(column=2):
+def get_overlay_plot_axes(column=2):
   """Get axes for special subplot layout for dataset comparison. Create a
   grid of subplots, replacing the bottom row with a single larger subplot"""
   fig, axes = plt.subplots(2, column, figsize=(16, 12))
@@ -35,62 +35,62 @@ def getOverlayPlotAxes(column=2):
   gs = axes[1, 0].get_gridspec() #Get GridSpec from the bottom left subplot
   for i in range(column): #Remove all bottom subplots
     axes[1, i].remove()
-  axesBottom = fig.add_subplot(gs[1:, :]) #cover the row with a new subplot
+  axes_bottom = fig.add_subplot(gs[1:, :]) #cover the row with a new subplot
 
   axes = axes.flatten()
-  axesTop = [axes[i] for i in range(column)]
-  return axesTop, axesBottom
+  axes_top = [axes[i] for i in range(column)]
+  return axes_top, axes_bottom
 
-def getDatasets(args):
+def get_datasets(args):
   """Prepare the datasets to be plotted. Process input files, and scale to
   experiment time if required"""
   datasets = []
-  xDataRange = args.x_range
-  yDataRange = args.y_range
+  y_data_range = args.y_range
+  z_data_range = args.z_range
 
   if args.nxs:
-    from .read_d22 import getStoredData
-    hist, histError, xEdges, yEdges = getStoredData(args.nxs)
+    from .read_d22 import read_nexus_data
+    hist, hist_error, y_edges, z_edges = read_nexus_data(args.nxs)
     label = 'D22 measurement'
     nxs_sum = np.sum(hist)
     if args.verbose:
       print(f"NXS sum: {nxs_sum}")
-    datasets.append((hist, histError, xEdges, yEdges, label))
-    xDataRange = [xEdges[0], xEdges[-1]]
-    yDataRange = [yEdges[0], yEdges[-1]]
+    datasets.append((hist, hist_error, y_edges, z_edges, label))
+    y_data_range = [y_edges[0], y_edges[-1]]
+    z_data_range = [z_edges[0], z_edges[-1]]
 
   if args.filename:
     labels = args.label if args.label else args.filename #default to filenames
     for filename, label in zip(args.filename, labels):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
-          hist, histError, xEdges, yEdges, _ = unpackQHistogramFile(npFile)
+          hist, hist_error, _, y_edges, z_edges = unpack_q_histogram_file(npFile)
           hist = np.sum(hist, axis=2)
-          histError = np.sum(histError, axis=2)
-          xDataRange = [xEdges[0], xEdges[-1]]
-          yDataRange = [yEdges[0], yEdges[-1]]
-        else: #old 'raw data' file with a list of unhistogrammed qEvents
+          hist_error = np.sum(hist_error, axis=2)
+          y_data_range = [y_edges[0], y_edges[-1]]
+          z_data_range = [z_edges[0], z_edges[-1]]
+        else: #old 'raw data' file with a list of unhistogrammed qEvents #FIXME still uses McStas axis labels
           x, y, _, weights = unpack_raw_q_list_file(npFile)
-          bins_hor = args.bins[0] if not args.nxs else len(xEdges)-1 #override bin number to match stored data for better comparison
-          bins_vert = args.bins[1] if not args.nxs else len(yEdges)-1
-          hist, histError, xEdges, yEdges = create2dHistogram(x, y, weights, xBins=bins_hor, yBins=bins_vert, xRange=xDataRange, yRange=yDataRange)
+          bins_hor = args.bins[0] if not args.nxs else len(y_edges)-1 #override bin number to match stored data for better comparison
+          bins_vert = args.bins[1] if not args.nxs else len(z_edges)-1
+          hist, hist_error, y_edges, z_edges = create_2d_histogram(x, y, weights, y_bins=bins_hor, z_bins=bins_vert, y_range=y_data_range, z_range=z_data_range)
 
-      qyIndex = np.digitize(args.q_min, yEdges) - 1
+      qz_index = np.digitize(args.q_min, z_edges) - 1
 
-      hist, histError = handleExperimentTime(hist, histError, qyIndex, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose, args.background)
+      hist, hist_error = handle_experiment_time(hist, hist_error, qz_index, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose, args.background)
 
       hist_sum = np.sum(hist)
       if args.verbose:
         print(f"{filename} sum: {hist_sum}")
       if args.normalise_to_nxs:
         hist *= nxs_sum / hist_sum #normalise total intensity of the sim to the nxs data
-        histError *= nxs_sum / hist_sum
-      datasets.append((hist, histError, xEdges, yEdges, label))
+        hist_error *= nxs_sum / hist_sum
+      datasets.append((hist, hist_error, y_edges, z_edges, label))
 
       if args.csv:
-        csvFilename = f"{filename.rsplit('.', 1)[0]}.csv"
-        np.savetxt(csvFilename, hist, delimiter=',')
-        print(f"Created {csvFilename}")
+        csv_filename = f"{filename.rsplit('.', 1)[0]}.csv"
+        np.savetxt(csv_filename, hist, delimiter=',')
+        print(f"Created {csv_filename}")
 
   return datasets
 
@@ -99,74 +99,78 @@ def main():
   parser = create_argparser()
   args = parse_args(parser)
 
-  datasets = getDatasets(args)
+  datasets = get_datasets(args)
 
   if args.dual_plot:
     _, (ax1, ax2) = plt.subplots(2, figsize=(6, 12))
-    plotOutput = 'none'
-    matchXAxes = True
+    plot_output = 'none'
+    match_horisontal_axes = True
   else:
-    matchXAxes = False
+    match_horisontal_axes = False
     if args.overlay:
-      axesTop, axesBottom = getOverlayPlotAxes(len(datasets))
+      axes_top, axes_bottom = get_overlay_plot_axes(len(datasets))
     else:
       ax1, ax2 = None, None
     if args.pdf:
-      plotOutput = ".pdf"
+      plot_output = ".pdf"
     elif args.png:
-      plotOutput = ".png"
+      plot_output = ".png"
     else:
-      plotOutput = 'show'
+      plot_output = 'show'
 
   if args.intensity_min is not None:
-    intensityMin = float(args.intensity_min)
+    intensity_min = float(args.intensity_min)
   else:
-    isUpscaled = args.experiment_time or args.find_experiment_time
-    intensityMin = 1e-9 if not isUpscaled else 1
+    is_upscaled = args.experiment_time or args.find_experiment_time
+    intensity_min = 1e-9 if not is_upscaled else 1
 
   if args.overlay:
-    xPlotRange, yPlotRange, _ , maxValue = getPlotRanges(datasets, args.x_plot_range, args.y_plot_range)
-    lineColors = ['blue', 'green', 'orange', 'purple', 'cyan', 'brown']
-    for datasetIndex, dataset in enumerate(datasets):
-      plot2DAxes = axesTop[datasetIndex]
-      lineColor = lineColors[datasetIndex]
-      hist, histError, xEdges, yEdges, label = dataset
-      commonMaximum = maxValue if args.individual_colorbars is False else None
-      logPlot2d(hist, xEdges, yEdges, label, ax=plot2DAxes, intensityMin=intensityMin, intensityMax=commonMaximum, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, output='none')
+    y_plot_range, z_plot_range, _ , max_value = get_plot_ranges(datasets, args.y_plot_range, args.z_plot_range)
+    line_colors = ['blue', 'green', 'orange', 'purple', 'cyan', 'brown']
+    for dataset_index, dataset in enumerate(datasets):
+      plot_2d_axes = axes_top[dataset_index]
+      line_color = line_colors[dataset_index]
+      hist, hist_error, y_edges, z_edges, label = dataset
+      common_maximum = max_value if args.individual_colorbars is False else None
+      log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
 
       ### TODO in dev temp OFF ###
-      qyMinIndex = np.digitize(args.q_min, yEdges) - 1
-      qyMaxIndex = np.digitize(args.q_max, yEdges)
-      values, errors, xBins, yLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qyMinIndex, qyMaxIndex])
-      plotQ1D(values, errors, xBins, yLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, xRange=xPlotRange, savename=args.savename, output='none')
-      plot2DAxes.axhline(yEdges[qyMinIndex], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished
-      plot2DAxes.axhline(yEdges[qyMaxIndex], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished
+      qz_min_index = np.digitize(args.q_min, z_edges) - 1
+      qz_max_index = np.digitize(args.q_max, z_edges)
+      values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index, qz_max_index])
+      title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
+      horisontal_axis_label = 'Qy [1/nm]'
+      plot_q_1d(values, errors, y_bins, horisontal_axis_label, color=line_color, title_text=title_text, label=label, ax=axes_bottom, limits=y_plot_range, savename=args.savename, output='none')
+      plot_2d_axes.axhline(z_edges[qz_min_index], color='magenta', linestyle='--', label='q_z = 0') #TODO the label seems to be unfinished but unused
+      plot_2d_axes.axhline(z_edges[qz_max_index], color='magenta', linestyle='--', label='q_z = 0') #TODO the label seems to be unfinished but unused
       ### TODO in dev temp OFF ###
       # ### TODO in dev ###
-      # qxMinIndex = np.digitize(args.q_min, xEdges) - 1
-      # qxMaxIndex = np.digitize(args.q_max, xEdges)
-      # values, errors, yBins, xLimits = extractRangeTo1D_vert(hist, histError, xEdges, yEdges, [qxMinIndex, qxMaxIndex])
-      # plotQ1D_vert(values, errors, yBins, xLimits, intensityMin=intensityMin, color=lineColor, titleText='', label=label, ax=axesBottom, yRange=yPlotRange, savename=args.savename, output='none')
-      # plot2DAxes.axvline(xEdges[qxMinIndex], color='magenta', linestyle='--', label='q_x = 0')
-      # plot2DAxes.axvline(xEdges[qxMaxIndex], color='magenta', linestyle='--', label='q_x = 0')
+      # qy_min_index = np.digitize(args.q_min, y_edges) - 1
+      # qy_max_index = np.digitize(args.q_max, y_edges)
+      # values, errors, z_bins, y_limits = extract_range_to_1d_vertical(hist, hist_error, y_edges, z_edges, [qy_min_index, qy_max_index])
+      # title_text = f"Qy=[{y_limits[0]:.4f}1/nm, {y_limits[1]:.4f}1/nm]"
+      # horisontal_axis_label = 'Qz [1/nm]'
+      # plotQ1D_vert(values, errors, z_bins, horisontal_axis_label, color=lineColor, title_text='', label=label, ax=axes_bottom, limits=z_plot_range, savename=args.savename, output='none')
+      # plot_2d_axes.axvline(y_edges[qy_min_index], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished but unused
+      # plot_2d_axes.axvline(y_edges[qy_max_index], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished but unused
       # ### TODO in dev ###
   
       # ### TEMP manual work
-      # xFirstPeakMin = 0.04 #TODO
-      # xFirstPeakMax = 0.085 #TODO
-      # qFirstPeakMinIndex = np.digitize(xFirstPeakMin, xBins) - 1
-      # qFirstPeakMaxIndex = np.digitize(xFirstPeakMax, xBins)
-      # axesBottom.axvline(xBins[qFirstPeakMinIndex], color='magenta', linestyle='--')
-      # axesBottom.axvline(xBins[qFirstPeakMaxIndex], color='magenta', linestyle='--')
+      # y_first_peak_min = 0.04 #TODO
+      # y_first_peak_max = 0.085 #TODO
+      # q_first_peak_min_index = np.digitize(y_first_peak_min, y_bins) - 1
+      # q_first_peak_max_index = np.digitize(y_first_peak_max, y_bins)
+      # axes_bottom.axvline(y_bins[q_first_peak_min_index], color='magenta', linestyle='--')
+      # axes_bottom.axvline(y_bins[q_first_peak_max_index], color='magenta', linestyle='--')
 
-      # firstPeakSumIntensity = sum(values[qFirstPeakMinIndex:qFirstPeakMaxIndex])
-      # print(f"{label} - {qFirstPeakMinIndex=}, {qFirstPeakMaxIndex=}")
-      # print(f"{label} - first peak sum intensity: {firstPeakSumIntensity}")
+      # first_peak_sum_intensity = sum(values[q_first_peak_min_index:q_first_peak_max_index])
+      # print(f"{label} - {q_first_peak_min_index=}, {q_first_peak_max_index=}")
+      # print(f"{label} - first peak sum intensity: {first_peak_sum_intensity}")
       # ### TEMP manual work
 
-    axesBottom.set_ylim(bottom=intensityMin)
-    axesBottom.grid()
-    axesBottom.legend()
+    axes_bottom.set_ylim(bottom=intensity_min)
+    axes_bottom.grid()
+    axes_bottom.legend()
     plt.tight_layout()
     if not args.pdf and not args.png:
       plt.show()
@@ -179,15 +183,17 @@ def main():
       print(f"Created {filename}")
 
   if not args.overlay:
-    for hist, histError, xEdges, yEdges, label in datasets:
-      xPlotRange = args.x_plot_range if args.x_plot_range else [xEdges[0], xEdges[-1]]
-      yPlotRange = args.y_plot_range if args.y_plot_range else [yEdges[0], yEdges[-1]]
-      logPlot2d(hist, xEdges, yEdges, '', ax=ax1, intensityMin=intensityMin, xRange=xPlotRange, yRange=yPlotRange, savename=args.savename, matchXAxes=matchXAxes, output=plotOutput)
+    for hist, hist_error, y_edges, z_edges, label in datasets:
+      y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges[0], y_edges[-1]]
+      z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges[0], z_edges[-1]]
+      log_plot_2d(hist, y_edges, z_edges, '', ax=ax1, intensity_min=intensity_min, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, match_horisontal_axes=match_horisontal_axes, output=plot_output)
 
-      qyMinIndex_exp = np.digitize(args.q_min, yEdges) - 1
-      qyMaxIndex_exp = np.digitize(args.q_max, yEdges)
-      values, errors, xBins, yLimits = extractRangeTo1D(hist, histError, xEdges, yEdges, [qyMinIndex_exp, qyMaxIndex_exp])
-      plotQ1D(values, errors, xBins, yLimits, intensityMin=intensityMin, color='blue', titleText='', label=label, ax=ax2, xRange=xPlotRange, savename=args.savename, output=plotOutput)
+      qz_min_index_exp = np.digitize(args.q_min, z_edges) - 1
+      qz_max_index_exp = np.digitize(args.q_max, z_edges)
+      values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index_exp, qz_max_index_exp])
+      title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
+      horisontal_axis_label = 'Qy [1/nm]'
+      plot_q_1d(values, errors, y_bins, horisontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=args.savename, output=plot_output)
 
   if args.dual_plot:
     if not args.pdf and not args.png:

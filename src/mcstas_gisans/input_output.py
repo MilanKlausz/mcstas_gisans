@@ -47,10 +47,11 @@ def get_particles(filename, intensity_factor, tof_limits, input_weight_limit):
 
 def save_q_histogram_file(savename, q_hist, q_hist_error, edges):
   """Save the histograms are corresponding bin edges in an NPZ file"""
-  np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
+  np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[2], yEdges=edges[0], zEdges=edges[1])
+  # np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
   print(f"Created {savename}.npz")
 
-def unpackQHistogramFile(np_file):
+def unpack_q_histogram_file(np_file):
   """Unpack the content (histograms are corresponding bin edges) of an NPZ file
   created with the save_q_histogram_file function"""
   hist = np_file['hist'] #keys are hardcoded in the save_q_histogram_file function

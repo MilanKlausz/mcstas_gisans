@@ -219,8 +219,8 @@ def main():
 
   if args.quick_plot:
     hist2D = np.sum(q_hist, axis=2)
-    from .plotting_utils import logPlot2d
-    logPlot2d(hist2D, edges[0], edges[1], xRange=params['hist_ranges'][0], yRange=params['hist_ranges'][1], output='show')
+    from .plotting_utils import log_plot_2d
+    log_plot_2d(hist2D, edges[0], edges[1], y_range=params['hist_ranges'][0], z_range=params['hist_ranges'][1], output='show')
 
 if __name__=='__main__':
   main()

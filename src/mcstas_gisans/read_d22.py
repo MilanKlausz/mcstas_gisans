@@ -5,12 +5,11 @@ Read data from measurements at D22(ILL) from nxs files (hard-coded)
 
 import h5py
 import numpy as np
-from numpy import pi, sin, arctan
 
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
-def getStoredData(filepath='073174.nxs'):
+def read_nexus_data(filepath='073174.nxs'):
   """
   Read data from measurements at D22(ILL) from nxs files.It is hardcoded
   and not meant to be used for any other data in the current state.
@@ -35,7 +34,7 @@ def getStoredData(filepath='073174.nxs'):
   instrument = Instrument(instrument_defaults['d22'], alpha_inc_deg, wavelength_selected, sample_orientation)
   q_min, q_max = instrument.calculate_q_limits()
 
-  q_x = np.linspace(q_min[0], q_max[0], num=(detector_data.shape[1]+1))
-  q_y = np.linspace(q_min[1], q_max[1], num=(detector_data.shape[0]+1))
+  q_y = np.linspace(q_min[0], q_max[0], num=(detector_data.shape[1]+1))
+  q_z = np.linspace(q_min[1], q_max[1], num=(detector_data.shape[0]+1))
 
-  return hist.T, hist_error.T, q_x, q_y
+  return hist.T, hist_error.T, q_y, q_z

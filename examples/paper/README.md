@@ -113,7 +113,7 @@ Then the plotting script can be used compare the simulation result to the
 measured data. The following command will do that, and also output the sum
 intensities due to the *--verbose* input option:
 ```bash
- mg_plot --filename "examples/paper/output/direct_beam_d22_20250913_1e13.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --y_plot_range -0.1 0.3 --x_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose
+ mg_plot --filename "examples/paper/output/direct_beam_d22_20250913_1e13.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose
 ```
 
 ---
@@ -126,7 +126,7 @@ Then the plotting comparison can be done using the *--experiment_time* option
 to upscale the simulated result to the 60 second direct beam experiment time
 ```bash
   mg_run "data/paper/mcstas_output/d22_20250913_1e13/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_20250913_1e13" --intensity_factor 0.1421
-  mg_plot --filename "examples/paper/output/direct_beam_d22_20250913_1e13.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --y_plot_range -0.1 0.3 --x_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60
+  mg_plot --filename "examples/paper/output/direct_beam_d22_20250913_1e13.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60
 ```
 
 Note that running the BornAgain simulation script (`mg_run`) using the high statistics McStas simulation output (`data/paper/mcstas_output/d22_20250913_1e13`) in a matter of few seconds is only possible due to the
