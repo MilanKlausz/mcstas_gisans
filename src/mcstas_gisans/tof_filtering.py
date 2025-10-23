@@ -23,10 +23,7 @@ def get_tof_filtering_limits(args):
     if args.input_tof_limits:
       tof_limits = args.input_tof_limits
     else:
-      if args.tof_filtering_figure in ['png', 'pdf']:
-        figure_output = f"{args.savename}.{args.tof_filtering_figure}"
-      else:
-        figure_output = args.tof_filtering_figure # None or 'show'
+      figure_output = f"{args.savename}_tof_filtering.{args.tof_filtering_figure}" if args.tof_filtering_figure in ['png', 'pdf'] else args.tof_filtering_figure
       mcstas_dir = Path(args.filename).resolve().parent
       from .fit_monitor import fit_gaussian_to_mcstas_monitor
       fit = fit_gaussian_to_mcstas_monitor(dirname=mcstas_dir, monitor=instParams['mcpl_monitor_name'], wavelength=args.wavelength, wavelength_rebin=args.input_wavelength_rebin, figure_output=figure_output, tof_range_factor=args.input_tof_range_factor)

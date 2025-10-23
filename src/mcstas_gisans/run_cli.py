@@ -57,6 +57,8 @@ def create_argparser():
   t0correctionGroup.add_argument('--t0_wavelength_rebin', default=None, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
   t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
   t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
+  t0correctionGroup.add_argument('--t0_correction_figure', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the t0 correction and exit without doing the simulation. Only works with McStas monitor fitting.')
+
 
   return parser
 

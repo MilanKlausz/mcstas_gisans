@@ -83,10 +83,15 @@ def apply_t0_correction(particles, args):
       tof_limits = get_saga_subpulse_tof_limits(args.wavelength)
       t0_monitor = instrument_defaults[args.instrument]['wfm_t0_monitor_name']
     print(f"Applying T0 correction based on McStas monitor: {t0_monitor}")
+    figure_output = f"{args.savename}_t0_correction.{args.t0_correction_figure}" if args.t0_correction_figure in ['png', 'pdf'] else args.t0_correction_figure
     mcstas_directory = Path(args.filename).resolve().parent
-    from .fit_monitor import fit_gaussian_to_mcstas_monitor
-    fit = fit_gaussian_to_mcstas_monitor(mcstas_directory, t0_monitor, args.wavelength, tof_limits=tof_limits, wavelength_rebin=args.t0_wavelength_rebin)
-    t0_correction = fit['mean'] * 1e-6
+    from .fit_monitor import find_mcstas_monitor_tof_centre
+    tof_centre = find_mcstas_monitor_tof_centre(mcstas_directory, t0_monitor, args.wavelength, method='com', tof_limits=tof_limits, wavelength_rebin=args.t0_wavelength_rebin, figure_output=figure_output)
+    t0_correction = tof_centre * 1e-6
+    if args.t0_correction_figure is not None:
+    # Terminate the script execution because 'only plotting' has been selected by the user
+      import sys
+      sys.exit()
   print(f"T0 correction value: {t0_correction} second")
 
   p, x, y, z, vx, vy, vz, w, t = particles.T
