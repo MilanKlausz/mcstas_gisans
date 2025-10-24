@@ -6,6 +6,23 @@ the results and adjusting the uncertainties.
 import numpy as np
 import math as m
 
+def upscale_simple(hist, hist_error, experiment_time, background):
+  """Upscale simulated results by a virtual experiment, 
+  applying flat background and Poisson distribution"""
+  #scale to experiment time
+  hist *= experiment_time
+  hist_error *= experiment_time
+
+  # add flat background
+  hist += background
+
+  #sample Poisson distribution for each bin with lambda='simulated counts'
+  rng = np.random.default_rng()
+  hist = rng.poisson(lam=hist)
+  hist_error = np.sqrt(hist)
+  
+  return hist, hist_error
+
 def check_bin_count_criterion(values, minimum_count_number, minimum_count_fraction=1.0, verbose=False):
   """Check if the fraction of bins with enough counts are high enough"""
   bins_with_enough_hits = np.where(values > minimum_count_number)

@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .plotting_utils import plot_q_1d, log_plot_2d, create_2d_histogram, extract_range_to_1d#, extract_range_to_1d_vertical
-from .experiment_time import handle_experiment_time
+from .experiment_time import upscale_simple
 from .input_output import unpack_q_histogram_file, unpack_raw_q_list_file
 
 def get_plot_ranges(datasets, y_plot_range, z_plot_range):
@@ -75,9 +75,7 @@ def get_datasets(args):
           bins_vert = args.bins[1] if not args.nxs else len(z_edges)-1
           hist, hist_error, y_edges, z_edges = create_2d_histogram(x, y, weights, y_bins=bins_hor, z_bins=bins_vert, y_range=y_data_range, z_range=z_data_range)
 
-      qz_index = np.digitize(args.q_min, z_edges) - 1
-
-      hist, hist_error = handle_experiment_time(hist, hist_error, qz_index, args.experiment_time, args.find_experiment_time, args.minimum_count_number, args.minimum_count_fraction, args.iterate, args.maximum_iteration_number, args.verbose, args.background)
+      hist, hist_error = upscale_simple(hist, hist_error, args.experiment_time, args.background)
 
       hist_sum = np.sum(hist)
       if args.verbose:
