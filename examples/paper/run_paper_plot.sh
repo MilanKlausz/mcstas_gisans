@@ -12,7 +12,7 @@
 
 ## The output of the scattering simulation. Can be recreated using the
 ## "Long simulation parameters" in the run_d22_sim.sh example script
-NPZ_FILE="data/paper/bornagain_output/d22_20250913_1e13_intensityFactor0p1421_radius51_interferenceRange5_latticeParameter114.npz"
+NPZ_FILE="data/paper/bornagain_output/d22_1e9_intensityFactor0p2088_radius51_interferenceRange5_latticeParameter114.npz"
 
 ## Measured data from https://doi.ill.fr/10.5291/ILL-DATA.8-02-912
 D22_NXS_FILE="data/paper/d22_measurement/073174.nxs" #silica spheres in air measurement

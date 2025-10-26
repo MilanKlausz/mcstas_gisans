@@ -13,12 +13,13 @@
 ###############################################################################
 
 ###################### 1) reduced simulation parameters #######################
-## Can finish locally in ~1 hour (depending on the computer)
-mcrun resources/mcstas_models/ILL_H512_D22.instr -c lambda=6.0 dlambda=0.6 \
-  D22_collimation=17.6 -d examples/paper/output/d22_1e10 -n1e10 --mpi=8
+## Can finish locally in ~1 minute (depending on the computer)
+# mcrun resources/mcstas_models/ILL_D22.instr -c lambda=6.0  \
+#   D22_collimation=17.6 -d examples/paper/output/d22_1e8 -n1e8
+mcrun resources/mcstas_models/ILL_D22.instr -c lambda=6.0  \
+  D22_collimation=17.6 -d data/paper/mcstas_output/d22_1e8 -n1e8
 
 ####################### 2) paper simulation parameters ########################
-## Can finish on a computer cluster using 560 MPI processes in ~10 hours
-## Only demonstrates the used parameters. Lacks workload manager settings
-# mcrun resources/mcstas_models/ILL_H512_D22.instr -c lambda=6.0 dlambda=0.6 \
-#   D22_collimation=17.6 -d output/d22_1e13 -n1e13
+## Can finish locally in ~10 minutes (faster with --mpi option)
+# mcrun resources/mcstas_models/ILL_D22.instr -c lambda=6.0  \
+#   D22_collimation=17.6 -d examples/paper/output/d22_1e9 -n1e9

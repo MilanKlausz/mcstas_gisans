@@ -1,0 +1,875 @@
+/*******************************************************************************
+*         McStas instrument definition URL=http://mcstas.risoe.dk
+*
+* Instrument: ILL_D22
+*
+* %Identification
+* Written by: FARHI Emmanuel (farhi@ill.fr)
+* Date: May, 2011
+* Origin:ILL
+* Release: McStas 2.0
+* Version: $Revision: 1.0 $
+* %INSTRUMENT_SITE: ILL
+*
+* The H512 cold guide at the ILL, with D22
+*
+* %Description
+*
+* This model decribes the D22 SANS.
+*
+* The D22 Large dynamic range small-angle diffractometer
+*   is fully simulated. A sample can be specified (liquid),
+* with monitoring of the scattering in angular (diffraction) and energy modes
+* (for spectroscopy).
+*
+* mcrun --mpi=8 ILL_H512_D22.instr lambda=6 dlambda=0.6 D22_lambda=6   -n 1e7
+*     lambda=6 dlambda=0.6 D22_lambda=6 D22_sample2det=1.2 D22_Det_offset=0.45
+*
+* %Parameters
+*      lambda:  central wavelength band for guide illumination [Angs]
+*     dlambda:  half width of guide wavelength band [Angs]
+*   D22_lambda: D22  velocity selector setting wavelength [Angs]
+* D22_collimation: D22 collimation length and sample-detector distance [m]
+* D22_Det_offset: D22 detector horizontal shift wrt centre [m]
+* D22_sample2det: D22 detector distance from sample [m]
+* D22_window_Si:  indicates if the input Si window is present [0|1]
+* D22_window_Fe:  indicates if the detector F2 tubes are present [0|1]
+*
+* %End
+*******************************************************************************/
+
+/* Flux given at sample positions from <www.ill.fr>
+ILL_H5: D22:  nu=23589.5 [rpm] lambda=4.5 [Angs] sample=H2O_liq.qSq
+  Flux 1.2e8 -- 7.1e7
+ */
+
+DEFINE INSTRUMENT ILL_H512_D22(
+  lambda=6, dlambda=0,
+  D22_lambda=0,   D22_collimation=2, D22_sample2det=0,
+  D22_Det_offset=0.0, int D22_window_Si=1, int D22_window_Fe=1)
+
+DECLARE %{
+
+  /* HCS (H5) source 'Measured' parameters */
+  double sT1=216.8,sI1=1.24e+13,sT2=33.9,sI2=1.02e+13,sT3=16.7 ,sI3=3.0423e+12;
+
+  /* guide coating parameters */
+  double gR0          = 1;
+  double gQc          = 0.0216;
+  double gAlpha       = 4.07;
+  double gW           = 1.0/300.0;
+
+  double Al_Thickness = 0.001;
+  double gGap         = 0.001;
+
+  double  D22_nu      = 0;
+
+  double flag         = 0;
+  double m=1.2;    /* guide coating */
+%}
+
+INITIALIZE %{
+  if (D22_lambda <=0 && lambda > 0)       D22_lambda=lambda;
+  else if (D22_lambda > 0 && lambda <= 0) lambda=D22_lambda;
+  if (dlambda <=0) dlambda = 0.1*lambda;
+  /* compute H512 parameters: D22 Velocity Selector */
+  D22_nu   = 3956*48.3*DEG2RAD/2/PI/D22_lambda/0.25;
+  printf("D22:  nu=%g [rpm] lambda=%g [Angs]\n",
+    D22_nu*60, lambda);
+
+  if (D22_sample2det <=0) D22_sample2det = D22_collimation;
+
+%}
+
+TRACE
+
+/* ================================ H5 common =============================== */
+
+COMPONENT Origin = Progress_bar()
+AT(0,0,0) ABSOLUTE
+
+
+// pour avoir la divergence a +/-0.3 deg = 0.1*m*lambda/2
+COMPONENT Source = Source_gen(
+  xwidth=0.04, yheight=0.055, focus_xw=0.04, focus_yh=0.055,
+  lambda0     = lambda,
+  dlambda     = dlambda,
+  T1       = sT1,
+  I1       = sI1,
+  T2       = sT2,
+  I2       = sI2,
+  T3       = sT3,
+  I3       = sI3,
+  verbose  = 1)
+AT (0,0,0) RELATIVE PREVIOUS
+
+COMPONENT D22_PreV = Monitor_nD(xwidth=0.04, yheight=0.055,
+  options="x y", bins=50, restore_neutron=1)
+AT (0,0,0.055/atan(0.1*m*lambda/2*PI/180)) RELATIVE PREVIOUS
+
+/* D22 Velocity Selector: just like D11 EADS/Astrium NVS 023 in 60 cm gap */
+COMPONENT D22_Vselector = V_selector(xwidth=0.04, yheight=0.055, zdepth=0.30, radius=0.12,
+  alpha=48.3, length=0.25, d=0.0004, nu=D22_nu, nslit=72)
+AT (0,0,0.01+0.3+0.01) RELATIVE PREVIOUS
+
+COMPONENT D22_Collimation = Guide_gravity(w1=0.04, m=1.2,
+  R0=gR0, Qc=gQc, alpha=gAlpha, W=gW, h1=0.055,
+  l=20-D22_collimation, nelements=ceil(D22_collimation/1.5))
+AT (0,0,0.3) RELATIVE D22_Vselector
+
+// divergence     dX=+/-0.3 dY=+/-0.32 deg, tres anisotrope horizontalement
+// image faisceau dX=+/-1   dY=+/-1.4  cm a peu pres gaussien
+
+COMPONENT Collimation_pin_hole = Diaphragm(radius=0.005) //The collimation pin-hole was 10 mm in diameter
+AT (0,0,20+0.3-17.6) RELATIVE D22_Vselector //and 17.6m away from the sample
+
+COMPONENT sampleaperture = Slit(xwidth=0.014, yheight=0.0003) //14x0.3 mm^2
+AT (0,0,20+0.3-0.1) RELATIVE D22_Vselector //very close to the sample (maybe 10 cm)
+
+// SAMPLE ======================================================================
+
+COMPONENT D22_Sample_Pos = Arm()
+AT (0,0,20+0.3) RELATIVE D22_Vselector
+
+COMPONENT mcpl_out = MCPL_output_noacc(filename="test_events")
+ AT (0, 0, 0) RELATIVE D22_Sample_Pos
+ ROTATED (0,0,0) RELATIVE D22_Sample_Pos
+
+COMPONENT H51_D22_Sample_Div = Monitor_nD(xwidth=0.04, yheight=0.055,
+  options="dx limits=[-2 2], dy limits=[-2 2]", bins=100, restore_neutron=1)
+AT (0,0,0) RELATIVE D22_Sample_Pos
+
+COMPONENT H51_D22_Sample_XY = Monitor_nD(xwidth=0.04, yheight=0.055,
+  options="x y", bins=50, restore_neutron=1)
+AT (0,0,0) RELATIVE D22_Sample_Pos
+
+COMPONENT H51_D22_Sample_L = Monitor_nD(xwidth=0.04, yheight=0.055,
+  options="lambda limits=[1 10]", bins=50, restore_neutron=1)
+AT (0,0,0) RELATIVE D22_Sample_Pos
+
+
+// COMPONENT H51_D22_Sample_slit = Slit(xwidth=0.01, yheight=0.01)
+// AT (0,0,0) RELATIVE D22_Sample_Pos
+
+/*
+SPLIT 100 COMPONENT H51_D22_Sample = Sans_spheres(R = 50, Phi = 1e-2,
+  Delta_rho = 6.0, sigma_abs = 0.5, xwidth=0.01, yheight=0.01, zdepth=0.005,
+  focus_xw=1.0, focus_yh=1.0, target_index=+1)
+AT (0,0,0.01) RELATIVE D22_Sample_Pos
+*/
+
+// SPLIT 10000 COMPONENT H51_D22_Sample = Incoherent(
+//   xwidth=0.01, yheight=0.01, zdepth=0.005, order=1, sigma_abs=0,
+//   focus_xw=1.0+2*D22_Det_offset, focus_yh=1.0, target_index=+1)
+// AT (0,0,0.01) RELATIVE D22_Sample_Pos
+
+/*
+COMPONENT Si_window = PowderN(reflections="Si.laz",
+  xwidth=0.5, yheight=0.5, zdepth=0.015, p_transmit=0.85, d_phi=50, Vc=(D22_window_Si ? 0 : -1))
+AT (0,0,0.06) RELATIVE D22_Sample_Pos
+*/
+
+COMPONENT STOP = Beamstop(
+    radius = 0.04)
+  AT (0, 0, D22_sample2det-0.05) RELATIVE D22_Sample_Pos
+
+
+
+
+
+// // Ideal detectors =============================================================
+
+// COMPONENT D22_Detector = Monitor_nD(xwidth=1+2*D22_Det_offset, yheight=1, options="x y", bins=256)
+// AT (0,0,D22_sample2det) RELATIVE D22_Sample_Pos
+
+// COMPONENT D22_Detector_shifted = Monitor_nD(xwidth=128.0*8e-3, yheight=1, options="x bins=128, y bins=256")
+// AT (D22_Det_offset,0,0.01) RELATIVE PREVIOUS
+
+// COMPONENT PSDrad = PSD_monitor_rad(
+//     filename = "psd2.dat", filename_av = "psd2_av.dat", rmax = 0.5+D22_Det_offset)
+//   AT (0,0,0.01) RELATIVE D22_Detector
+
+// COMPONENT D22_Detector_3He_centre = Arm()
+//     AT (0, 0, 0.01) RELATIVE PREVIOUS
+
+
+
+// // Gas tubes * 128 =============================================================
+// // tubes: 7.938 mm with a wall thickness of 0.406 mm
+
+// COMPONENT D22_Detector_3He_tube = PowderN(reflections="Fe.laz", concentric=1,
+//   thickness=0.406e-3, radius=7.938e-3/2, yheight=1.0, Vc=(D22_window_Fe ? 0 : -1), p_transmit=0.85)
+//   AT (-0.512+D22_Det_offset, 0, 0) RELATIVE D22_Detector_3He_centre
+
+// COMPONENT D22_Detector_3He = PSD_Detector(radius=7.938e-3/2-0.406e-3, yheight=1.0, nx=1, ny=256,
+//                       threshold=100, borderx=0, bordery=0,
+//                       PressureConv=14, PressureStop=1,
+//                       FN_Conv="Gas_tables/He3inHe.table", FN_Stop="Gas_tables/He3inHe.table",
+//                       yChDivRelSigma=0.004)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 11 starts
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 21 starts
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 31
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 41
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 51
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 61
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 71
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 81
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 91
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 101
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 111
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// // index 121 starts
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT COPY(D22_Detector_3He_tube) = COPY(D22_Detector_3He_tube)
+//   AT (8e-3, 0,0) RELATIVE PREVIOUS
+// COMPONENT COPY(D22_Detector_3He)      = COPY(D22_Detector_3He)
+//   AT (0,0,0) RELATIVE PREVIOUS
+
+// COMPONENT TubeD22 = Shape(radius=1.25, yheight=20)
+//   AT (0,0,0.06+10.0) RELATIVE D22_Sample_Pos
+//   ROTATED (90,0,0)   RELATIVE D22_Sample_Pos
+/* ========================= end of simulation ============================== */
+
+END

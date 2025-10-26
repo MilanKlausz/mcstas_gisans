@@ -15,21 +15,22 @@
 ###############################################################################
 
 ####################### 1) Quick simulation parameters ########################
-## Lower statistics McStas simulation output (~3 min, depends on the computer)
-MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_20250913_2e11"
-INTENSITY_FACTOR=0.1435 # based on direct beam simulation vs measurement
+## Use lower statistics McStas simulation output
+# Finishes in ~5 minutes with 14 processes (depending on the computer)
+MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e8"
+INTENSITY_FACTOR=0.2010 # based on direct beam simulation vs measurement
 
 ######################## 2) Long simulation parameters ########################
-## McStas output and parameters used to create results presented in the paper.
-## NOTE: ~25 minutes on a computing cluster using 32 parallel processes 
-# MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_20250913_1e13"
-# INTENSITY_FACTOR=0.1421 # based on direct beam simulation vs measurement
+## Use McStas output used to create results presented in the paper.
+## Finishes in ~50 minutes with 14 processes (depending on the computer)
+# MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e9"
+# INTENSITY_FACTOR=0.2088 # based on direct beam simulation vs measurement
 
 #################### 3) User McStas simulation parameters #####################
 ## McStas output created using the run_d22_mcstas.sh script. Calculate the
 ## intensity factor following the instructions in that script.
-# MCSTAS_DIR_NAME="examples/paper/output/d22_1e10" #set McStas output directory
-# INTENSITY_FACTOR= #set intensity factor (should be around ~0.14)
+# MCSTAS_DIR_NAME="examples/paper/output/d22_1e8" #set McStas output directory
+# INTENSITY_FACTOR= #set intensity factor (should be around ~0.2)
 
 ###############################################################################
 ######################### COMMON MCSTAS SIM SETTINGS ##########################
