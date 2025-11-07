@@ -1,7 +1,7 @@
 
 """
 This module defines the Detector class, which facilitates the determination of
-of detection coordinates.
+detection coordinates.
 """
 
 import numpy as np

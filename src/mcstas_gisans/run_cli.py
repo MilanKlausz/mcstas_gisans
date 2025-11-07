@@ -33,7 +33,7 @@ def create_argparser():
   outputGroup.add_argument('--x_range', nargs=2, type=float, help='Qx range of the histogram. (In BornAgain geometry). Default calculated from detector parameters.')
   outputGroup.add_argument('--y_range', nargs=2, type=float, help='Qy range of the histogram. (In BornAgain geometry). Default calculated from detector parameters.')
   outputGroup.add_argument('--z_range', nargs=2, type=float, help='Qz range of the histogram. (In BornAgain geometry). Default wide enough to include everything.')
-  outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qx-Qz plot from the histogram result.')
+  outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qy-Qz plot from the histogram result.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument( '--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
@@ -41,7 +41,7 @@ def create_argparser():
   sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
   sampleGroup.add_argument('--sample_size_y', default=0.06, type=float, help = 'Size of sample perpendicular to beam (along y-axis in BornAgain geometry). [m]')
   sampleGroup.add_argument('--sample_size_x', default=0.08, type=float, help = 'Size of sample along the beam (along x-axis in BornAgain geometry). [m]')
-  sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and being directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
+  sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and be directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
 
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instrument_defaults.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
