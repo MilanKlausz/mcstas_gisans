@@ -1,7 +1,7 @@
 
 [project]
 name = "mcstas_gisans"
-version = "1.1.0"
+version = "2.0.0"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
