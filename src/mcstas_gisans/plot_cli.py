@@ -34,6 +34,7 @@ def create_argparser():
   plotParamGroup.add_argument('--q_max', default=0.10, type=float, help = 'Maximum of the vertical component of the Q range of interest.')
   plotParamGroup.add_argument('--y_plot_range', nargs=2, type=float, help = 'Plot y range.')
   plotParamGroup.add_argument('--z_plot_range', nargs=2, type=float, help = 'Plot z range.')
+  plotParamGroup.add_argument('--plot_differences', default=0, type=int, help = 'Plot some measure of difference: 0 - none, 1 - relative absolute difference, 2 - relative difference, 3 - normalised residuals')
 
   # findTimeParamGroup = parser.add_argument_group('Find experiment time', 'Parameters and options for finding the experiment time to scale up to.')
   # findTimeParamGroup.add_argument('--find_experiment_time', action='store_true', help = 'Find the minimum experiment time the results need to be upscaled to in order to get a certain minimum number of counts in the bins.')

@@ -23,4 +23,5 @@ mg_plot --filename $NPZ_FILE --label "D22 simulation" \
   --intensity_min 1 --overlay \
   --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 \
   --q_min 0.072 --q_max 0.102 \
+  --plot_differences 1
   # --savename "d22_sim_vs_measurement" --png

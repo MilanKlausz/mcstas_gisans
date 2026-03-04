@@ -106,7 +106,9 @@ def main():
   else:
     match_horisontal_axes = False
     if args.overlay:
-      axes_top, axes_bottom = get_overlay_plot_axes(len(datasets))
+      print("debug: plot_differences ", args.plot_differences)
+      top_row_plot_number = len(datasets) + (1 if args.plot_differences>0 else 0)
+      axes_top, axes_bottom = get_overlay_plot_axes(top_row_plot_number)
     else:
       ax1, ax2 = None, None
     if args.pdf:
@@ -125,6 +127,8 @@ def main():
   if args.overlay:
     y_plot_range, z_plot_range, _ , max_value = get_plot_ranges(datasets, args.y_plot_range, args.z_plot_range)
     line_colors = ['blue', 'green', 'orange', 'purple', 'cyan', 'brown']
+    all_1d_values = []
+    all_1d_errors = []
     for dataset_index, dataset in enumerate(datasets):
       plot_2d_axes = axes_top[dataset_index]
       line_color = line_colors[dataset_index]
@@ -136,11 +140,88 @@ def main():
       qz_min_index = np.digitize(args.q_min, z_edges) - 1
       qz_max_index = np.digitize(args.q_max, z_edges)
       values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index, qz_max_index])
+      all_1d_values.append(values)
+      all_1d_errors.append(errors)
       title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
       horisontal_axis_label = 'Qy [1/nm]'
       plot_q_1d(values, errors, y_bins, horisontal_axis_label, color=line_color, title_text=title_text, label=label, ax=axes_bottom, limits=y_plot_range, savename=args.savename, output='none')
       plot_2d_axes.axhline(z_edges[qz_min_index], color='magenta', linestyle='--', label='q_z = 0') #TODO the label seems to be unfinished but unused
       plot_2d_axes.axhline(z_edges[qz_max_index], color='magenta', linestyle='--', label='q_z = 0') #TODO the label seems to be unfinished but unused
+
+      ## TODO EXPEIMENTAL
+      if args.plot_differences > 0 and dataset_index == 1:
+        meas = all_1d_values[0]
+        meas_err = all_1d_errors[0]
+        sim = all_1d_values[1]
+        sim_err = all_1d_errors[1]
+        res_err = np.sqrt(meas_err**2 + sim_err**2)
+
+        ax_int = axes_bottom                 # existing intensity axis
+        ax_rel = ax_int.twinx()              # new right-hand axis
+
+        if args.plot_differences == 1:
+          rel_abs_diff = np.abs(sim - meas) / meas
+          ax_rel.plot(
+            y_bins, rel_abs_diff,
+            color='gray',
+            linestyle='dashdot',
+            linewidth=1.5,
+            label='Relative absolute difference'
+          )
+          ax_rel.set_ylabel("Relative absolute difference")
+          ax_rel.set_ylim(0, 1.6)
+        if args.plot_differences == 2:
+          rel_diff = (sim - meas) / meas
+          ax_rel.plot(
+            y_bins, rel_diff,
+            color='gray',
+            linestyle='dashdot',
+            linewidth=1.5,
+            label='Relative difference'
+          )
+          ax_rel.set_ylabel("Relative difference")
+          ax_rel.set_ylim(-1.6, 1.6)
+        if args.plot_differences == 3:
+          nrom_residuals = (sim - meas) / res_err
+          ax_rel.plot(
+            y_bins, nrom_residuals,
+            color='gray',
+            linestyle='dashdot',
+            linewidth=1.5,
+            label='Normalized residuals'
+          )
+          ax_rel.set_ylabel("Normalized residuals")
+          ax_rel.set_ylim(-20, 20)
+        ax_rel.legend(loc=0)
+
+        # creating 2D relative difference plot
+        plot_2d_axes = axes_top[2]
+        line_color = line_colors[2]
+        hist_0, hist_error_0, _, _, _ = datasets[0]
+        if args.plot_differences == 1:
+          diff2d = abs(hist_0-hist)/hist_0
+          title_text = 'Relative absolute difference'
+        if args.plot_differences == 2:
+          diff2d = hist_0-hist/hist_0
+          title_text = 'Absolute difference'
+        if args.plot_differences == 3:
+          res_err_2d = np.sqrt(hist_error**2 + hist_error_0**2)
+          diff2d = abs(hist_0-hist)/res_err_2d
+          title_text = 'Normalized residuals'
+          
+        cmap = plt.get_cmap('jet')
+        cmap.set_bad('k') # Handle empty bins giving error with LogNorm
+        ax=plot_2d_axes
+        quadmesh = ax.pcolormesh(y_edges, z_edges, diff2d.T, cmap=cmap)
+        fig = ax.figure
+        fig.colorbar(quadmesh, ax=ax, orientation='vertical')
+
+        ax.set_xlim(y_plot_range)
+        ax.set_ylim(z_plot_range)
+        ax.set_xlabel('Qy [1/nm]')
+        ax.set_ylabel('Qz [1/nm]')
+        ax.set_title(title_text)
+
       ### TODO in dev temp OFF ###
       # ### TODO in dev ###
       # qy_min_index = np.digitize(args.q_min, y_edges) - 1
@@ -168,7 +249,7 @@ def main():
 
     axes_bottom.set_ylim(bottom=intensity_min)
     axes_bottom.grid()
-    axes_bottom.legend()
+    axes_bottom.legend(loc='upper left')
     plt.tight_layout()
     if not args.pdf and not args.png:
       plt.show()
@@ -179,6 +260,20 @@ def main():
         filename = f"{args.savename}.png"
       plt.savefig(filename, dpi=300)
       print(f"Created {filename}")
+
+#   ##EXPERIMENTAL CHI2
+#   meas = all_1d_values[0]
+#   sim  = all_1d_values[1]
+#   sigma = all_1d_errors[1]
+#   # Mask invalid points
+#   mask = (sigma > 0) & np.isfinite(meas) & np.isfinite(sim)
+
+#   chi2 = np.sum(((sim[mask] - meas[mask]) / sigma[mask])**2)
+#   ndof = np.sum(mask) - 1
+#   chi2_red = chi2 / ndof
+
+#   print(f"Reduced chi-squared (1D): {chi2_red:.2f}")
+#   ##EXPERIMENTAL CHI2
 
   if not args.overlay:
     for hist, hist_error, y_edges, z_edges, label in datasets:
