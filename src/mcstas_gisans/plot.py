@@ -75,7 +75,9 @@ def get_datasets(args):
           bins_vert = args.bins[1] if not args.nxs else len(z_edges)-1
           hist, hist_error, y_edges, z_edges = create_2d_histogram(x, y, weights, y_bins=bins_hor, z_bins=bins_vert, y_range=y_data_range, z_range=z_data_range)
 
-      hist, hist_error = upscale_simple(hist, hist_error, args.experiment_time, args.background)
+
+      if args.experiment_time:
+        hist, hist_error = upscale_simple(hist, hist_error, args.experiment_time, args.background)
 
       hist_sum = np.sum(hist)
       if args.verbose:
@@ -120,7 +122,7 @@ def main():
   if args.intensity_min is not None:
     intensity_min = float(args.intensity_min)
   else:
-    is_upscaled = args.experiment_time or args.find_experiment_time
+    is_upscaled = args.experiment_time #or args.find_experiment_time
     intensity_min = 1e-9 if not is_upscaled else 1
 
   if args.overlay:
