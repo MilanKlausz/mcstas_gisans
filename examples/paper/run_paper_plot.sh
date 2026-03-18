@@ -18,10 +18,17 @@ NPZ_FILE="data/paper/bornagain_output/d22_1e9_intensityFactor0p2088_radius51_int
 D22_NXS_FILE="data/paper/d22_measurement/073174.nxs" #silica spheres in air measurement
 
 ## Execute plotting (uncomment last line for png output)
-mg_plot --filename $NPZ_FILE --label "D22 simulation" \
-  --nxs $D22_NXS_FILE --experiment_time 10800 --background 1.6 \
-  --intensity_min 1 --overlay \
-  --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 \
-  --q_min 0.072 --q_max 0.102 \
+mg_plot \
+  --filename $NPZ_FILE \
+  --label "D22 simulation" \
+  --nxs $D22_NXS_FILE \
+  --experiment_time 10800 \
+  --background 1.6 \
+  --intensity_min 1 \
+  --overlay \
+  --z_plot_range -0.1 0.3 \
+  --y_plot_range -0.3 0.3 \
+  --q_min 0.072 \
+  --q_max 0.102 \
   --plot_differences 1
   # --savename "d22_sim_vs_measurement" --png
