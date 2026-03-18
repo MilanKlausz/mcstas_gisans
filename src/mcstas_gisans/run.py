@@ -103,7 +103,23 @@ def process_particles(particles, params, queue=None):
       res = sim.simulate()
 
       # get probability (intensity) for all outgoing directions
-      pout = res.array()
+      if hasattr(res, 'array'):
+        # BornAgainon 21.2
+        pout = res.array()
+      elif hasattr(res, 'flatVector'):
+        # BornAgain 23.0
+        nx = res.xAxis().size()
+        ny = res.yAxis().size()
+        #note: not sure about x,y, but it doesn't matter as long as nx=ny
+        pout = np.array(res.flatVector()).reshape(nx, ny)
+        pout = np.flipud(pout)
+      else:
+        print("ERROR: Could not extract data from the simulation result.")
+        print(f"Object type: {type(res)}")
+        print(f"Available attributes: {dir(res)}")
+        import sys
+        sys.exit("Terminating script due to incompatible BornAgain version.")
+
       # calculate the components of the velocity vector for all outgoing directions
       alpha_f = angle_range[1] * (np.linspace(1., -1., outgoing_direction_number) + rand_y / (outgoing_direction_number - 1))
       phi_f = phi_i + angle_range[0] * (np.linspace(-1., 1., outgoing_direction_number) + rand_z / (outgoing_direction_number - 1))
