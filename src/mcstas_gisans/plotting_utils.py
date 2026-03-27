@@ -15,7 +15,7 @@ def show_or_save(output, filename_base):
     plt.savefig(filename, dpi=300)
     print(f"Created {filename}")
 
-def log_plot_2d(hist, y_edges, z_edges, titleText=None, ax=None, intensity_min=1e-9, intensity_max=None, y_range=[-0.55, 0.55], z_range=[-0.5, 0.6], savename='plotQ', match_horisontal_axes=False, output='show'):
+def log_plot_2d(hist, y_edges, z_edges, titleText=None, ax=None, intensity_min=1e-9, intensity_max=None, y_range=[-0.55, 0.55], z_range=[-0.5, 0.6], savename='plotQ', match_horisontal_axes=False, output='show', add_colorbar=True):
   if ax is None:
     _, ax = plt.subplots()
 
@@ -33,15 +33,17 @@ def log_plot_2d(hist, y_edges, z_edges, titleText=None, ax=None, intensity_min=1
 
   # plt.gca().invert_xaxis() #optionally invert x-axis?
 
-  if not match_horisontal_axes:
-    cbar = fig.colorbar(quadmesh, ax=ax, orientation='vertical')
-  else:
-    cax = fig.add_axes([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.02, ax.get_position().height])
-    cbar = fig.colorbar(quadmesh, cax=cax)
+  if add_colorbar:
+    if not match_horisontal_axes:
+      cbar = fig.colorbar(quadmesh, ax=ax, orientation='vertical')
+    else:
+      cax = fig.add_axes([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.02, ax.get_position().height])
+      cbar = fig.colorbar(quadmesh, cax=cax)
 
   # cbar.set_label('Intensity') # Optionally set the colorbar label
 
   show_or_save(output, savename+'_2D')
+  return quadmesh
 
 def plot_q_1d(values, errors, bin_edges, horisontal_axis_label, color='blue', title_text=None, label='', ax=None, limits=[-0.55, 0.55], savename='plotQ', output='show'):
   import matplotlib.pyplot as plt

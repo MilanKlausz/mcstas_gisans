@@ -99,6 +99,9 @@ def main():
   parser = create_argparser()
   args = parse_args(parser)
 
+  # set global font size for axis labels, titles, and tick marks
+  plt.rcParams.update({'font.size': args.font_size})
+
   datasets = get_datasets(args)
 
   if args.dual_plot:
@@ -110,6 +113,15 @@ def main():
     if args.overlay:
       top_row_plot_number = len(datasets) + (1 if args.plot_differences>0 else 0)
       axes_top, axes_bottom = get_overlay_plot_axes(top_row_plot_number)
+    elif args.multi2d:
+        # Create subplot layout based on the number of inputs
+        n_plots = len(datasets)
+        cols = int(np.ceil(np.sqrt(n_plots)))
+        rows = int(np.ceil(n_plots / cols))
+        fig, axes = plt.subplots(rows, cols, figsize=(8 * cols, 6 * rows), squeeze=False)
+        axes_multi2d = axes.flatten()
+        for i in range(n_plots, rows * cols):
+            fig.delaxes(axes_multi2d[i])
     else:
       ax1, ax2 = None, None
     if args.pdf:
@@ -277,17 +289,42 @@ def main():
 #   ##EXPERIMENTAL CHI2
 
   if not args.overlay:
-    for hist, hist_error, y_edges, z_edges, label in datasets:
-      y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges[0], y_edges[-1]]
-      z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges[0], z_edges[-1]]
-      log_plot_2d(hist, y_edges, z_edges, '', ax=ax1, intensity_min=intensity_min, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, match_horisontal_axes=match_horisontal_axes, output=plot_output)
+    if args.multi2d:
+      y_plot_range, z_plot_range, _ , max_value = get_plot_ranges(datasets, args.y_plot_range, args.z_plot_range)
+      mappable = None
+      for dataset_index, dataset in enumerate(datasets):
+        plot_2d_axes = axes_multi2d[dataset_index]
+        hist, hist_error, y_edges, z_edges, label = dataset
+        common_maximum = max_value if args.individual_colorbars is False else None
+        mappable = log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none', add_colorbar=args.individual_colorbars)
 
-      qz_min_index_exp = np.digitize(args.q_min, z_edges) - 1
-      qz_max_index_exp = np.digitize(args.q_max, z_edges)
-      values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index_exp, qz_max_index_exp])
-      title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
-      horisontal_axis_label = 'Qy [1/nm]'
-      plot_q_1d(values, errors, y_bins, horisontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=args.savename, output=plot_output)
+      plt.tight_layout()
+      if not args.individual_colorbars and mappable is not None:
+        fig.colorbar(mappable, ax=axes_multi2d[:len(datasets)], orientation='vertical', label='Intensity', fraction=0.075, pad=0.03)
+
+        # plot_2d_axes.set_ylim(bottom=intensity_min)
+        # plot_2d_axes.legend(loc='upper left')
+      if not args.pdf and not args.png:
+        plt.show()
+      else:
+        if(args.pdf):
+          filename = f"{args.savename}.pdf"
+        elif(args.png):
+          filename = f"{args.savename}.png"
+        plt.savefig(filename, dpi=300)
+        print(f"Created {filename}")
+    else:
+      for hist, hist_error, y_edges, z_edges, label in datasets:
+        y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges[0], y_edges[-1]]
+        z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges[0], z_edges[-1]]
+        log_plot_2d(hist, y_edges, z_edges, '', ax=ax1, intensity_min=intensity_min, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, match_horisontal_axes=match_horisontal_axes, output=plot_output)
+
+        qz_min_index_exp = np.digitize(args.q_min, z_edges) - 1
+        qz_max_index_exp = np.digitize(args.q_max, z_edges)
+        values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index_exp, qz_max_index_exp])
+        title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
+        horisontal_axis_label = 'Qy [1/nm]'
+        plot_q_1d(values, errors, y_bins, horisontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=args.savename, output=plot_output)
 
   if args.dual_plot:
     if not args.pdf and not args.png:

@@ -27,7 +27,9 @@ def create_argparser():
   parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
 
   plotParamGroup = parser.add_argument_group('Control plotting', 'Parameters and options for plotting.')
+  plotParamGroup.add_argument('--font_size', type=int, default=14, help = 'Global font size for plot elements.')
   plotParamGroup.add_argument('-d', '--dual_plot', default=False, action='store_true', help = 'Create a dual plot in a single figure.')
+  plotParamGroup.add_argument('--multi2d', default=False, action='store_true', help = 'Create a figue with multiple subplots for 2D Q plots.')
   plotParamGroup.add_argument('-m', '--intensity_min', default=None, help = 'Intensity minimum for the 2D q plot colorbar.')
   plotParamGroup.add_argument('--individual_colorbars', default=False, action='store_true', help = 'Allow different individual colorbars for multiple 2D q plots.')
   plotParamGroup.add_argument('-q', '--q_min', default=0.09, type=float, help = 'Vertical component of the Q values of interest. Used as the minimum of the range if q_max is provided as well.')
