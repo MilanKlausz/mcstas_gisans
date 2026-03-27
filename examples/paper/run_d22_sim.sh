@@ -70,18 +70,35 @@ D22_NXS_FILE="data/paper/d22_measurement/073174.nxs"
 ################################## EXECUTION ##################################
 ###############################################################################
 ## run simulation
-mg_run $MCPL_FILE_PATH --instrument $INSTRUMENT --intensity_factor $INTENSITY_FACTOR --wavelength_selected $WAVELENGTH \
-  --model $SAMPLE_MODEL --sample_arguments "$SAMPLE_ARGS" --sample_size_y $SAMPLE_SIZE_Y --sample_size_x $SAMPLE_SIZE_X \
-  --alpha $INCIDENT_ANGLE --outgoing_direction_number $OUTGOING_DIRECTION_NUMBER --allow_sample_miss \
-  --include_specular --use_avg_materials \
+mg_run \
+  $MCPL_FILE_PATH \
+  --instrument $INSTRUMENT \
+  --intensity_factor $INTENSITY_FACTOR \
+  --wavelength_selected $WAVELENGTH \
+  --model $SAMPLE_MODEL \
+  --sample_arguments "$SAMPLE_ARGS" \
+  --sample_size_y $SAMPLE_SIZE_Y \
+  --sample_size_x $SAMPLE_SIZE_X \
+  --alpha $INCIDENT_ANGLE \
+  --outgoing_direction_number $OUTGOING_DIRECTION_NUMBER \
+  --allow_sample_miss \
+  --include_specular \
+  --use_avg_materials \
   --savename $OUTPUT_FILE_PATH
 
 ## run plotting using the output of the simulation (OUTPUT_FILE_PATH)
 ## uncomment last line to create png output
-mg_plot --filename "${OUTPUT_FILE_PATH}.npz" --label "D22 simulation" \
-  --nxs $D22_NXS_FILE --experiment_time 10800 --background 1.6 \
-  --intensity_min 1 --overlay \
-  --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 \
-  --q_min 0.072 --q_max 0.102 \
+mg_plot \
+  --filename "${OUTPUT_FILE_PATH}.npz" \
+  --label "D22 simulation" \
+  --nxs $D22_NXS_FILE \
+  --experiment_time 10800 \
+  --background 1.6 \
+  --intensity_min 1 \
+  --overlay \
+  --z_plot_range -0.1 0.3 \
+  --y_plot_range -0.3 0.3 \
+  --q_min 0.072 \
+  --q_max 0.102 \
   --plot_differences 1
   # --savename "d22_sim_vs_measurement" --png

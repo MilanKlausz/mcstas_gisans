@@ -14,10 +14,8 @@
 
 ###################### 1) reduced simulation parameters #######################
 ## Can finish locally in ~1 minute (depending on the computer)
-# mcrun resources/mcstas_models/ILL_D22.instr -c lambda=6.0  \
-#   D22_collimation=17.6 -d examples/paper/output/d22_1e8 -n1e8
 mcrun resources/mcstas_models/ILL_D22.instr -c lambda=6.0  \
-  D22_collimation=17.6 -d data/paper/mcstas_output/d22_1e8 -n1e8
+  D22_collimation=17.6 -d examples/paper/output/d22_1e8 -n1e8
 
 ####################### 2) paper simulation parameters ########################
 ## Can finish locally in ~10 minutes (faster with --mpi option)
