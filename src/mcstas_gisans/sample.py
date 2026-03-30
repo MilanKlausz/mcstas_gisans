@@ -54,9 +54,15 @@ class Sample:
       except ValueError:
         return value
 
-  def sample_missed(self, x, z):
-    """Decide if position is within the area of the sample surface"""
-    return (abs(x) > 0.5 * self.size_y) or (abs(z) > 0.5 * self.size_x)
+  def sample_missed(self, x, y, z, vy):
+    """Decide if position is outside the area of the sample surface or the
+    particle is not approaching the sample surface (i.e., vy >= 0)."""
+    return (
+        (abs(x) > 0.5 * self.size_y) or  # Outside horizontal bounds
+        (abs(z) > 0.5 * self.size_x) or  # Outside longitudinal bounds
+        (y < -1e-12) or                  # Already below the sample surface
+        (vy >= 0)                        # Moving away from or parallel to surface
+    )
 
   def _resolve_sample_source(self):
       """

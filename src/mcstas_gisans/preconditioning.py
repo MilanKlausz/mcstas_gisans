@@ -38,27 +38,49 @@ def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation):
 
 def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_sample_miss):
   """Propagate particles to y=0, the sample surface.
-  Discard those which would miss the sample.
+  Discard those which would miss the sample unless allow_sample_miss is True.
+  Particles not moving toward the sample surface are not propagated here.
   """
   p, x, y, z, vx, vy, vz, w, t = particles.T
-  t_propagate = -y/vy # y+vy*t_propagate=0 (where y is the initial position)
+  y_original = y
+
+  # Initialize t_propagate with zeros.
+  # This handles cases where vy is zero (particle moves parallel to y=0 or is already on it)
+  t_propagate = np.zeros_like(y, dtype=float)
+
+  # Create a mask for particles where vy is not zero to avoid division by zero.
+  non_zero_vy_mask = (vy != 0)
+
+  # Calculate t_propagate for particles with non-zero vy.
+  # Then, ensure t_propagate is non-negative to avoid back propagation.
+  calculated_t_propagate = -y[non_zero_vy_mask] / vy[non_zero_vy_mask]
+  t_propagate[non_zero_vy_mask] = np.maximum(0, calculated_t_propagate)
+
   x += vx * t_propagate
   y += vy * t_propagate
   z += vz * t_propagate
   t += t_propagate
 
   # Create a boolean mask for the particles to select those which hit the sample
-  hit_sample_mask = (abs(x) < sample_size_y*0.5) & (abs(z) < sample_size_x*0.5)
+  hit_sample_mask = (
+      (abs(x) < sample_size_y * 0.5) &  # Within horizontal bounds
+      (abs(z) < sample_size_x * 0.5) &  # Within longitudinal bounds
+      (y_original > -1e-12) &           # Not already below the surface
+      (vy < 0)                          # Moving toward the surface
+  )
   events_on_sample_surface = np.vstack([p, x, y, z, vx, vy, vz, w, t]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, w, t]).T[hit_sample_mask]
 
   event_number = len(particles)
   sample_hit_event_number = np.sum(hit_sample_mask)
   if sample_hit_event_number != event_number:
+    if np.any(y_original < -1e-12):
+      print(f"    WARNING: {np.sum(y_original < 0)} out of {event_number} incident particles are already below the sample surface (y < 0) in the input file.")
     sum_weight_in = sum(p)
     sum_weight_sample_hit = sum(p[hit_sample_mask])
     print(f"    WARNING: {event_number - sample_hit_event_number} out of {event_number} incident particles missed the sample!({sum_weight_in-sum_weight_sample_hit} out of {sum_weight_in} in terms of sum particle weight)")
+    
     if not allow_sample_miss:
-      print(f"    WARNING: Incident particles missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.") #TODO mention the option to allow them with the input parameter
+      print(f"    WARNING: Incident particles missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.")
   return events_on_sample_surface
 
 def apply_t0_correction(particles, args):

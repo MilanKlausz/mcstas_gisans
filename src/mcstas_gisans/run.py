@@ -108,7 +108,7 @@ def process_particles(particles, params, queue=None):
     phi_i = np.rad2deg(np.arctan(vx/vz)) #[deg], not used in sim, added to phi_f
     v = np.sqrt(vx**2+vy**2+vz**2)
 
-    if sample.sample_missed(x,z):
+    if sample.sample_missed(x, y, z, vy):
       # Particles missed the sample so the q value is calculated after propagation
       # to the detector surface without scattering simulation
       q_array = calculate_q(x, y, z, t, [vx], [vy], [vz])
