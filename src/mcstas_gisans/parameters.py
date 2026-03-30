@@ -9,7 +9,7 @@ def pack_parameters(args, particle_type):
   detector_params = instr_params.get('detector', default_detector) #add default detector if needed
   #TODO input arguments should be in place to override the detector and instrument parameters
   instr_params['detector'] = detector_params
-  no_gravity = args.no_gravity if particle_type is not 'photon' else True
+  no_gravity = args.no_gravity if particle_type != 'photon' else True
   instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.sample_orientation, args.wfm, no_gravity)
 
   wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
@@ -39,5 +39,5 @@ def pack_parameters(args, particle_type):
     'sample': sample,
     'instrument': instrument,
     'use_avg_materials': args.use_avg_materials,
-    'include_specular': args.include_specular,
+    'specular': args.specular,
   }

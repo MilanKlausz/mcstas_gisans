@@ -12,7 +12,7 @@ def create_argparser():
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
   parser.add_argument('--intensity_factor', default=1.0, type=float, help = 'A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
-  parser.add_argument('-i','--instrument', required=True, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
+  parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
   parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
@@ -23,9 +23,10 @@ def create_argparser():
   bornagainGroup.add_argument('-n','--outgoing_direction_number', default=20, type=int, help = 'Number of outgoing directions (in both x and y) within the sampled angle range of the BornAgain simulation.')
   bornagainGroup.add_argument('--angle_range', nargs=2, type=float, help = 'Horizontal and vertical scattering angles covered by the simulation. [deg]')
   bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help = 'BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
-  bornagainGroup.add_argument('--include_specular', default=False, action='store_true', help = 'BornAgain - include specular reflection option: "to include the specular reflected beam intensity along with the scattered intensity in a GISAS simulation".')
-
-
+  bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation' ], type=str.lower, help="Control specular reflection in the simulation. "
+               "NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). "
+               "INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)). "
+               "SPECULAR_SIMULATION: Uses a separate SpecularSimulation for the specular reflection.")
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create a raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')

@@ -37,6 +37,11 @@ def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, ra
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
+def get_simulation_specular(sample, wavelength, alpha_i):
+    scan = ba.AlphaScan(2, alpha_i*deg, alpha_i*deg+1e-6)
+    scan.setWavelength(wavelength*angstrom)
+    return ba.SpecularSimulation(scan, sample)
+
 def get_result_intensities(res):
     # get probability (intensity) for all outgoing directions
     if hasattr(res, 'array'):
@@ -81,7 +86,7 @@ def process_particles(particles, params, queue=None):
   hist_ranges = params['hist_ranges']
   bins = params['bins']
   use_avg_materials = params['use_avg_materials']
-  include_specular = params['include_specular']
+  specular = params['specular']
 
   if raw_output:
     q_events = [] #p, Qx, Qy, Qz, t
@@ -117,7 +122,7 @@ def process_particles(particles, params, queue=None):
       rand_z = 2*np.random.random()-1
       sim = get_simulation(sample_model, outgoing_direction_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z)
       sim.options().setUseAvgMaterials(use_avg_materials)
-      sim.options().setIncludeSpecular(include_specular)
+      sim.options().setIncludeSpecular(specular == 'include_specular')
       # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
       res = sim.simulate()
       pout = get_result_intensities(res)
@@ -132,6 +137,28 @@ def process_particles(particles, params, queue=None):
 
       q_array = calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
+
+    if specular == 'specular_simulation':
+      q_specular_sim = []
+      weight_specular_sim = []
+      
+      # Calculated reflected and transmitted (1-reflected) beams
+      ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
+      res = ssim.simulate()
+      refl_fraction = np.array(res.flatVector())[0]
+
+      # Reflected beam
+      q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [-vz]))
+      weight_specular_sim.append(np.array([p * refl_fraction]))
+
+      ptrans = p * (1.0 - refl_fraction)
+      if ptrans>1e-10:
+          q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [vz]))
+          weight_specular_sim.append(np.array([ptrans]))
+
+      q_array = np.vstack([q_array] + q_specular_sim)
+      weights = np.concatenate([weights] + weight_specular_sim)
+
     if raw_output:
       q_events.append(np.column_stack([weights, q_array]))
     else: #histogrammed output format

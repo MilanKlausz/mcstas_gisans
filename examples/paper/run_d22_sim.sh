@@ -82,7 +82,7 @@ mg_run \
   --alpha $INCIDENT_ANGLE \
   --outgoing_direction_number $OUTGOING_DIRECTION_NUMBER \
   --allow_sample_miss \
-  --include_specular \
+  --specular 'include_specular' \
   --use_avg_materials \
   --savename $OUTPUT_FILE_PATH
 
