@@ -46,12 +46,12 @@ The McStas instrument model of D22(ILL) yields higher intensity than what is mea
 This can be easily done by comparing the simulated and measured intensity at some point of the instrument. 
 Practically this can be a monitor data, or - as in out case - the result of a direct beam measurement.
 The result of the direct beam measurement done at the D22 instrument (`data/paper/d22_measurement/073162.nxs`) shows a total detected intensity of **120538 neutrons** for the **60 second measurement time**.
-In comparison, the simulated neutron intensity at the sample position (at the end of the McStas simulation) is **9621.81 neutrons/second**.
+In comparison, the simulated neutron intensity at the sample position (at the end of the McStas simulation) is **9533.86 neutrons/second**.
 (Note that due to he neutron source definition, the result of the McStas simulation is normalised to 1 second.)
 This intensity at the sample position is equal to the simulated detected intensity because all neutrons reaching the sample position also hit the detector, and currently the detector efficiency is not simulated.
 Therefore, the intensity factor needed to normalise the simulation to the measurement is: 
 ```
-INTENSITY_FACTOR = 120538 / 60 / 9621.81 = 0.2088
+INTENSITY_FACTOR = 120538 / 60 / 9533.86 = 0.2107
 ```
 
 Note that the simulated intensity can by slightly different for each simulation.
@@ -65,15 +65,15 @@ Using the two stored McStas simulation results from the *data/paper* directory a
 ```bash
 > pymcpltool --stats data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz
 ------------------------------------------------------------------------------
-nparticles   : 17203
-sum(weights) : 9621.81
+nparticles   : 17081
+sum(weights) : 9533.86
 (...)
 ```
 ```bash
 > pymcpltool --stats data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz 
 ------------------------------------------------------------------------------
-nparticles   : 1717
-sum(weights) : 9566.61
+nparticles   : 1726
+sum(weights) : 9639.83
 (...)
 ```
 
@@ -82,7 +82,7 @@ lower for the the simulation with lower statistics (the *_1e9* and *_1e8* in the
 directory name indicate the number of simulated source neutrons).
 The intensity factor specific for the *d22_1e8* simulation output is:
 ```
-INTENSITY_FACTOR = 120538 / 60 / 9333.18 = 0.2152
+INTENSITY_FACTOR = 120538 / 60 / 9639.83 = 0.2084
 ```
 
 These two McStas simulation outputs and the corresponding intensity factors
@@ -108,14 +108,14 @@ direct beam simulation, it can be done (in a shell with the conda environment
 activated) by the following command using the *--allow_sample_miss* and
 *--sample_size_y 0.0* options:
 ```bash
-  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_1e9"
+  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --sample_orientation 2 --savename "examples/paper/output/direct_beam_d22_1e9"
 ```
 
 Then the plotting script can be used compare the simulation result to the
 measured data. The following command will do that, and also output the sum
 intensities due to the *--verbose* input option:
 ```bash
- mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose
+ mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose --sample_orientation 2
 ```
 
 ---
@@ -127,8 +127,8 @@ that will result in correct simulated intensity (still normalised to 1 sec).
 Then the plotting comparison can be done using the *--experiment_time* option
 to upscale the simulated result to the 60 second direct beam experiment time:
 ```bash
-  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_1e9" --intensity_factor 0.1421
-  mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60
+  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_1e9" --intensity_factor 0.2107 --sample_orientation 2
+  mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60 --sample_orientation 2
 ```
 
 Note that running the BornAgain simulation script (`mg_run`) using the high statistics McStas simulation output (`data/paper/mcstas_output/d22_1e9`) in a matter of few seconds is only possible due to the

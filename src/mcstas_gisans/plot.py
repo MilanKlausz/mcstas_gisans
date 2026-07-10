@@ -49,18 +49,19 @@ def get_datasets(args):
   z_data_range = args.z_range
 
   if args.nxs:
-    from .read_d22 import read_nexus_data
-    hist, hist_error, y_edges, z_edges = read_nexus_data(args.nxs)
-    label = 'D22 measurement'
-    nxs_sum = np.sum(hist)
-    if args.verbose:
-      print(f"NXS sum: {nxs_sum}")
-    datasets.append((hist, hist_error, y_edges, z_edges, label))
-    y_data_range = [y_edges[0], y_edges[-1]]
-    z_data_range = [z_edges[0], z_edges[-1]]
+    nxs_labels = args.nxs_label if args.nxs_label else args.nxs #default to filename if no label provided
+    for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
+        from .read_d22 import read_nexus_data
+        hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, args.sample_orientation)
+        nxs_sum = np.sum(hist)
+        if args.verbose:
+          print(f"{nxs_filename} sum: {nxs_sum}")
+        datasets.append((hist, hist_error, y_edges, z_edges, nxs_label))
+        y_data_range = [y_edges[0], y_edges[-1]]
+        z_data_range = [z_edges[0], z_edges[-1]]
 
   if args.filename:
-    labels = args.label if args.label else args.filename #default to filenames
+    labels = args.label if args.label else args.filename #default to filename if no label is provided
     for filename, label in zip(args.filename, labels):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
@@ -146,6 +147,11 @@ def main():
       plot_2d_axes = axes_top[dataset_index]
       line_color = line_colors[dataset_index]
       hist, hist_error, y_edges, z_edges, label = dataset
+      
+    #   print(f"X bin number: {len(y_edges)-1}, Y bin number: {len(z_edges)-1}")
+    #   print(f"X bin range: [{y_edges[0]}, {y_edges[-1]}], Y bin range: [{z_edges[0]}, {z_edges[-1]}]")
+    #   print(f"Label: {label}")
+      
       common_maximum = max_value if args.individual_colorbars is False else None
       log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
 

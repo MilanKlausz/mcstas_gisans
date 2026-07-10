@@ -8,22 +8,36 @@ import numpy as np
 
 class Detector:
   def __init__(self, det_params, sample_inclination, sample_orientation, no_gravity):
+
+    # assume horizontal sample orientation (sample_orientation=1) as default, and then apply the necessary transformations for other sample orientations
     self.size_x = det_params['size'][0]
     self.size_y = det_params['size'][1]
-    self.centre_centre_offset_x = det_params['centre_offset'][0]
-    self.centre_centre_offset_y = det_params['centre_offset'][1]
+    self.direct_beam_centre_offset_x = det_params['direct_beam_centre_offset'][0]
+    self.direct_beam_centre_offset_y = det_params['direct_beam_centre_offset'][1]
     self.pixels_x = det_params['pixels'][0]
     self.pixels_y = det_params['pixels'][1]
     self.resolution_x = det_params['resolution'][0]
     self.resolution_y = det_params['resolution'][1]
 
+    if sample_orientation in [0, 2]: #vertical sample orientation
+        #swap x and y parameters for vertical sample orientation, because the detector is rotated by 90 degrees in the BornAgain coordinate system
+        self.size_x, self.size_y = self.size_y, self.size_x
+        self.pixels_x, self.pixels_y = self.pixels_y, self.pixels_x
+        self.resolution_x, self.resolution_y = self.resolution_y, self.resolution_x
+       
+        # the direct_beam_centre offset is different for the two vertical sample orientations, because the detector is rotated by +-90 degrees in the BornAgain coordinate system
+        if sample_orientation == 0: #vertical sample orientation, beam from the left
+            self.direct_beam_centre_offset_x, self.direct_beam_centre_offset_y = -self.direct_beam_centre_offset_y, self.direct_beam_centre_offset_x
+        else: #vertical sample orientation, beam from the right
+            self.direct_beam_centre_offset_x, self.direct_beam_centre_offset_y = self.direct_beam_centre_offset_y, -self.direct_beam_centre_offset_x
+
     #derived parameters
     self.pixel_size_x = self.size_x / self.pixels_x
     self.pixel_size_y = self.size_y / self.pixels_y
-    self.min_edge_x = self.centre_centre_offset_x - 0.5 * self.size_x
-    self.min_edge_y = self.centre_centre_offset_y - 0.5 * self.size_y
-    self.max_edge_x = self.centre_centre_offset_x + 0.5 * self.size_x
-    self.max_edge_y = self.centre_centre_offset_y + 0.5 * self.size_y
+    self.min_edge_x = self.direct_beam_centre_offset_x - 0.5 * self.size_x
+    self.min_edge_y = self.direct_beam_centre_offset_y - 0.5 * self.size_y
+    self.max_edge_x = self.direct_beam_centre_offset_x + 0.5 * self.size_x
+    self.max_edge_y = self.direct_beam_centre_offset_y + 0.5 * self.size_y
     self.sigma_x = self.resolution_x / 2.355
     self.sigma_y = self.resolution_y / 2.355
 

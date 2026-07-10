@@ -61,10 +61,69 @@ def create_argparser():
   t0correctionGroup.add_argument('--t0_correction_figure', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the t0 correction and exit without doing the simulation. Only works with McStas monitor fitting.')
 
 
+  instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
+  instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
+  instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
+  instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
+  instrumentGroup.add_argument('--instrument_detector_centre_offset', nargs=2, type=float, help='Override detector centre offset [offset_x, offset_y] in meters.')
+  instrumentGroup.add_argument('--instrument_detector_pixels', nargs=2, type=int, help='Override detector pixel counts [pixels_x, pixels_y].')
+  instrumentGroup.add_argument('--instrument_detector_resolution', nargs=2, type=float, help='Override detector resolution FWHM [res_x, res_y] in meters.')
+  instrumentGroup.add_argument('--instrument_tof_instrument', type=str.lower, choices=['true', 'false'], help='Override whether the instrument is a Time-of-Flight (TOF) instrument.')
+  instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
+  instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
+  instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
+
   return parser
 
 def parse_args(parser):
   args = parser.parse_args()
+
+  # Apply instrument parameter overrides in instrument_defaults
+  import copy
+  instr_name = args.instrument
+  if instr_name in instrument_defaults:
+    # Deep copy the default dictionary so we don't permanently alter the module defaults for other scripts
+    instr_params = copy.deepcopy(instrument_defaults[instr_name])
+
+    if args.instrument_nominal_source_sample_distance is not None:
+      instr_params['nominal_source_sample_distance'] = args.instrument_nominal_source_sample_distance
+
+    if args.instrument_sample_detector_distance is not None:
+      instr_params['sample_detector_distance'] = args.instrument_sample_detector_distance
+
+    if args.instrument_tof_instrument is not None:
+      instr_params['tof_instrument'] = (args.instrument_tof_instrument == 'true')
+
+    if args.instrument_t0_monitor_name is not None:
+      instr_params['t0_monitor_name'] = args.instrument_t0_monitor_name
+
+    if args.instrument_wfm_t0_monitor_name is not None:
+      instr_params['wfm_t0_monitor_name'] = args.instrument_wfm_t0_monitor_name
+
+    if args.instrument_wfm_virtual_source_distance is not None:
+      instr_params['wfm_virtual_source_distance'] = args.instrument_wfm_virtual_source_distance
+
+    # Handle detector overrides
+    if 'detector' not in instr_params:
+      from .instrument_defaults import default_detector
+      instr_params['detector'] = copy.deepcopy(default_detector)
+
+    det_params = instr_params['detector']
+
+    if args.instrument_detector_size is not None:
+      det_params['size'] = list(args.instrument_detector_size)
+
+    if args.instrument_detector_centre_offset is not None:
+      det_params['direct_beam_centre_offset'] = list(args.instrument_detector_centre_offset)
+
+    if args.instrument_detector_pixels is not None:
+      det_params['pixels'] = list(args.instrument_detector_pixels)
+
+    if args.instrument_detector_resolution is not None:
+      det_params['resolution'] = list(args.instrument_detector_resolution)
+
+    # Replace the dict in instrument_defaults
+    instrument_defaults[instr_name] = instr_params
 
   if args.wfm and any(key not in instrument_defaults[args.instrument] for key in required_keys_for_wfm):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")

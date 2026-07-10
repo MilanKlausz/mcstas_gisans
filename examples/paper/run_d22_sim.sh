@@ -18,13 +18,13 @@
 ## Use lower statistics McStas simulation output
 # Finishes in ~5 minutes with 14 processes (depending on the computer)
 MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e8"
-INTENSITY_FACTOR=0.2010 # based on direct beam simulation vs measurement
+INTENSITY_FACTOR=0.2084  # based on direct beam simulation vs measurement
 
 ######################## 2) Long simulation parameters ########################
 ## Use McStas output used to create results presented in the paper.
 ## Finishes in ~50 minutes with 14 processes (depending on the computer)
 # MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e9"
-# INTENSITY_FACTOR=0.2088 # based on direct beam simulation vs measurement
+# INTENSITY_FACTOR=0.2107 # based on direct beam simulation vs measurement
 
 #################### 3) User McStas simulation parameters #####################
 ## McStas output created using the run_d22_mcstas.sh script. Calculate the
@@ -84,7 +84,9 @@ mg_run \
   --allow_sample_miss \
   --specular 'include_specular' \
   --use_avg_materials \
-  --savename $OUTPUT_FILE_PATH
+  --savename $OUTPUT_FILE_PATH \
+  --sample_orientation 2 \
+  --instrument_detector_centre_offset -0.290202 0.009179 \
 
 ## run plotting using the output of the simulation (OUTPUT_FILE_PATH)
 ## uncomment last line to create png output
@@ -92,6 +94,7 @@ mg_plot \
   --filename "${OUTPUT_FILE_PATH}.npz" \
   --label "D22 simulation" \
   --nxs $D22_NXS_FILE \
+  --nxs_label "D22 measurement" \
   --experiment_time 10800 \
   --background 1.6 \
   --intensity_min 1 \
@@ -100,5 +103,7 @@ mg_plot \
   --y_plot_range -0.3 0.3 \
   --q_min 0.072 \
   --q_max 0.102 \
-  --plot_differences 1
-  # --savename "d22_sim_vs_measurement" --png
+  --plot_differences 1 \
+  --sample_orientation 2 \
+  --instrument_detector_centre_offset -0.290202 0.009179 \
+#   --savename "d22_sim_vs_measurement" --png

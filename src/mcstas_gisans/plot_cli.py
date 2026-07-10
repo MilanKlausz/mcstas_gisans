@@ -1,8 +1,6 @@
 
-"""
-Create and run argparse command line interface for the plot script
-"""
 import argparse
+from .instrument_defaults import instrument_defaults
 
 def zeroToOne(x):
   """Argparser type check function for float number in range [0.0, 1.0]"""
@@ -25,6 +23,7 @@ def create_argparser():
   parser.add_argument('--background', default=0, type=float, help = 'Add Poisson background to each bin.')
   parser.add_argument('-v', '--verbose', action='store_true', help = 'Verbose output.')
   parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
+  parser.add_argument('-i', '--instrument', default='d22', type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
 
   plotParamGroup = parser.add_argument_group('Control plotting', 'Parameters and options for plotting.')
   plotParamGroup.add_argument('--font_size', type=int, default=14, help = 'Global font size for plot elements.')
@@ -51,14 +50,75 @@ def create_argparser():
   rawFormat.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qx range of the histogram.')
 
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
-  storedDataParamGroup.add_argument('--nxs', default=None, help = 'Full path to the D22 Nexus file. (Using automatic D22 measurement label for it.)')
+  storedDataParamGroup.add_argument('--nxs', nargs = '*', help = 'Full path to the D22 Nexus file.')
+  storedDataParamGroup.add_argument('--nxs_label', nargs = '*', help = 'Label for Nexus input[s]. Must be used together with --nxs if a label is desired. If not provided, the label will be generated from the Nexus file name.')
   storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
   storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise simulated data to the total intensity in the Nexus file.')
+  storedDataParamGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
+
+  instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
+  instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
+  instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
+  instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
+  instrumentGroup.add_argument('--instrument_detector_centre_offset', nargs=2, type=float, help='Override detector centre offset [offset_x, offset_y] in meters.')
+  instrumentGroup.add_argument('--instrument_detector_pixels', nargs=2, type=int, help='Override detector pixel counts [pixels_x, pixels_y].')
+  instrumentGroup.add_argument('--instrument_detector_resolution', nargs=2, type=float, help='Override detector resolution FWHM [res_x, res_y] in meters.')
+  instrumentGroup.add_argument('--instrument_tof_instrument', type=str.lower, choices=['true', 'false'], help='Override whether the instrument is a Time-of-Flight (TOF) instrument.')
+  instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
+  instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
+  instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
 
   return parser
 
 def parse_args(parser):
   args = parser.parse_args()
+
+  # Apply instrument parameter overrides in instrument_defaults
+  import copy
+  instr_name = args.instrument
+  if instr_name in instrument_defaults:
+    # Deep copy the default dictionary so we don't permanently alter the module defaults for other scripts
+    instr_params = copy.deepcopy(instrument_defaults[instr_name])
+
+    if args.instrument_nominal_source_sample_distance is not None:
+      instr_params['nominal_source_sample_distance'] = args.instrument_nominal_source_sample_distance
+
+    if args.instrument_sample_detector_distance is not None:
+      instr_params['sample_detector_distance'] = args.instrument_sample_detector_distance
+
+    if args.instrument_tof_instrument is not None:
+      instr_params['tof_instrument'] = (args.instrument_tof_instrument == 'true')
+
+    if args.instrument_t0_monitor_name is not None:
+      instr_params['t0_monitor_name'] = args.instrument_t0_monitor_name
+
+    if args.instrument_wfm_t0_monitor_name is not None:
+      instr_params['wfm_t0_monitor_name'] = args.instrument_wfm_t0_monitor_name
+
+    if args.instrument_wfm_virtual_source_distance is not None:
+      instr_params['wfm_virtual_source_distance'] = args.instrument_wfm_virtual_source_distance
+
+    # Handle detector overrides
+    if 'detector' not in instr_params:
+      from .instrument_defaults import default_detector
+      instr_params['detector'] = copy.deepcopy(default_detector)
+
+    det_params = instr_params['detector']
+
+    if args.instrument_detector_size is not None:
+      det_params['size'] = list(args.instrument_detector_size)
+
+    if args.instrument_detector_centre_offset is not None:
+      det_params['direct_beam_centre_offset'] = list(args.instrument_detector_centre_offset)
+
+    if args.instrument_detector_pixels is not None:
+      det_params['pixels'] = list(args.instrument_detector_pixels)
+
+    if args.instrument_detector_resolution is not None:
+      det_params['resolution'] = list(args.instrument_detector_resolution)
+
+    # Replace the dict in instrument_defaults
+    instrument_defaults[instr_name] = instr_params
 
   if args.filename is None and args.nxs is None:
     parser.error('No input file provided! This is only allowed when the --nxs option is used.')

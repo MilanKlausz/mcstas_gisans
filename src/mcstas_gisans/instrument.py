@@ -7,7 +7,7 @@ scattering vector (q) related calculations.
 import numpy as np
 
 from .detector import Detector
-from .particle_calculations import calculate_neutron_wavelength, calculate_wavenumber
+from .particle_calculations import calculate_neutron_wavelength, calculate_wavenumber, calculate_neutron_velocity
 
 class Instrument:
   def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, sample_orientation, wfm=False, no_gravity=False):
@@ -19,12 +19,31 @@ class Instrument:
     self.nominal_source_sample_distance = instr_params['nominal_source_sample_distance'] - (0 if not wfm else instr_params['wfm_virtual_source_distance'])
     self.sample_detector_distance = instr_params['sample_detector_distance']
 
-    alpha_inc = float(np.deg2rad(alpha_inc_deg))
-    self.incident_direction = np.array([0, -np.sin(alpha_inc), np.cos(alpha_inc)])
+    self.no_gravity = no_gravity
+    self.alpha_inc = float(np.deg2rad(alpha_inc_deg))
+    self.wavelength_selected = wavelength_selected
+
+    self.incident_direction = self.calculate_incident_direction(wavelength_selected)
 
     self.is_tof_instrument = instr_params['tof_instrument']
     if not self.is_tof_instrument:
       self.wavenumber_fixed = calculate_wavenumber(wavelength_selected)
+
+  def calculate_incident_direction(self, wavelength):
+    """
+    Calculate the reference incident direction, taking gravity drop into account
+    from the sample to the detector surface if needed.
+    """
+    incident_dir_straight = np.array([0.0, -np.sin(self.alpha_inc), np.cos(self.alpha_inc)])
+    if self.no_gravity or wavelength is None:
+      return incident_dir_straight
+
+    t_flight = self.sample_detector_distance / calculate_neutron_velocity(wavelength)
+
+    drop_vector = 0.5 * self.detector.gravity_acceleration_vector * t_flight**2
+    straight_pos = incident_dir_straight * self.sample_detector_distance
+    dropped_pos = straight_pos + drop_vector
+    return dropped_pos / np.linalg.norm(dropped_pos)
 
   def get_wavenumber(self, wavelength):
     """ Return the wavenumber that is fixed in case of non-TOF instrument """
@@ -66,25 +85,53 @@ class Instrument:
     Calculate the min and max q values for a wavelength using the xy min and
     max coordinates of the detector (it is an approximation).
     """
+    # Since the Detector class constructor already swaps the active area coordinates (size_x, size_y, min_edge_x, min_edge_y)
+    # in accordance with the sample_orientation, self.detector.min_edge_x/y are already in the sample frame.
+    
+    # 1. Start with the limits in the uninclined sample frame (where x is horizontal, y is vertical, z is distance).
+    q_min_x_sample = self.detector.min_edge_x
+    q_max_x_sample = self.detector.max_edge_x
 
-    q_min_coords_nexus = [self.detector.min_edge_x, self.detector.min_edge_y, self.sample_detector_distance]
-    q_max_coords_nexus = [self.detector.max_edge_x, self.detector.max_edge_y, self.sample_detector_distance]
+    # 2. Project the vertical (y) and longitudinal (z) limits to the inclined BornAgain coordinate system.
+    q_min_y_sample, q_min_z_sample = self.detector.transform_to_bornagain_coordinate_system(
+        self.detector.min_edge_y, self.sample_detector_distance
+    )
+    q_max_y_sample, q_max_z_sample = self.detector.transform_to_bornagain_coordinate_system(
+        self.detector.max_edge_y, self.sample_detector_distance
+    )
 
-    q_min_y, q_min_z = self.detector.transform_to_bornagain_coordinate_system(q_min_coords_nexus[1], q_min_coords_nexus[2])
-    q_max_y, q_max_z =self.detector.transform_to_bornagain_coordinate_system(q_max_coords_nexus[1], q_max_coords_nexus[2])
+    # 3. Combine into coordinate limit vectors in BornAgain space.
+    q_min_coords = [q_min_x_sample, q_min_y_sample[0], q_min_z_sample[0]]
+    q_max_coords = [q_max_x_sample, q_max_y_sample[0], q_max_z_sample[0]]
 
-    q_min_coords = [q_min_coords_nexus[0], q_min_y[0], q_min_z[0]]
-    q_max_coords = [q_max_coords_nexus[0], q_max_y[0], q_max_z[0]]
-
+    # 4. Convert coordinate limits to outgoing direction unit vectors.
     outgoing_direction_q_min = q_min_coords / np.linalg.norm(q_min_coords)
     outgoing_direction_q_max = q_max_coords / np.linalg.norm(q_max_coords)
 
     wavenumber = self.get_wavenumber(wavelength)
+    
+    # 5. Compute the reference incident direction. For non-TOF instruments, this uses the pre-calculated gravity-dropped reference direction.
+    if not self.is_tof_instrument:
+      w = wavelength if wavelength is not None else self.wavelength_selected
+      incident_direction = self.calculate_incident_direction(w)
+    else:
+      incident_direction = self.incident_direction
 
-    q_min = (outgoing_direction_q_min - self.incident_direction) * wavenumber
-    q_max = (outgoing_direction_q_max - self.incident_direction) * wavenumber
+    # 6. Calculate min and max scattering vector (Q) limits.
+    q_min = (outgoing_direction_q_min - incident_direction) * wavenumber
+    q_max = (outgoing_direction_q_max - incident_direction) * wavenumber
 
     return q_min, q_max
+
+  def get_q_pixel_limits(self, wavelength=None):
+    """
+    Calculate and return the Q-space bin edges (q_y, q_z) for each pixel
+    boundary on the detector, relying on the detector's pixel dimensions.
+    """
+    q_min, q_max = self.calculate_q_limits(wavelength)
+    q_y = np.linspace(q_min[0], q_max[0], num=self.detector.pixels_x + 1)
+    q_z = np.linspace(q_min[1], q_max[1], num=self.detector.pixels_y + 1)
+    return q_y, q_z
 
   def get_expected_specular_peak_q(self, wavelength=None):
     """Calculate approximate q value for the specular peak (without gravity)"""

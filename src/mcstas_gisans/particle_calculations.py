@@ -19,6 +19,9 @@ def calculate_neutron_wavelength(tof, dist):
 def calculate_wavenumber(wavelength):
   return 2*np.pi / (wavelength*0.1) # wavelength Angstrom to nm conversion
 
+def calculate_neutron_velocity(wavelength):
+  return V2L / wavelength    
+
 def get_neutron_velocity_vector(ux, uy, uz, ekin):
   """Convert normalised direction vector and kinetic energy to velocity"""
   norm = np.sqrt(ekin * 1e9 / VS2E)
