@@ -51,12 +51,12 @@ class Detector:
     self.sample_orientation = sample_orientation
     self.no_gravity = no_gravity
     if not no_gravity:
-      self.gravity_acceleration_vector = self.calculate_gravity_vector(sample_orientation)
+      self.gravity_acceleration_vector = self.calculate_gravity_vector()
 
-  def calculate_gravity_vector(self, sample_orientation):
+  def calculate_gravity_vector(self):
     """ Calculate the gravity vector in bornagain coord system for different sample orientations """
     gravity_acceleration = 9.80665 #m/s2
-    match sample_orientation:
+    match self.sample_orientation:
       case 0:
         gravity_vector_nexus = [gravity_acceleration, 0.0, 0.0]
       case 1:

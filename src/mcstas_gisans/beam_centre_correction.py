@@ -12,7 +12,7 @@ from .read_d22 import read_nexus_data
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
-def find_required_centre_offset(filepath, initial_guess=None, alpha_inc_deg=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
+def find_required_centre_offset(filepath, initial_guess=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
   """
   Find the required centre_offset values for the detector so that the beam centre
   measured in a NeXus file is positioned at (qy, qz) = (0, 0) in Q-space.
@@ -24,8 +24,6 @@ def find_required_centre_offset(filepath, initial_guess=None, alpha_inc_deg=None
   initial_guess : list or np.ndarray, optional
       Initial guess for the centre_offset [x, y] in meters.
       If None, the default centre_offset for the selected instrument is used.
-  alpha_inc_deg : float, optional
-      Incident angle in degrees. If None, it is automatically determined from the filepath.
   wavelength : float, optional
       Wavelength in Angstroms (default: 6.0).
   sample_orientation : int, optional
@@ -40,16 +38,9 @@ def find_required_centre_offset(filepath, initial_guess=None, alpha_inc_deg=None
   centre_offset : np.ndarray
       The calculated centre_offset [x, y] in meters.
   """
-  hist, _, _, _ = read_nexus_data(filepath, sample_orientation=sample_orientation)
 
-  # Is the any reason for alpha_inc_deg!=0 ?
-  if alpha_inc_deg is None:
-    if filepath.endswith("073174.nxs"):
-      alpha_inc_deg = 0.24
-    elif filepath.endswith("73378.nxs"):
-      alpha_inc_deg = 0.35
-    else:
-      alpha_inc_deg = 0.0
+  alpha_inc_deg = 0.0 #for direct beam measurements, the incident angle is 0 degrees
+  hist, _, _, _ = read_nexus_data(filepath, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
 
   if initial_guess is None:
     initial_guess = instrument_defaults.get(instrument_name, {}).get('detector', {}).get('direct_beam_centre_offset', [0.0, 0.0])
@@ -100,7 +91,6 @@ def main():
   import argparse
   parser = argparse.ArgumentParser(description="Find required detector centre_offset for a given NeXus data file.")
   parser.add_argument('filepath', type=str, help="Path to the NeXus data file.")
-  parser.add_argument('--alpha', type=float, default=None, help="Incident angle in degrees (default: auto-detected).")
   parser.add_argument('--wavelength', type=float, default=6.0, help="Wavelength in Angstroms (default: 6.0).")
   parser.add_argument('--sample_orientation', type=int, default=1, help="Sample orientation (default: 1).")
   parser.add_argument('--instrument', type=str, default='d22', help="Instrument name in instrument_defaults (default: 'd22').")
@@ -111,7 +101,6 @@ def main():
   try:
     offset = find_required_centre_offset(
         args.filepath,
-        alpha_inc_deg=args.alpha,
         wavelength=args.wavelength,
         sample_orientation=args.sample_orientation,
         instrument_name=args.instrument,

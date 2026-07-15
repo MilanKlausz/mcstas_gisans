@@ -55,6 +55,8 @@ def create_argparser():
   storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
   storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise simulated data to the total intensity in the Nexus file.')
   storedDataParamGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
+  storedDataParamGroup.add_argument('-a', '--alpha', default=0.0, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
+  storedDataParamGroup.add_argument('--wavelength', type=float, default=6.0, help = 'Wavelength in Angstroms.')
 
   instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
   instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')

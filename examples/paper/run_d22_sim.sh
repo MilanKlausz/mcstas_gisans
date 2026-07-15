@@ -106,4 +106,6 @@ mg_plot \
   --plot_differences 1 \
   --sample_orientation 2 \
   --instrument_detector_centre_offset -0.290202 0.009179 \
+  --alpha 0.24 \
+  --wavelength 6.0 \
 #   --savename "d22_sim_vs_measurement" --png

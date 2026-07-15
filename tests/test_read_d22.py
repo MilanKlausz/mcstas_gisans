@@ -8,11 +8,11 @@ from mcstas_gisans.read_d22 import read_nexus_data
 
 def test_read_nexus_data_scaling():
   filepath = os.path.join("data", "paper", "d22_measurement", "073174.nxs")
-  hist, _, q_y, q_z = read_nexus_data(filepath)
-
+  hist, _, q_y, q_z = read_nexus_data(filepath, alpha=0.24, wavelength=6.0)
+ 
   # Scale by a factor of 2.5
   factor = 2.5
-  hist_scaled, hist_error_scaled, q_y_scaled, q_z_scaled = read_nexus_data(filepath, scale_factor=factor)
+  hist_scaled, hist_error_scaled, q_y_scaled, q_z_scaled = read_nexus_data(filepath, alpha=0.24, wavelength=6.0, scale_factor=factor)
 
   # Assert scaling is applied correctly
   assert np.allclose(hist_scaled, hist * factor)
