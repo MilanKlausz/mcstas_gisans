@@ -39,7 +39,7 @@ def photon_energy_to_wavelength(ekin):
   """Convert photon energy to wavelength"""
   return MEV2AA / ekin
 
-def convert_neutron_properties(particle, intensity_factor):
+def convert_neutron_properties(particle, intensity_factor, use_polarization):
   """Convert neutron properties from MCPL units
   weight: scale by intensity_factor
   position: cm -> m
@@ -49,14 +49,17 @@ def convert_neutron_properties(particle, intensity_factor):
   """
   velocity_vector = get_neutron_velocity_vector(particle.ux, particle.uy, particle.uz, particle.ekin)
   
-  return (particle.weight * intensity_factor,
-          particle.x/100, particle.y/100, particle.z/100, #convert cm->m
-          *velocity_vector,
-          neutron_velocity_to_wavelength(velocity_vector),
-          particle.time*1e-3 #convert ms->s
-          )
+  result = (particle.weight * intensity_factor,
+            particle.x/100, particle.y/100, particle.z/100, #convert cm->m
+            *velocity_vector,
+            neutron_velocity_to_wavelength(velocity_vector),
+            particle.time*1e-3 #convert ms->s
+            )
+  if use_polarization:
+    result = result + (particle.polx, particle.poly, particle.polz)
+  return result
   
-def convert_photon_properties(particle, intensity_factor):
+def convert_photon_properties(particle, intensity_factor, use_polarization):
   """Convert photon properties from MCPL units
   weight: scale by intensity_factor
   position: cm -> m
@@ -64,12 +67,15 @@ def convert_photon_properties(particle, intensity_factor):
   ekin: convert to wavelength
   time: ms -> s
   """
-  return (particle.weight * intensity_factor,
-          particle.x/100, particle.y/100, particle.z/100, #convert cm->m
-          *photon_direction_to_velocity(particle.ux, particle.uy, particle.uz),
-          photon_energy_to_wavelength(particle.ekin),
-          particle.time*1e-3 #convert ms->s
-          )
+  result = (particle.weight * intensity_factor,
+            particle.x/100, particle.y/100, particle.z/100, #convert cm->m
+            *photon_direction_to_velocity(particle.ux, particle.uy, particle.uz),
+            photon_energy_to_wavelength(particle.ekin),
+            particle.time*1e-3 #convert ms->s
+            )
+  if use_polarization:
+    result = result + (particle.polx, particle.poly, particle.polz)
+  return result
 
 def get_particle_converter(particle_pdg_code):
   """

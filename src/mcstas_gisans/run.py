@@ -19,7 +19,7 @@ from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
-def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z):
+def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization, analyzer_direction, analyzer_efficiency, analyzer_transmission):
   """
   Create a simulation with pixel_number pixels that cover an angular range of
   angle_range degrees. The rand_deg_y and rand_deg_z values are relative
@@ -34,6 +34,9 @@ def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, ra
   # Define detector
   detector = ba.SphericalDetector(pixel_number, -angle_range[0]*deg + rand_deg_z, angle_range[0]*deg + rand_deg_z,
                                   pixel_number, -angle_range[1]*deg + rand_deg_y, angle_range[1]*deg + rand_deg_y)
+  if polarization:
+    beam.setPolarization(ba.R3(*polarization))
+    detector.setAnalyzer(ba.R3(*analyzer_direction), analyzer_efficiency, analyzer_transmission)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
@@ -87,6 +90,9 @@ def process_particles(particles, params, queue=None):
   bins = params['bins']
   use_avg_materials = params['use_avg_materials']
   specular = params['specular']
+  analyzer_direction = params['analyzer_direction']
+  analyzer_efficiency = params['analyzer_efficiency']
+  analyzer_transmission = params['analyzer_transmission']
 
   if raw_output:
     q_events = [] #p, Qx, Qy, Qz, t
@@ -103,7 +109,7 @@ def process_particles(particles, params, queue=None):
     # not in the BornAgain coord system (X - forward, Y - left, Z - up),
     # but with the SphericalDetector, BornAgain only deals with alpha_i (input),
     # alpha_f and phi_f (output), which are the same if calculated correctly
-    p, x, y, z, vx, vy, vz, wavelength, t = particle
+    p, x, y, z, vx, vy, vz, wavelength, t, *polarization = particle
     alpha_i = np.rad2deg(np.arctan(-vy/vz)) #[deg]
     phi_i = np.rad2deg(np.arctan(vx/vz)) #[deg], not used in sim, added to phi_f
     v = np.sqrt(vx**2+vy**2+vz**2)
@@ -120,7 +126,10 @@ def process_particles(particles, params, queue=None):
       # directions is applied for better sampling of the outgoing directions
       rand_y = 2*np.random.random()-1
       rand_z = 2*np.random.random()-1
-      sim = get_simulation(sample_model, outgoing_direction_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z)
+      sim = get_simulation(sample_model, outgoing_direction_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization,
+                           analyzer_direction=analyzer_direction,
+                           analyzer_efficiency=analyzer_efficiency,
+                           analyzer_transmission=analyzer_transmission)
       sim.options().setUseAvgMaterials(use_avg_materials)
       sim.options().setIncludeSpecular(specular == 'include_specular')
       # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
@@ -227,7 +236,7 @@ def main():
 
   ### Get particles from the MCPL file ###
   tof_limits = get_tof_filtering_limits(args)
-  particles, particle_type = get_particles(args.filename, args.intensity_factor, tof_limits, args.input_weight_limit)
+  particles, particle_type = get_particles(args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization)
 
   ### Preconditioning the particles ###
   particles = precondition(particles, args)

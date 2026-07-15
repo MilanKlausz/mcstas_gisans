@@ -44,6 +44,13 @@ def create_argparser():
   sampleGroup.add_argument('--sample_size_x', default=0.08, type=float, help = 'Size of sample along the beam (along x-axis in BornAgain geometry). [m]')
   sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and be directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
 
+  polarizationGroup = parser.add_argument_group('Polarization', 'Control polarization and analyzer settings.')
+  polarizationGroup.add_argument('--use_polarization', default=False, action='store_true', help = 'Simulate polarized scattering.')
+  polarizationGroup.add_argument('--analyzer_direction', nargs=3, type=float, default=[0.0, 0.0, 0.0], help = 'The polarization analysis direction (typically a unit vector).')
+  polarizationGroup.add_argument('--analyzer_efficiency', type=float, default=1.0, help = 'The polarization efficiency of the analyzer, representing the polarizing power or the ability to select a specific spin state (0 <= eta <= 1).')
+  polarizationGroup.add_argument('--analyzer_transmission', type=float, default=0.5, help = 'The total transmission factor of the analyzer (fraction of beam intensity that passes through, 0 <= T <= 0.5).')
+
+
   mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instrument_defaults.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
   mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
   mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Modify the accepted TOF range of neutrons by this multiplication factor.')
@@ -186,5 +193,19 @@ def parse_args(parser):
 
   if args.intensity_factor <= 0.0:
     parser.error(f"The intensity multiplication factor (--intensity_factor) must have a positive value.")
+
+  # Validate analyzer parameters
+  if not (0.0 <= args.analyzer_transmission <= 0.5):
+    parser.error(f"analyzer_transmission must be between 0.0 and 0.5 (got {args.analyzer_transmission}).")
+  if not (0.0 <= args.analyzer_efficiency <= 1.0):
+    parser.error(f"analyzer_efficiency must be between 0.0 and 1.0 (got {args.analyzer_efficiency}).")
+  
+  direction_norm = (args.analyzer_direction[0]**2 + args.analyzer_direction[1]**2 + args.analyzer_direction[2]**2) ** 0.5
+  bloch_vector_len = abs(args.analyzer_efficiency) * direction_norm
+  if bloch_vector_len > 1.0:
+    parser.error(
+        f"The analyzer Bloch vector (efficiency * direction) must have a length <= 1.0. "
+        f"Current length: {bloch_vector_len:.4f} (efficiency: {args.analyzer_efficiency}, direction norm: {direction_norm:.4f})."
+    )
 
   return args
