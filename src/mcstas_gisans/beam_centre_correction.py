@@ -12,7 +12,7 @@ from .read_d22 import read_nexus_data
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
-def find_required_centre_offset(filepath, initial_guess=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
+def find_required_centre_offset(filepath, initial_guess=None, beam_declination_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
   """
   Find the required centre_offset values for the detector so that the beam centre
   measured in a NeXus file is positioned at (qy, qz) = (0, 0) in Q-space.
@@ -24,6 +24,8 @@ def find_required_centre_offset(filepath, initial_guess=None, wavelength=6.0, sa
   initial_guess : list or np.ndarray, optional
       Initial guess for the centre_offset [x, y] in meters.
       If None, the default centre_offset for the selected instrument is used.
+  beam_declination_angle : float, optional
+      Override beam declination angle in degrees.
   wavelength : float, optional
       Wavelength in Angstroms (default: 6.0).
   sample_orientation : int, optional
@@ -38,53 +40,61 @@ def find_required_centre_offset(filepath, initial_guess=None, wavelength=6.0, sa
   centre_offset : np.ndarray
       The calculated centre_offset [x, y] in meters.
   """
+  original_declination = None
+  if beam_declination_angle is not None and instrument_name in instrument_defaults:
+    original_declination = instrument_defaults[instrument_name].get('beam_declination_angle')
+    instrument_defaults[instrument_name]['beam_declination_angle'] = beam_declination_angle
 
-  alpha_inc_deg = 0.0 #for direct beam measurements, the incident angle is 0 degrees
-  hist, _, _, _ = read_nexus_data(filepath, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
+  try:
+    alpha_inc_deg = 0.0 #for direct beam measurements, the incident angle is 0 degrees
+    hist, _, _, _ = read_nexus_data(filepath, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
 
-  if initial_guess is None:
-    initial_guess = instrument_defaults.get(instrument_name, {}).get('detector', {}).get('direct_beam_centre_offset', [0.0, 0.0])
-
-  if verbose:
-    print(f"\n--- Starting Beam Centre Minimisation ---")
-    print(f"Filepath: {filepath}")
-    print(f"Initial Guess: {initial_guess}")
-
-  def residual(direct_beam_centre_offset):
-    # Copy defaults to avoid modifying global settings in place
-    params = copy.deepcopy(instrument_defaults[instrument_name])
-    params['detector']['direct_beam_centre_offset'] = list(direct_beam_centre_offset)
-
-    instrument = Instrument(params, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
-    q_y, q_z = instrument.get_q_pixel_limits()
-
-    # Calculate bin centres
-    y_centres = (q_y[:-1] + q_y[1:]) / 2.0
-    z_centres = (q_z[:-1] + q_z[1:]) / 2.0
-
-    # Calculate weight distributions
-    y_intensity = np.sum(hist, axis=1)
-    z_intensity = np.sum(hist, axis=0)
-    total_intensity = np.sum(hist)
-
-    if total_intensity <= 0:
-      raise ValueError("Total intensity of the NeXus dataset is zero or negative.")
-
-    y_centre = np.sum(y_centres * y_intensity) / total_intensity
-    z_centre = np.sum(z_centres * z_intensity) / total_intensity
+    if initial_guess is None:
+      initial_guess = instrument_defaults.get(instrument_name, {}).get('detector', {}).get('direct_beam_centre_offset', [0.0, 0.0])
 
     if verbose:
-      print(f"  Eval offset: [{direct_beam_centre_offset[0]:.6f}, {direct_beam_centre_offset[1]:.6f}] -> Q-centre: ({y_centre:.6f}, {z_centre:.6f})")
-    return np.array([y_centre, z_centre])
+      print(f"\n--- Starting Beam Centre Minimisation ---")
+      print(f"Filepath: {filepath}")
+      print(f"Initial Guess: {initial_guess}")
 
-  res = root(residual, initial_guess)
-  print(f"Optimization Success: {res.success}")
-  print(f"Optimization Message: {res.message}")
+    def residual(direct_beam_centre_offset):
+      # Copy defaults to avoid modifying global settings in place
+      params = copy.deepcopy(instrument_defaults[instrument_name])
+      params['detector']['direct_beam_centre_offset'] = list(direct_beam_centre_offset)
 
-  if not res.success:
-    raise RuntimeError(f"Optimization failed to find required direct_beam_centre_offset: {res.message}")
+      instrument = Instrument(params, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
+      q_y, q_z = instrument.get_q_pixel_limits()
 
-  return res.x
+      # Calculate bin centres
+      y_centres = (q_y[:-1] + q_y[1:]) / 2.0
+      z_centres = (q_z[:-1] + q_z[1:]) / 2.0
+
+      # Calculate weight distributions
+      y_intensity = np.sum(hist, axis=1)
+      z_intensity = np.sum(hist, axis=0)
+      total_intensity = np.sum(hist)
+
+      if total_intensity <= 0:
+        raise ValueError("Total intensity of the NeXus dataset is zero or negative.")
+
+      y_centre = np.sum(y_centres * y_intensity) / total_intensity
+      z_centre = np.sum(z_centres * z_intensity) / total_intensity
+
+      if verbose:
+        print(f"  Eval offset: [{direct_beam_centre_offset[0]:.6f}, {direct_beam_centre_offset[1]:.6f}] -> Q-centre: ({y_centre:.6f}, {z_centre:.6f})")
+      return np.array([y_centre, z_centre])
+
+    res = root(residual, initial_guess)
+    print(f"Optimization Success: {res.success}")
+    print(f"Optimization Message: {res.message}")
+
+    if not res.success:
+      raise RuntimeError(f"Optimization failed to find required direct_beam_centre_offset: {res.message}")
+
+    return res.x
+  finally:
+    if original_declination is not None:
+      instrument_defaults[instrument_name]['beam_declination_angle'] = original_declination
 
 
 def main():
@@ -94,6 +104,7 @@ def main():
   parser.add_argument('--wavelength', type=float, default=6.0, help="Wavelength in Angstroms (default: 6.0).")
   parser.add_argument('--sample_orientation', type=int, default=1, help="Sample orientation (default: 1).")
   parser.add_argument('--instrument', type=str, default='d22', help="Instrument name in instrument_defaults (default: 'd22').")
+  parser.add_argument('--beam_declination', type=float, default=None, help="Override beam declination angle in degrees (default: loaded from instrument defaults).")
   parser.add_argument('--verbose', action='store_true', help="Print detailed optimization progress.")
   
   args = parser.parse_args()
@@ -101,6 +112,7 @@ def main():
   try:
     offset = find_required_centre_offset(
         args.filepath,
+        beam_declination_angle=args.beam_declination,
         wavelength=args.wavelength,
         sample_orientation=args.sample_orientation,
         instrument_name=args.instrument,

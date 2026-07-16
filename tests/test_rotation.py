@@ -77,7 +77,7 @@ def test_rotation_consistency():
   # Test transform_to_sample_system for different orientations and alpha incident angles
   for orientation in [0, 1, 2]:
     for alpha in [-1.5, 0.0, 0.24, 1.0, 5.0]:
-      transformed_sys = transform_to_sample_system(particles, alpha, orientation)
+      transformed_sys = transform_to_sample_system(particles, alpha, orientation, 0.0)
       unpacked_sys = transformed_sys[0]
       if has_polarization:
         tp, tx, ty, tz, tvx, tvy, tvz, tw, tt, tpolx, tpoly, tpolz = unpacked_sys
@@ -119,6 +119,32 @@ def test_rotation_consistency():
         assert np.isclose(tpolx, opolx)
 
   print("All rotation consistency checks passed successfully!")
+  
+def test_declination_no_rotation():
+  # Create a dummy particle
+  p = 1.0
+  x, y, z = 1.2, 3.4, 5.6
+  vx, vy, vz = 10.0, 20.0, 30.0
+  w = 6.0
+  t = 0.005
+  particles = np.array([[p, x, y, z, vx, vy, vz, w, t]])
+
+  # If alpha_inc_deg == beam_declination_angle, rotation angle should be 0.0
+  # Thus, transform_to_sample_system should only apply sample_orientation_transform
+  # (which for orientation 1 is no rotation at all).
+  alpha = 0.44
+  beam_declination = 0.44
+  transformed = transform_to_sample_system(particles, alpha, 1, beam_declination)
+  unpacked = transformed[0]
+  
+  assert np.isclose(unpacked[1], x)
+  assert np.isclose(unpacked[2], y)
+  assert np.isclose(unpacked[3], z)
+  assert np.isclose(unpacked[4], vx)
+  assert np.isclose(unpacked[5], vy)
+  assert np.isclose(unpacked[6], vz)
+  print("Declination rotation cancellation check passed successfully!")
 
 if __name__ == "__main__":
   test_rotation_consistency()
+  test_declination_no_rotation()

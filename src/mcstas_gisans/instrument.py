@@ -11,8 +11,8 @@ from .particle_calculations import calculate_neutron_wavelength, calculate_waven
 
 class Instrument:
   def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, sample_orientation, wfm=False, no_gravity=False):
-    beam_declination = instr_params.get('beam_declination_angle', 0)
-    sample_inclination = float(np.deg2rad(alpha_inc_deg - beam_declination))
+    beam_declination_angle = instr_params.get('beam_declination_angle', 0)
+    sample_inclination = float(np.deg2rad(alpha_inc_deg - beam_declination_angle))
     self.detector = Detector(instr_params['detector'], sample_inclination, sample_orientation, no_gravity)
 
     #TODO there should be a user warning for wft=True but no instr_params['wfm_virtual_source_distance']

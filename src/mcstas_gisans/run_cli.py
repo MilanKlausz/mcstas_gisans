@@ -79,6 +79,7 @@ def create_argparser():
   instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
   instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
   instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
+  instrumentGroup.add_argument('--instrument_beam_declination_angle', type=float, help='Override beam declination angle. [deg]')
 
   return parser
 
@@ -109,6 +110,9 @@ def parse_args(parser):
 
     if args.instrument_wfm_virtual_source_distance is not None:
       instr_params['wfm_virtual_source_distance'] = args.instrument_wfm_virtual_source_distance
+
+    if args.instrument_beam_declination_angle is not None:
+      instr_params['beam_declination_angle'] = args.instrument_beam_declination_angle
 
     # Handle detector overrides
     if 'detector' not in instr_params:

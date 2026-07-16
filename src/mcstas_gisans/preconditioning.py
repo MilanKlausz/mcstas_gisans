@@ -34,11 +34,12 @@ def sample_orientation_transform(particles, sample_orientation):
 
   return p, x_new, y_new, z, vx_new, vy_new, vz, w, t, *pol_new
 
-def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation):
+def transform_to_sample_system(particles, alpha_inc_deg, sample_orientation, beam_declination_angle):
   """Apply coordinate transformation to express particle parameters in a
   coordinate system with the sample in the centre and being horizontal.
   """
-  alpha_inc = float(np.deg2rad(alpha_inc_deg))
+  rotation_angle_deg = alpha_inc_deg - beam_declination_angle
+  alpha_inc = float(np.deg2rad(rotation_angle_deg))
   rotation_matrix = np.array([[np.cos(-alpha_inc), -np.sin(-alpha_inc)],
                               [np.sin(-alpha_inc), np.cos(-alpha_inc)]])
   p, x, y, z, vx, vy, vz, w, t, *polarization = sample_orientation_transform(particles, sample_orientation)
@@ -143,7 +144,9 @@ def precondition(particles, args):
   2) Propagate particles to the sample surface
   3) Optionally apply T0 (time-of-flight) correction
   """
-  particles = transform_to_sample_system(particles, args.alpha, args.sample_orientation)
+  instr_params = instrument_defaults.get(args.instrument, {})
+  beam_declination_angle = instr_params.get('beam_declination_angle', 0.0)
+  particles = transform_to_sample_system(particles, args.alpha, args.sample_orientation, beam_declination_angle)
   particles = propagate_to_sample_surface(particles, args.sample_size_y, args.sample_size_x, args.allow_sample_miss)
   if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")
