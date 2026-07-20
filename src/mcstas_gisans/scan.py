@@ -61,6 +61,8 @@ def create_scan_parser():
                          help='Maximum number of objective function evaluations for the optimizer (default: 10).')
   fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
                          help='Metric to minimize during optimization (default: reduced_chi2).')
+  fit_group.add_argument('--gif', action='store_true',
+                         help='Generate animated GIF showing the evolution of the fitting process.')
 
   return parser
 
@@ -486,8 +488,47 @@ def save_and_print_summary(records, output_dir, filename, title_header):
   else:
     print("No records to display.")
 
+def create_fit_evolution_gif(output_dir, gif_name="fit_evolution.gif", duration=500):
+  """
+  Finds all fit_eval_*.png files in output_dir, sorts them by evaluation index,
+  and compiles them into an animated GIF.
+  """
+  import glob
+  from PIL import Image
+  
+  pattern = os.path.join(output_dir, "fit_eval_*.png")
+  png_files = glob.glob(pattern)
+  
+  if not png_files:
+    print("No fit evaluation PNG figures found to create GIF.")
+    return
+    
+  def get_eval_index(filepath):
+    basename = os.path.basename(filepath)
+    parts = basename.split('_')
+    if len(parts) >= 3 and parts[2].isdigit():
+      return int(parts[2])
+    return 0
+    
+  png_files.sort(key=get_eval_index)
+  
+  images = [Image.open(f) for f in png_files]
+  gif_path = os.path.join(output_dir, gif_name)
+  
+  images[0].save(
+      gif_path,
+      save_all=True,
+      append_images=images[1:],
+      duration=duration,
+      loop=0
+  )
+  print(f"Created animated fit evolution GIF: {gif_path}")
+
 def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
   import scipy.optimize
+  if args.gif:
+    args.png = True
+
   param_names, x0, bounds = parse_fit_arguments(args.fit)
   
   print(f"\nStarting automated optimization using {args.optimizer.upper()} optimizer...")
@@ -550,6 +591,9 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   print("Optimal Parameters:")
   for k, v in best_params.items():
     print(f"  {k} = {v:.4f}")
+
+  if args.gif:
+    create_fit_evolution_gif(args.output_dir)
 
 def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
   scanned_params = parse_scan_arguments(args.scan)
