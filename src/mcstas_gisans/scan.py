@@ -52,7 +52,16 @@ def create_scan_parser():
   scan_mask_group.add_argument('--qy_max_cut', type=float, default=None, help='Upper Qy cut option. Any data above this Qy value is disregarded [1/nm].')
   scan_mask_group.add_argument('--qz_min_cut', type=float, default=None, help='Lower Qz cut option. Any data below this Qz value is disregarded [1/nm].')
   scan_mask_group.add_argument('--qz_max_cut', type=float, default=None, help='Upper Qz cut option. Any data above this Qz value is disregarded [1/nm].')
-  
+  fit_group = parser.add_argument_group('Automated optimization / fitting options')
+  fit_group.add_argument('--fit', action='append', nargs='+', required=False,
+                         help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')
+  fit_group.add_argument('--optimizer', type=str, default='nelder-mead', choices=['nelder-mead', 'powell'],
+                         help='Optimization algorithm to use (default: nelder-mead).')
+  fit_group.add_argument('--max_evals', type=int, default=10,
+                         help='Maximum number of objective function evaluations for the optimizer (default: 10).')
+  fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
+                         help='Metric to minimize during optimization (default: reduced_chi2).')
+
   return parser
 
 def parse_scan_arguments(scan_args):
@@ -73,6 +82,47 @@ def parse_scan_arguments(scan_args):
       values.append(val)
     scanned_params[name] = values
   return scanned_params
+
+def parse_fit_arguments(fit_args):
+  """
+  Parses --fit arguments.
+  Supported formats per parameter:
+    --fit name x0
+    --fit name min max
+    --fit name x0 min max
+  Returns:
+    param_names: list of parameter names
+    x0_list: list of initial values (float)
+    bounds_list: list of (min_val, max_val) tuples or None
+  """
+  param_names = []
+  x0_list = []
+  bounds_list = []
+  
+  for item in fit_args:
+    if len(item) < 2:
+      raise ValueError(f"Fit parameter must specify at least name and initial value: {item}")
+    name = item[0]
+    param_names.append(name)
+    
+    if len(item) == 2:
+      x0 = float(item[1])
+      bounds = (None, None)
+    elif len(item) == 3:
+      b_min = float(item[1])
+      b_max = float(item[2])
+      x0 = (b_min + b_max) / 2.0
+      bounds = (b_min, b_max)
+    else:
+      x0 = float(item[1])
+      b_min = float(item[2])
+      b_max = float(item[3])
+      bounds = (b_min, b_max)
+      
+    x0_list.append(x0)
+    bounds_list.append(bounds)
+    
+  return param_names, x0_list, bounds_list
 
 def convert_val(value_str):
   try:
@@ -290,23 +340,16 @@ def save_view_masks_plot(hist_raw, hist_raw_error, hist_masked, hist_masked_erro
   plt.close(fig)
   print(f"Created masks view plot: {savename}")
 
-def main():
-  parser = create_scan_parser()
-  args = parse_run_args(parser)
-  
-  # Setup output directory
-  os.makedirs(args.output_dir, exist_ok=True)
-  
-  # Manual validation for required options
+def validate_scan_args(args, parser):
   if not args.view_masks:
     if not args.filename:
       parser.error("the following arguments are required: filename")
-    if not args.scan:
-      parser.error("the following arguments are required: --scan")
+    if not args.scan and not args.fit:
+      parser.error("Either --scan or --fit must be specified.")
   if not args.nxs:
     parser.error("the following arguments are required: --nxs")
-      
-  # Load experimental data
+
+def prepare_experimental_data(args):
   wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
   print(f"Loading experimental NeXus data from: {args.nxs}")
   hist_nxs_raw, hist_nxs_error_raw, y_edges_nxs, z_edges_nxs = read_nexus_data(
@@ -314,7 +357,6 @@ def main():
   )
   print(f"Loaded NeXus dataset of shape {hist_nxs_raw.shape}")
   
-  # Calculate boolean mask once
   mask = get_mask(
       y_edges_nxs, z_edges_nxs,
       mask_qy_range=args.mask_qy_range,
@@ -323,130 +365,94 @@ def main():
       shape=hist_nxs_raw.shape
   )
   
-  # Pre-mask the nexus data
   hist_nxs = apply_mask(hist_nxs_raw, mask, np.nan)
   hist_nxs_error = apply_mask(hist_nxs_error_raw, mask, 0.0)
+  
+  return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
 
-  # Short-circuit if only viewing masks
-  if args.view_masks:
-    plot_path = os.path.join(args.output_dir, "masked_view.png")
-    y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
-    z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
-    save_view_masks_plot(
-        hist_nxs_raw, hist_nxs_error_raw,
-        hist_nxs, hist_nxs_error,
-        y_edges_nxs, z_edges_nxs,
-        args.q_min, args.q_max, y_plot_range, z_plot_range,
-        plot_path
-    )
-    return
-  
-  # Parse parameter grid
-  scanned_params = parse_scan_arguments(args.scan)
-  keys = list(scanned_params.keys())
-  value_lists = [scanned_params[k] for k in keys]
-  
-  grid = []
-  for combo in itertools.product(*value_lists):
-    grid.append(dict(zip(keys, combo)))
-    
-  print(f"Starting parameter scan with {len(grid)} configurations...")
-  
-  # Load MCPL particles once
+def load_and_precondition_particles(args):
   from .tof_filtering import get_tof_filtering_limits
   tof_limits = get_tof_filtering_limits(args)
-  particles, particle_type = get_particles(args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization)
-  
-  # Precondition particles once
+  particles, particle_type = get_particles(
+      args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization
+  )
   particles = precondition(particles, args)
   print(f"Loaded and preconditioned {len(particles)} particles.")
+  return particles, particle_type
 
-  records = []
+def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, save_npz=True, label_prefix="sim"):
+  sample_args_dict = {}
+  if args.sample_arguments:
+    for pair in args.sample_arguments.split(';'):
+      if '=' in pair:
+        k, v = pair.split('=')
+        sample_args_dict[k.strip()] = convert_val(v.strip())
+        
+  for k, v in grid_point.items():
+    sample_args_dict[k] = v
+    
+  args.sample_arguments = ';'.join(f"{k}={v}" for k, v in sample_args_dict.items())
+  params = pack_parameters(args, particle_type)
   
-  for idx, grid_point in enumerate(grid):
-    print(f"\n[{idx+1}/{len(grid)}] Running simulation with: {grid_point}")
+  if args.no_parallel:
+    result = process_particles(particles, params)
+  else:
+    process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+    result = process_particles_parallelly(particles, params, process_number)
     
-    # Parse existing sample arguments
-    sample_args_dict = {}
-    if args.sample_arguments:
-      for pair in args.sample_arguments.split(';'):
-        if '=' in pair:
-          k, v = pair.split('=')
-          sample_args_dict[k.strip()] = convert_val(v.strip())
-          
-    # Apply scan parameters
-    for k, v in grid_point.items():
-      sample_args_dict[k] = v
-      
-    # Update args.sample_arguments
-    args.sample_arguments = ';'.join(f"{k}={v}" for k, v in sample_args_dict.items())
-    
-    # Pack parameters
-    params = pack_parameters(args, particle_type)
-    
-    # Execute simulation
-    if args.no_parallel:
-      result = process_particles(particles, params)
-    else:
-      process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
-      result = process_particles_parallelly(particles, params, process_number)
-      
-    # Extract histogram
-    q_hist = result['qHist']
-    q_hist_weights_squared = result['qHistWeightsSquared']
-    q_hist_error = np.sqrt(q_hist_weights_squared)
-    edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
-             for b, r in zip(params['bins'], params['hist_ranges'])]
-             
-    # Save simulation output file
-    param_str = '_'.join(f"{k}_{v}" for k, v in grid_point.items())
-    savename = os.path.join(args.output_dir, f"sim_{param_str}")
+  q_hist = result['qHist']
+  q_hist_weights_squared = result['qHistWeightsSquared']
+  q_hist_error = np.sqrt(q_hist_weights_squared)
+  edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
+           for b, r in zip(params['bins'], params['hist_ranges'])]
+           
+  param_str = '_'.join(f"{k}_{v}" for k, v in grid_point.items())
+  if save_npz:
+    savename = os.path.join(args.output_dir, f"{label_prefix}_{param_str}")
     save_q_histogram_file(savename, q_hist, q_hist_error, edges)
     
-    # Evaluate fitness
-    record = copy.deepcopy(grid_point)
-    if hist_nxs is not None:
-      hist_sim = np.sum(q_hist, axis=2)
-      hist_sim_error = np.sqrt(np.sum(q_hist_weights_squared, axis=2))
+  hist_sim = np.sum(q_hist, axis=2)
+  hist_sim_error = np.sqrt(np.sum(q_hist_weights_squared, axis=2))
+  
+  if hist_nxs.shape != hist_sim.shape:
+    if hist_nxs.shape == hist_sim.T.shape:
+      hist_sim = hist_sim.T
+      hist_sim_error = hist_sim_error.T
+    else:
+      raise ValueError(f"Incompatible shapes: NeXus={hist_nxs.shape}, Sim={hist_sim.shape}")
       
-      # Handle potential orientation/shape transpositions
-      if hist_nxs.shape != hist_sim.shape:
-        if hist_nxs.shape == hist_sim.T.shape:
-          hist_sim = hist_sim.T
-          hist_sim_error = hist_sim_error.T
-        else:
-          raise ValueError(f"Incompatible shapes: NeXus={hist_nxs.shape}, Sim={hist_sim.shape}")
-      
-      
-      if args.experiment_time:
-        hist_sim, hist_sim_error = upscale_simple(hist_sim, hist_sim_error, args.experiment_time, args.background)
-        
-      # Mask the simulated data using the precalculated mask
-      hist_sim_masked = apply_mask(hist_sim, mask, np.nan)
-      hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
-          
-      reduced_chi2, log_residual = calculate_fitness(
-          hist_nxs, hist_nxs_error, hist_sim_masked, hist_sim_error_masked
-      )
-      record['reduced_chi2'] = reduced_chi2
-      record['log_residual'] = log_residual
-      print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e}")
-      
-      if args.png:
-        plot_path = os.path.join(args.output_dir, f"sim_{param_str}.png")
-        y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
-        z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
-        save_comparison_plot(
-            hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
-            hist_sim_masked, hist_sim_error_masked, edges[0], edges[1],
-            args.q_min, args.q_max, y_plot_range, z_plot_range,
-            plot_path, f"Sim ({param_str})"
-        )
-      
-    records.append(record)
+  if args.experiment_time:
+    hist_sim, hist_sim_error = upscale_simple(hist_sim, hist_sim_error, args.experiment_time, args.background)
     
-  # Write summary table using Python built-in csv module
-  summary_path = os.path.join(args.output_dir, "scan_summary.csv")
+  hist_sim_masked = apply_mask(hist_sim, mask, np.nan)
+  hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
+  
+  reduced_chi2, log_residual = calculate_fitness(
+      hist_nxs, hist_nxs_error, hist_sim_masked, hist_sim_error_masked
+  )
+  
+  record = copy.deepcopy(grid_point)
+  record['reduced_chi2'] = reduced_chi2
+  record['log_residual'] = log_residual
+  
+  if args.png:
+    plot_path = os.path.join(args.output_dir, f"{label_prefix}_{param_str}.png")
+    y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
+    z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
+    save_comparison_plot(
+        hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
+        hist_sim_masked, hist_sim_error_masked, edges[0], edges[1],
+        args.q_min, args.q_max, y_plot_range, z_plot_range,
+        plot_path, f"Sim ({param_str})"
+    )
+    
+  return reduced_chi2, log_residual, record
+
+def save_and_print_summary(records, output_dir, filename, title_header):
+  if records and 'reduced_chi2' in records[0]:
+    records.sort(key=lambda r: (np.isnan(r['reduced_chi2']), r['reduced_chi2']))
+
+  summary_path = os.path.join(output_dir, filename)
   if records:
     fieldnames = list(records[0].keys())
     with open(summary_path, mode='w', newline='') as f:
@@ -455,14 +461,12 @@ def main():
       for r in records:
         writer.writerow(r)
         
-  print(f"\nScan complete! Summary saved to: {summary_path}")
-  print("\n--- Scan Results ---")
+  print(f"\n{title_header} complete! Summary saved to: {summary_path}")
+  print(f"\n--- {title_header} Results (Sorted by reduced_chi2) ---")
   if records:
-    # Build a simple text-based table
     headers = list(records[0].keys())
     col_widths = {h: max(len(h), 12) for h in headers}
     
-    # Calculate max width based on data
     for r in records:
       for h in headers:
         val_str = f"{r[h]:.4e}" if isinstance(r[h], float) else str(r[h])
@@ -481,6 +485,123 @@ def main():
       print(row_str)
   else:
     print("No records to display.")
+
+def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
+  import scipy.optimize
+  param_names, x0, bounds = parse_fit_arguments(args.fit)
+  
+  print(f"\nStarting automated optimization using {args.optimizer.upper()} optimizer...")
+  print(f"Parameters to fit: {param_names}")
+  print(f"Initial guess x0: {x0}")
+  print(f"Bounds: {bounds}")
+  print(f"Max evaluations: {args.max_evals}")
+  print(f"Loss metric: {args.loss_function}")
+  
+  eval_counter = [0]
+  records = []
+  
+  def objective_function(x):
+    eval_counter[0] += 1
+    grid_point = {name: float(val) for name, val in zip(param_names, x)}
+      
+    # Bounds penalty
+    for val, (low, high) in zip(x, bounds):
+      if low is not None and val < low:
+        print(f"Fit Eval #{eval_counter[0]}: Bound constraint violated ({val:.4f} < {low}). Applying penalty.")
+        return 1e9
+      if high is not None and val > high:
+        print(f"Fit Eval #{eval_counter[0]}: Bound constraint violated ({val:.4f} > {high}). Applying penalty.")
+        return 1e9
+        
+    reduced_chi2, log_residual, record = run_simulation_evaluation(
+        grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
+        save_npz=False, label_prefix=f"fit_eval_{eval_counter[0]}"
+    )
+    
+    rec = copy.deepcopy(grid_point)
+    rec['eval_index'] = eval_counter[0]
+    rec['reduced_chi2'] = reduced_chi2
+    rec['log_residual'] = log_residual
+    records.append(rec)
+    
+    loss = log_residual if args.loss_function == 'log_residual' else reduced_chi2
+    if np.isnan(loss):
+      loss = 1e9
+      
+    param_str = ', '.join(f"{k}={v:.4f}" for k, v in grid_point.items())
+    print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f}")
+    return loss
+
+  opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
+  opt_options = {'maxiter': args.max_evals}
+  if opt_method == 'nelder-mead':
+    opt_options['maxfev'] = args.max_evals
+    
+  opt_res = scipy.optimize.minimize(
+      objective_function, x0, method=opt_method, options=opt_options
+  )
+  
+  save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization")
+  print("\n--- Fit Results ---")
+  print(f"Optimizer Success: {opt_res.success}")
+  print(f"Optimizer Message: {opt_res.message}")
+  print(f"Best Loss ({args.loss_function}): {opt_res.fun:.4f}")
+  best_params = dict(zip(param_names, opt_res.x))
+  print("Optimal Parameters:")
+  for k, v in best_params.items():
+    print(f"  {k} = {v:.4f}")
+
+def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
+  scanned_params = parse_scan_arguments(args.scan)
+  keys = list(scanned_params.keys())
+  value_lists = [scanned_params[k] for k in keys]
+  
+  grid = []
+  for combo in itertools.product(*value_lists):
+    grid.append(dict(zip(keys, combo)))
+    
+  print(f"Starting parameter scan with {len(grid)} configurations...")
+
+  records = []
+  for idx, grid_point in enumerate(grid):
+    print(f"\n[{idx+1}/{len(grid)}] Running simulation with: {grid_point}")
+    reduced_chi2, log_residual, record = run_simulation_evaluation(
+        grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
+        save_npz=True, label_prefix="sim"
+    )
+    print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e}")
+    records.append(record)
+    
+  save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan")
+
+def main():
+  parser = create_scan_parser()
+  args = parse_run_args(parser)
+  os.makedirs(args.output_dir, exist_ok=True)
+  
+  validate_scan_args(args, parser)
+  
+  hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw = prepare_experimental_data(args)
+  
+  if args.view_masks:
+    plot_path = os.path.join(args.output_dir, "masked_view.png")
+    y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
+    z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
+    save_view_masks_plot(
+        hist_nxs_raw, hist_nxs_error_raw,
+        hist_nxs, hist_nxs_error,
+        y_edges_nxs, z_edges_nxs,
+        args.q_min, args.q_max, y_plot_range, z_plot_range,
+        plot_path
+    )
+    return
+    
+  particles, particle_type = load_and_precondition_particles(args)
+  
+  if args.fit:
+    run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask)
+  else:
+    run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask)
 
 if __name__ == '__main__':
   main()
