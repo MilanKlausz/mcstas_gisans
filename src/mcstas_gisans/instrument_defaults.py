@@ -82,3 +82,68 @@ def get_saga_subpulse_tof_limits(wavelength):
     subpulse_id = 3
 
   return saga_subpulse_tof_limits[subpulse_id]
+
+import copy
+
+_initial_instrument_defaults = copy.deepcopy(instrument_defaults)
+
+def reset_instrument_defaults():
+  """Reset instrument_defaults dictionary to original initial values."""
+  global instrument_defaults
+  instrument_defaults.clear()
+  for k, v in copy.deepcopy(_initial_instrument_defaults).items():
+    instrument_defaults[k] = v
+
+def set_instrument_parameters(args, instrument_name=None):
+  """
+  Apply command line argument overrides to instrument_defaults in-place.
+  Returns the updated instrument parameter dictionary for the target instrument.
+  """
+  instr_name = getattr(args, 'instrument', instrument_name) if args else instrument_name
+  if not instr_name:
+    instr_name = 'd22'
+    
+  if instr_name in instrument_defaults:
+    instr_params = instrument_defaults[instr_name]
+
+    if getattr(args, 'instrument_nominal_source_sample_distance', None) is not None:
+      instr_params['nominal_source_sample_distance'] = args.instrument_nominal_source_sample_distance
+
+    if getattr(args, 'instrument_sample_detector_distance', None) is not None:
+      instr_params['sample_detector_distance'] = args.instrument_sample_detector_distance
+
+    if getattr(args, 'instrument_tof_instrument', None) is not None:
+      instr_params['tof_instrument'] = (args.instrument_tof_instrument == 'true')
+
+    if getattr(args, 'instrument_t0_monitor_name', None) is not None:
+      instr_params['t0_monitor_name'] = args.instrument_t0_monitor_name
+
+    if getattr(args, 'instrument_wfm_t0_monitor_name', None) is not None:
+      instr_params['wfm_t0_monitor_name'] = args.instrument_wfm_t0_monitor_name
+
+    if getattr(args, 'instrument_wfm_virtual_source_distance', None) is not None:
+      instr_params['wfm_virtual_source_distance'] = args.instrument_wfm_virtual_source_distance
+
+    if getattr(args, 'instrument_beam_declination_angle', None) is not None:
+      instr_params['beam_declination_angle'] = args.instrument_beam_declination_angle
+
+    # Handle detector overrides
+    if 'detector' not in instr_params:
+      instr_params['detector'] = copy.deepcopy(default_detector)
+
+    det_params = instr_params['detector']
+
+    if getattr(args, 'instrument_detector_size', None) is not None:
+      det_params['size'] = list(args.instrument_detector_size)
+
+    if getattr(args, 'instrument_detector_centre_offset', None) is not None:
+      det_params['direct_beam_centre_offset'] = list(args.instrument_detector_centre_offset)
+
+    if getattr(args, 'instrument_detector_pixels', None) is not None:
+      det_params['pixels'] = list(args.instrument_detector_pixels)
+
+    if getattr(args, 'instrument_detector_resolution', None) is not None:
+      det_params['resolution'] = list(args.instrument_detector_resolution)
+
+    return instr_params
+  return instrument_defaults.get(instr_name, {})

@@ -1,14 +1,11 @@
 
-from .instrument_defaults import instrument_defaults, default_detector
+from .instrument_defaults import set_instrument_parameters
 from .instrument import Instrument
 from .sample import Sample
 
 def pack_parameters(args, particle_type):
   """Pack parameters necessary for processing in a single dictionary"""
-  instr_params = instrument_defaults[args.instrument]
-  detector_params = instr_params.get('detector', default_detector) #add default detector if needed
-  #TODO input arguments should be in place to override the detector and instrument parameters
-  instr_params['detector'] = detector_params
+  instr_params = set_instrument_parameters(args)
   no_gravity = args.no_gravity if particle_type != 'photon' else True
   instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.sample_orientation, args.wfm, no_gravity)
 

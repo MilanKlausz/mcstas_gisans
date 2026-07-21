@@ -57,6 +57,17 @@ def test_instrument_overrides():
     # Restore original defaults
     instrument_defaults['d22'] = original_defaults
 
+def test_set_and_reset_instrument_parameters():
+    from mcstas_gisans.instrument_defaults import set_instrument_parameters, reset_instrument_defaults, instrument_defaults
+    parser = create_argparser()
+    args = parser.parse_args(["dummy.mcpl.gz", "-i", "d22", "--instrument_sample_detector_distance", "18.2"])
+    
+    set_instrument_parameters(args)
+    assert instrument_defaults['d22']['sample_detector_distance'] == 18.2
+    
+    reset_instrument_defaults()
+    assert instrument_defaults['d22']['sample_detector_distance'] == 17.6
+
 if __name__ == "__main__":
   test_instrument_overrides()
   print("All instrument overrides tests passed!")

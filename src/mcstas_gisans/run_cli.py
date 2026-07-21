@@ -3,7 +3,7 @@
 Create and run argparse command line interface for the run script
 """
 import argparse
-from .instrument_defaults import instrument_defaults, required_keys_for_wfm
+from .instrument_defaults import instrument_defaults, required_keys_for_wfm, set_instrument_parameters
 from .sample import Sample
 builtin_samples = Sample.list_builtin_samples()
 builtin_str = ', '.join(builtin_samples)
@@ -88,54 +88,7 @@ def parse_args(parser):
   args = parser.parse_args()
 
   # Apply instrument parameter overrides in instrument_defaults
-  import copy
-  instr_name = args.instrument
-  if instr_name in instrument_defaults:
-    # Deep copy the default dictionary so we don't permanently alter the module defaults for other scripts
-    instr_params = copy.deepcopy(instrument_defaults[instr_name])
-
-    if args.instrument_nominal_source_sample_distance is not None:
-      instr_params['nominal_source_sample_distance'] = args.instrument_nominal_source_sample_distance
-
-    if args.instrument_sample_detector_distance is not None:
-      instr_params['sample_detector_distance'] = args.instrument_sample_detector_distance
-
-    if args.instrument_tof_instrument is not None:
-      instr_params['tof_instrument'] = (args.instrument_tof_instrument == 'true')
-
-    if args.instrument_t0_monitor_name is not None:
-      instr_params['t0_monitor_name'] = args.instrument_t0_monitor_name
-
-    if args.instrument_wfm_t0_monitor_name is not None:
-      instr_params['wfm_t0_monitor_name'] = args.instrument_wfm_t0_monitor_name
-
-    if args.instrument_wfm_virtual_source_distance is not None:
-      instr_params['wfm_virtual_source_distance'] = args.instrument_wfm_virtual_source_distance
-
-    if args.instrument_beam_declination_angle is not None:
-      instr_params['beam_declination_angle'] = args.instrument_beam_declination_angle
-
-    # Handle detector overrides
-    if 'detector' not in instr_params:
-      from .instrument_defaults import default_detector
-      instr_params['detector'] = copy.deepcopy(default_detector)
-
-    det_params = instr_params['detector']
-
-    if args.instrument_detector_size is not None:
-      det_params['size'] = list(args.instrument_detector_size)
-
-    if args.instrument_detector_centre_offset is not None:
-      det_params['direct_beam_centre_offset'] = list(args.instrument_detector_centre_offset)
-
-    if args.instrument_detector_pixels is not None:
-      det_params['pixels'] = list(args.instrument_detector_pixels)
-
-    if args.instrument_detector_resolution is not None:
-      det_params['resolution'] = list(args.instrument_detector_resolution)
-
-    # Replace the dict in instrument_defaults
-    instrument_defaults[instr_name] = instr_params
+  set_instrument_parameters(args)
 
   if args.wfm and any(key not in instrument_defaults[args.instrument] for key in required_keys_for_wfm):
     parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
