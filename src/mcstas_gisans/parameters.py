@@ -25,8 +25,10 @@ def pack_parameters(args, particle_type):
   #script uses the McStas axis labeling. FIXME
   hist_bins = [args.bins[1], args.bins[2], args.bins[0]] if args.bins else [instrument.detector.pixels_x, instrument.detector.pixels_y, 1]
 
-  angle_x_maximum, angle_y_maximum = instrument.get_detector_angle_maximum()
-  angle_range = args.angle_range if args.angle_range else [angle_x_maximum, angle_y_maximum]
+  default_angle_range = list(instrument.get_detector_angle_maximum())
+  angle_range = list(args.angle_range) if args.angle_range else default_angle_range
+  if getattr(args, 'verbose', False):
+    print(f"Simulated angle range [deg]: horiz=[{angle_range[0]:.4f}, {angle_range[1]:.4f}], vert=[{angle_range[2]:.4f}, {angle_range[3]:.4f}]")
 
   sample = Sample(args.sample_size_y, args.sample_size_x, args.model, args.sample_arguments)
 

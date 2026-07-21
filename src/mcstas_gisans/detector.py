@@ -154,20 +154,25 @@ class Detector:
     return xDetCoord, yDetCoord, zDetCoord
 
   def get_detector_angle_maximum(self, sample_detector_distance):
-    """Calculate the maximum opening angle covered by the detector"""
-    x_maximum = max(abs(self.min_edge_x), abs(self.max_edge_x))
-    angle_x_maximum = np.arctan(x_maximum / sample_detector_distance)
-    angle_x_maximum_deg = np.rad2deg(angle_x_maximum)
+    """Calculate the 4 opening angles [horiz_min, horiz_max, vert_min, vert_max] covered by the detector (in deg)"""
+    angle_horiz_min_deg = np.rad2deg(np.arctan2(self.min_edge_x, sample_detector_distance))
+    angle_horiz_max_deg = np.rad2deg(np.arctan2(self.max_edge_x, sample_detector_distance))
 
-    #angle in y direction should be defined in the bornagain coord system
     y_top_nexus = self.max_edge_y
     y_bottom_nexus = self.min_edge_y
 
     y_top, z_top = self.transform_to_bornagain_coordinate_system(y_top_nexus, sample_detector_distance)
     y_bottom, z_bottom = self.transform_to_bornagain_coordinate_system(y_bottom_nexus, sample_detector_distance)
 
-    y_angle_top =  np.arctan(y_top / z_top)[0]
-    y_angle_bottom =  np.arctan(y_bottom / z_bottom)[0]
+    y_angle_top = np.arctan2(y_top, z_top)
+    y_angle_bottom = np.arctan2(y_bottom, z_bottom)
 
-    angle_y_maximum_deg = np.rad2deg(max(y_angle_bottom, y_angle_top))
-    return angle_x_maximum_deg, angle_y_maximum_deg
+    if isinstance(y_angle_top, np.ndarray):
+      y_angle_top = y_angle_top[0]
+    if isinstance(y_angle_bottom, np.ndarray):
+      y_angle_bottom = y_angle_bottom[0]
+
+    angle_vert_min_deg = np.rad2deg(min(y_angle_bottom, y_angle_top))
+    angle_vert_max_deg = np.rad2deg(max(y_angle_bottom, y_angle_top))
+
+    return angle_horiz_min_deg, angle_horiz_max_deg, angle_vert_min_deg, angle_vert_max_deg

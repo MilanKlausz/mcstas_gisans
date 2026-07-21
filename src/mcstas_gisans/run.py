@@ -21,19 +21,26 @@ from .parameters import pack_parameters
 
 def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization, analyzer_direction, analyzer_efficiency, analyzer_transmission):
   """
-  Create a simulation with pixel_number pixels that cover an angular range of
-  angle_range degrees. The rand_deg_y and rand_deg_z values are relative
-  rotations of the detector within one pixel to finely sample the outgoing
+  Create a simulation with pixel_number pixels covering the 4-element angle_range
+  [horiz_min, horiz_max, vert_min, vert_max] in degrees. The rand_deg_y and rand_deg_z
+  values are relative rotations of the detector within one pixel to finely sample the outgoing
   direction space.
   """
   beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-  rand_deg_y = rand_y*angle_range[1]*deg/(pixel_number-1)
-  rand_deg_z = rand_z*angle_range[0]*deg/(pixel_number-1)
+  horiz_min, horiz_max, vert_min, vert_max = angle_range
+
+  step_phi = (horiz_max - horiz_min) / (pixel_number - 1) if pixel_number > 1 else 0.0
+  step_alpha = (vert_max - vert_min) / (pixel_number - 1) if pixel_number > 1 else 0.0
+
+  rand_deg_phi = rand_z * step_phi
+  rand_deg_alpha = rand_y * step_alpha
 
   # Define detector
-  detector = ba.SphericalDetector(pixel_number, -angle_range[0]*deg + rand_deg_z, angle_range[0]*deg + rand_deg_z,
-                                  pixel_number, -angle_range[1]*deg + rand_deg_y, angle_range[1]*deg + rand_deg_y)
+  detector = ba.SphericalDetector(
+      pixel_number, (horiz_min + rand_deg_phi)*deg, (horiz_max + rand_deg_phi)*deg,
+      pixel_number, (vert_min + rand_deg_alpha)*deg, (vert_max + rand_deg_alpha)*deg
+  )
   if polarization:
     beam.setPolarization(ba.R3(*polarization))
     detector.setAnalyzer(ba.R3(*analyzer_direction), analyzer_efficiency, analyzer_transmission)
@@ -137,8 +144,15 @@ def process_particles(particles, params, queue=None):
       pout = get_result_intensities(res)
 
       # calculate the components of the velocity vector for all outgoing directions
-      alpha_f = angle_range[1] * (np.linspace(1., -1., outgoing_direction_number) + rand_y / (outgoing_direction_number - 1))
-      phi_f = phi_i + angle_range[0] * (np.linspace(-1., 1., outgoing_direction_number) + rand_z / (outgoing_direction_number - 1))
+      horiz_min, horiz_max, vert_min, vert_max = angle_range
+      step_phi = (horiz_max - horiz_min) / (outgoing_direction_number - 1) if outgoing_direction_number > 1 else 0.0
+      step_alpha = (vert_max - vert_min) / (outgoing_direction_number - 1) if outgoing_direction_number > 1 else 0.0
+
+      rand_deg_phi = rand_z * step_phi
+      rand_deg_alpha = rand_y * step_alpha
+
+      alpha_f = np.linspace(vert_max, vert_min, outgoing_direction_number) + rand_deg_alpha
+      phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_direction_number) + rand_deg_phi
       alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
       VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)

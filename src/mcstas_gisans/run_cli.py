@@ -17,11 +17,12 @@ def create_argparser():
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
   parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
   parser.add_argument('--no_gravity', default=False, action='store_true', help = 'Do not take into account gravity.')
+  parser.add_argument('-v', '--verbose', default=False, action='store_true', help = 'Enable verbose logging.')
 
   bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
   bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
   bornagainGroup.add_argument('-n','--outgoing_direction_number', default=20, type=int, help = 'Number of outgoing directions (in both x and y) within the sampled angle range of the BornAgain simulation.')
-  bornagainGroup.add_argument('--angle_range', nargs=2, type=float, help = 'Horizontal and vertical scattering angles covered by the simulation. [deg]')
+  bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help = 'Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
   bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help = 'BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
   bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation' ], type=str.lower, help="Control specular reflection in the simulation. "
                "NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). "
