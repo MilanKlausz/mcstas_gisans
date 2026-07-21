@@ -9,6 +9,7 @@ import os
 import copy
 import csv
 import itertools
+import time
 import numpy as np
 from multiprocessing import cpu_count
 
@@ -19,6 +20,18 @@ from .parameters import pack_parameters
 from .run import process_particles, process_particles_parallelly
 from .read_d22 import read_nexus_data
 from .experiment_time import upscale_simple
+
+def format_time(seconds):
+  if seconds is None or seconds < 0:
+    return "N/A"
+  m, s = divmod(int(seconds), 60)
+  h, m = divmod(m, 60)
+  if h > 0:
+    return f"{h}h {m}m {s}s"
+  elif m > 0:
+    return f"{m}m {s}s"
+  else:
+    return f"{seconds:.2f}s"
 
 def create_scan_parser():
   parser = create_run_parser()
@@ -450,7 +463,7 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     
   return reduced_chi2, log_residual, record
 
-def save_and_print_summary(records, output_dir, filename, title_header):
+def save_and_print_summary(records, output_dir, filename, title_header, extra_summary_text=None):
   if records and 'reduced_chi2' in records[0]:
     records.sort(key=lambda r: (np.isnan(r['reduced_chi2']), r['reduced_chi2']))
 
@@ -464,7 +477,9 @@ def save_and_print_summary(records, output_dir, filename, title_header):
         writer.writerow(r)
         
   print(f"\n{title_header} complete! Summary saved to: {summary_path}")
-  print(f"\n--- {title_header} Results (Sorted by reduced_chi2) ---")
+  
+  summary_lines = []
+  summary_lines.append(f"--- {title_header} Results (Sorted by reduced_chi2) ---")
   if records:
     headers = list(records[0].keys())
     col_widths = {h: max(len(h), 12) for h in headers}
@@ -476,17 +491,28 @@ def save_and_print_summary(records, output_dir, filename, title_header):
         
     header_row = " | ".join(f"{h:<{col_widths[h]}}" for h in headers)
     separator = "-+-".join("-" * col_widths[h] for h in headers)
-    print(header_row)
-    print(separator)
+    summary_lines.append(header_row)
+    summary_lines.append(separator)
     for r in records:
       row_str = " | ".join(
           (f"{r[h]:<{col_widths[h]}.4e}" if isinstance(r[h], float)
            else f"{str(r[h]):<{col_widths[h]}}")
           for h in headers
       )
-      print(row_str)
+      summary_lines.append(row_str)
   else:
-    print("No records to display.")
+    summary_lines.append("No records to display.")
+
+  if extra_summary_text:
+    summary_lines.append("\n--- Fit Results ---")
+    summary_lines.append(extra_summary_text)
+
+  summary_text_block = "\n".join(summary_lines)
+  print("\n" + summary_text_block)
+
+  if summary_path and os.path.exists(summary_path):
+    with open(summary_path, mode='a') as f:
+      f.write("\n\n" + summary_text_block + "\n")
 
 def create_fit_evolution_gif(output_dir, gif_name="fit_evolution.gif", duration=500):
   """
@@ -540,18 +566,30 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   
   eval_counter = [0]
   records = []
+  start_total_time = time.time()
   
   def objective_function(x):
+    eval_start_time = time.time()
     eval_counter[0] += 1
     grid_point = {name: float(val) for name, val in zip(param_names, x)}
       
     # Bounds penalty
     for val, (low, high) in zip(x, bounds):
       if low is not None and val < low:
-        print(f"Fit Eval #{eval_counter[0]}: Bound constraint violated ({val:.4f} < {low}). Applying penalty.")
+        eval_duration = time.time() - eval_start_time
+        total_elapsed = time.time() - start_total_time
+        avg_iter_time = total_elapsed / eval_counter[0]
+        remaining = args.max_evals - eval_counter[0]
+        eta = avg_iter_time * max(0, remaining)
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({val:.4f} < {low}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         return 1e9
       if high is not None and val > high:
-        print(f"Fit Eval #{eval_counter[0]}: Bound constraint violated ({val:.4f} > {high}). Applying penalty.")
+        eval_duration = time.time() - eval_start_time
+        total_elapsed = time.time() - start_total_time
+        avg_iter_time = total_elapsed / eval_counter[0]
+        remaining = args.max_evals - eval_counter[0]
+        eta = avg_iter_time * max(0, remaining)
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({val:.4f} > {high}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         return 1e9
         
     reduced_chi2, log_residual, record = run_simulation_evaluation(
@@ -569,8 +607,14 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     if np.isnan(loss):
       loss = 1e9
       
+    eval_duration = time.time() - eval_start_time
+    total_elapsed = time.time() - start_total_time
+    avg_iter_time = total_elapsed / eval_counter[0]
+    remaining = args.max_evals - eval_counter[0]
+    eta = avg_iter_time * max(0, remaining)
+    
     param_str = ', '.join(f"{k}={v:.4f}" for k, v in grid_point.items())
-    print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f}")
+    print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     return loss
 
   opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
@@ -582,15 +626,30 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       objective_function, x0, method=opt_method, options=opt_options
   )
   
-  save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization")
-  print("\n--- Fit Results ---")
-  print(f"Optimizer Success: {opt_res.success}")
-  print(f"Optimizer Message: {opt_res.message}")
-  print(f"Best Loss ({args.loss_function}): {opt_res.fun:.4f}")
+  total_runtime = time.time() - start_total_time
+  total_evals = max(1, eval_counter[0])
+  avg_iter_runtime = total_runtime / total_evals
+  
+  fit_results_lines = [
+      f"Optimizer Success: {opt_res.success}",
+      f"Optimizer Message: {opt_res.message}",
+      f"Best Loss ({args.loss_function}): {opt_res.fun:.4f}",
+      "Optimal Parameters:"
+  ]
   best_params = dict(zip(param_names, opt_res.x))
-  print("Optimal Parameters:")
   for k, v in best_params.items():
-    print(f"  {k} = {v:.4f}")
+    fit_results_lines.append(f"  {k} = {v:.4f}")
+    
+  fit_results_lines.extend([
+      "\n--- Runtime Statistics ---",
+      f"Total Runtime: {format_time(total_runtime)} ({total_runtime:.2f}s)",
+      f"Average Iteration Runtime: {avg_iter_runtime:.2f}s",
+      f"Total Evaluations Completed: {total_evals}"
+  ])
+  
+  extra_summary_text = "\n".join(fit_results_lines)
+  
+  save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text)
 
   if args.gif:
     create_fit_evolution_gif(args.output_dir)
@@ -604,19 +663,42 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
   for combo in itertools.product(*value_lists):
     grid.append(dict(zip(keys, combo)))
     
-  print(f"Starting parameter scan with {len(grid)} configurations...")
+  total_evals = len(grid)
+  print(f"Starting parameter scan with {total_evals} configurations...")
 
   records = []
+  start_total_time = time.time()
+  
   for idx, grid_point in enumerate(grid):
-    print(f"\n[{idx+1}/{len(grid)}] Running simulation with: {grid_point}")
+    iter_start_time = time.time()
+    current_count = idx + 1
+    print(f"\n[{current_count}/{total_evals}] Running simulation with: {grid_point}")
     reduced_chi2, log_residual, record = run_simulation_evaluation(
         grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
         save_npz=True, label_prefix="sim"
     )
-    print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e}")
+    
+    iter_duration = time.time() - iter_start_time
+    total_elapsed = time.time() - start_total_time
+    avg_iter_time = total_elapsed / current_count
+    remaining = total_evals - current_count
+    eta = avg_iter_time * max(0, remaining)
+    
+    print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     records.append(record)
     
-  save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan")
+  total_runtime = time.time() - start_total_time
+  avg_iter_runtime = total_runtime / max(1, total_evals)
+  
+  runtime_summary_lines = [
+      "--- Runtime Statistics ---",
+      f"Total Runtime: {format_time(total_runtime)} ({total_runtime:.2f}s)",
+      f"Average Iteration Runtime: {avg_iter_runtime:.2f}s",
+      f"Total Configurations Scanned: {total_evals}"
+  ]
+  extra_summary_text = "\n".join(runtime_summary_lines)
+  
+  save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text)
 
 def main():
   parser = create_scan_parser()
