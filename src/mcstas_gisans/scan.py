@@ -20,6 +20,7 @@ from .parameters import pack_parameters
 from .run import process_particles, process_particles_parallelly
 from .read_d22 import read_nexus_data
 from .experiment_time import upscale_simple
+from .masking import get_mask, apply_mask, save_view_masks_plot
 
 def format_time(seconds):
   if seconds is None or seconds < 0:
@@ -59,12 +60,16 @@ def create_scan_parser():
   
   
   scan_mask_group = parser.add_argument_group('Masking options to exclude data ranges for the fitness calculation')
-  scan_mask_group.add_argument('--view_masks', action='store_true', help='Only view the applied masks on the experimental NeXus data, then exit.')
+  scan_mask_group.add_argument('--mask_view', action='store_true', help='Only view the applied masks on the experimental NeXus data, then exit.')
   scan_mask_group.add_argument('--mask_qy_range', nargs=2, type=float, default=None, help='Qy range to mask out from the fitness calculation (e.g., -0.05 0.05) [1/nm].')
-  scan_mask_group.add_argument('--qy_min_cut', type=float, default=None, help='Lower Qy cut option. Any data below this Qy value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--qy_max_cut', type=float, default=None, help='Upper Qy cut option. Any data above this Qy value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--qz_min_cut', type=float, default=None, help='Lower Qz cut option. Any data below this Qz value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--qz_max_cut', type=float, default=None, help='Upper Qz cut option. Any data above this Qz value is disregarded [1/nm].')
+  scan_mask_group.add_argument('--mask_qy_min_cut', type=float, default=None, help='Lower Qy cut option. Any data below this Qy value is disregarded [1/nm].')
+  scan_mask_group.add_argument('--mask_qy_max_cut', type=float, default=None, help='Upper Qy cut option. Any data above this Qy value is disregarded [1/nm].')
+  scan_mask_group.add_argument('--mask_qz_min_cut', type=float, default=None, help='Lower Qz cut option. Any data below this Qz value is disregarded [1/nm].')
+  scan_mask_group.add_argument('--mask_qz_max_cut', type=float, default=None, help='Upper Qz cut option. Any data above this Qz value is disregarded [1/nm].')
+  scan_mask_group.add_argument('--mask_exclude_q_box', action='append', nargs=4, type=float, default=None,
+                               help='Exclude rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. (Can be specified multiple times).')
+  scan_mask_group.add_argument('--mask_include_q_box', action='append', nargs=4, type=float, default=None,
+                               help='Include rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. Applied after exclusions. (Can be specified multiple times).')
   fit_group = parser.add_argument_group('Automated optimization / fitting options')
   fit_group.add_argument('--fit', action='append', nargs='+', required=False,
                          help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')
@@ -151,67 +156,6 @@ def convert_val(value_str):
       return float(value_str)
     except ValueError:
       return value_str
-
-def get_mask(y_edges, z_edges, mask_qy_range=None,
-             qy_min_cut=None, qy_max_cut=None, qz_min_cut=None, qz_max_cut=None,
-             shape=None):
-  """Calculates a boolean mask of shape matching the detector data.
-  True = keep, False = mask out."""
-  if shape is None:
-    shape = (len(y_edges) - 1, len(z_edges) - 1)
-  
-  keep_mask = np.ones(shape, dtype=bool)
-  
-  y_centres = (y_edges[:-1] + y_edges[1:]) / 2.0
-  z_centres = (z_edges[:-1] + z_edges[1:]) / 2.0
-  
-  # Center Qy mask
-  if mask_qy_range is not None:
-    qy_mask = (y_centres >= mask_qy_range[0]) & (y_centres <= mask_qy_range[1])
-    if shape[0] == len(y_centres):
-      keep_mask[qy_mask, :] = False
-    else:
-      keep_mask[:, qy_mask] = False
-      
-  # Qy min cut
-  if qy_min_cut is not None:
-    qy_mask = y_centres < qy_min_cut
-    if shape[0] == len(y_centres):
-      keep_mask[qy_mask, :] = False
-    else:
-      keep_mask[:, qy_mask] = False
-      
-  # Qy max cut
-  if qy_max_cut is not None:
-    qy_mask = y_centres > qy_max_cut
-    if shape[0] == len(y_centres):
-      keep_mask[qy_mask, :] = False
-    else:
-      keep_mask[:, qy_mask] = False
-      
-  # Qz min cut
-  if qz_min_cut is not None:
-    qz_mask = z_centres < qz_min_cut
-    if shape[0] == len(z_centres):
-      keep_mask[qz_mask, :] = False
-    else:
-      keep_mask[:, qz_mask] = False
-      
-  # Qz max cut
-  if qz_max_cut is not None:
-    qz_mask = z_centres > qz_max_cut
-    if shape[0] == len(z_centres):
-      keep_mask[qz_mask, :] = False
-    else:
-      keep_mask[:, qz_mask] = False
-      
-  return keep_mask
-
-def apply_mask(data, mask, fill_value):
-  """Applies a precalculated boolean mask to the data, replacing False values with fill_value."""
-  res = data.astype(np.float64) if isinstance(fill_value, float) and np.isnan(fill_value) else data.copy()
-  res[~mask] = fill_value
-  return res
 
 def calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error):
   """Evaluates fitness directly on the pre-masked histograms.
@@ -300,67 +244,9 @@ def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
   plt.savefig(savename, dpi=300)
   plt.close(fig)
   print(f"Created comparison plot: {savename}")
- 
-def save_view_masks_plot(hist_raw, hist_raw_error, hist_masked, hist_masked_error,
-                         y_edges_nxs, z_edges_nxs, q_min, q_max, y_plot_range, z_plot_range,
-                         savename):
-  import matplotlib.pyplot as plt
-  from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
-  
-  intensity_min = 1.0
-  
-  fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-  
-  # Plot raw 2D
-  log_plot_2d(hist_raw, y_edges_nxs, z_edges_nxs, "Raw NeXus data", ax=axes[0, 0],
-              intensity_min=intensity_min, intensity_max=hist_raw.max(),
-              y_range=y_plot_range, z_range=z_plot_range, output='none')
-              
-  # Plot masked 2D
-  log_plot_2d(hist_masked, y_edges_nxs, z_edges_nxs, "Masked NeXus data", ax=axes[0, 1],
-              intensity_min=intensity_min, intensity_max=hist_raw.max(),
-              y_range=y_plot_range, z_range=z_plot_range, output='none')
-              
-  gs = axes[1, 0].get_gridspec()
-  axes[1, 0].remove()
-  axes[1, 1].remove()
-  ax_bottom = fig.add_subplot(gs[1:, :])
-  
-  qz_min_index = np.digitize(q_min, z_edges_nxs) - 1
-  qz_max_index = np.digitize(q_max, z_edges_nxs)
-  
-  # For 1D extraction, replace NaN with 0 so np.sum works properly
-  hist_masked_1d = np.nan_to_num(hist_masked, nan=0.0)
-  
-  values_raw, errors_raw, y_bins_nxs, z_limits = extract_range_to_1d(
-      hist_raw, hist_raw_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
-  )
-  plot_q_1d(values_raw, errors_raw, y_bins_nxs, 'Qy [1/nm]', color='blue',
-            title_text='', label='Raw data', ax=ax_bottom, limits=y_plot_range, output='none')
-            
-  values_masked, errors_masked, y_bins_nxs, _ = extract_range_to_1d(
-      hist_masked_1d, hist_masked_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
-  )
-  plot_q_1d(values_masked, errors_masked, y_bins_nxs, 'Qy [1/nm]', color='green',
-            label='Masked data', ax=ax_bottom, limits=y_plot_range, output='none')
-            
-  axes[0, 0].axhline(z_edges_nxs[qz_min_index], color='magenta', linestyle='--')
-  axes[0, 0].axhline(z_edges_nxs[qz_max_index], color='magenta', linestyle='--')
-  axes[0, 1].axhline(z_edges_nxs[qz_min_index], color='magenta', linestyle='--')
-  axes[0, 1].axhline(z_edges_nxs[qz_max_index], color='magenta', linestyle='--')
-  
-  # Format 1D overlay plot (grid only on the major ticks of this plot)
-  ax_bottom.set_title(f"Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]")
-  ax_bottom.grid(True, which='major')
-  ax_bottom.legend(loc='upper left')
-  
-  plt.tight_layout()
-  plt.savefig(savename, dpi=300)
-  plt.close(fig)
-  print(f"Created masks view plot: {savename}")
 
 def validate_scan_args(args, parser):
-  if not args.view_masks:
+  if not args.mask_view:
     if not args.filename:
       parser.error("the following arguments are required: filename")
     if not args.scan and not args.fit:
@@ -379,8 +265,10 @@ def prepare_experimental_data(args):
   mask = get_mask(
       y_edges_nxs, z_edges_nxs,
       mask_qy_range=args.mask_qy_range,
-      qy_min_cut=args.qy_min_cut, qy_max_cut=args.qy_max_cut,
-      qz_min_cut=args.qz_min_cut, qz_max_cut=args.qz_max_cut,
+      qy_min_cut=args.mask_qy_min_cut, qy_max_cut=args.mask_qy_max_cut,
+      qz_min_cut=args.mask_qz_min_cut, qz_max_cut=args.mask_qz_max_cut,
+      exclude_q_box=args.mask_exclude_q_box,
+      include_q_box=args.mask_include_q_box,
       shape=hist_nxs_raw.shape
   )
   
@@ -719,7 +607,7 @@ def main():
   
   hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw = prepare_experimental_data(args)
   
-  if args.view_masks:
+  if args.mask_view:
     plot_path = os.path.join(args.output_dir, "masked_view.png")
     y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
     z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
