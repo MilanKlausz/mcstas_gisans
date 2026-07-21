@@ -74,6 +74,10 @@ def create_scan_parser():
                          help='Maximum number of objective function evaluations for the optimizer (default: 10).')
   fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
                          help='Metric to minimize during optimization (default: reduced_chi2).')
+  fit_group.add_argument('--xatol', type=float, default=0.01,
+                         help='Absolute parameter convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
+  fit_group.add_argument('--fatol', type=float, default=0.05,
+                         help='Absolute loss function convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.05 matching MC Poisson noise floor).')
   fit_group.add_argument('--gif', action='store_true',
                          help='Generate animated GIF showing the evolution of the fitting process.')
 
@@ -563,6 +567,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   print(f"Bounds: {bounds}")
   print(f"Max evaluations: {args.max_evals}")
   print(f"Loss metric: {args.loss_function}")
+  print(f"Convergence tolerances: xatol={args.xatol}, fatol={args.fatol}")
   
   eval_counter = [0]
   records = []
@@ -621,6 +626,11 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   opt_options = {'maxiter': args.max_evals}
   if opt_method == 'nelder-mead':
     opt_options['maxfev'] = args.max_evals
+    opt_options['xatol'] = args.xatol
+    opt_options['fatol'] = args.fatol
+  elif opt_method == 'powell':
+    opt_options['xtol'] = args.xatol
+    opt_options['ftol'] = args.fatol
     
   opt_res = scipy.optimize.minimize(
       objective_function, x0, method=opt_method, options=opt_options
