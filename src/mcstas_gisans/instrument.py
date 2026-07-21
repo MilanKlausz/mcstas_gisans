@@ -142,3 +142,6 @@ class Instrument:
 
   def get_detector_angle_maximum(self):
     return self.detector.get_detector_angle_maximum(self.sample_detector_distance)
+
+  def get_masked_angle_range(self, mask, len_y_centres, factor=1.0):
+    return self.detector.get_masked_angle_range(self.sample_detector_distance, mask, len_y_centres, factor=factor)

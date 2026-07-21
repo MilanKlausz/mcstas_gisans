@@ -70,6 +70,10 @@ def create_scan_parser():
                                help='Exclude rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. (Can be specified multiple times).')
   scan_mask_group.add_argument('--mask_include_q_box', action='append', nargs=4, type=float, default=None,
                                help='Include rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. Applied after exclusions. (Can be specified multiple times).')
+  scan_mask_group.add_argument('--simulate_mask_angle_range', action='store_true',
+                               help='Calculate minimum simulation angle range enclosing the unmasked detector pixels to optimize performance.')
+  scan_mask_group.add_argument('--simulate_mask_angle_range_factor', type=float, default=1.0,
+                               help='Expansion factor for --simulate_mask_angle_range (default: 1.0). Use e.g. 1.05 for a 5%% safety margin around the ROI.')
   fit_group = parser.add_argument_group('Automated optimization / fitting options')
   fit_group.add_argument('--fit', action='append', nargs='+', required=False,
                          help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')
@@ -275,6 +279,18 @@ def prepare_experimental_data(args):
   hist_nxs = apply_mask(hist_nxs_raw, mask, np.nan)
   hist_nxs_error = apply_mask(hist_nxs_error_raw, mask, 0.0)
   
+  if getattr(args, 'simulate_mask_angle_range', False):
+    from .instrument import Instrument
+    from .instrument_defaults import instrument_defaults
+    instr_params = instrument_defaults[args.instrument] #note: the instrument defaults are already updated by parse_run_args
+    instrument = Instrument(instr_params, args.alpha, wavelength_val, args.sample_orientation, args.wfm, args.no_gravity)
+    
+    len_y_centres = len(y_edges_nxs) - 1
+    factor = getattr(args, 'simulate_mask_angle_range_factor', 1.0)
+    mask_angle_range = list(instrument.get_masked_angle_range(mask, len_y_centres, factor=factor))
+    args.angle_range = mask_angle_range
+    print(f"Mask angle range [deg] (factor={factor:.2f}): horiz=[{mask_angle_range[0]:.4f}, {mask_angle_range[1]:.4f}], vert=[{mask_angle_range[2]:.4f}, {mask_angle_range[3]:.4f}]")
+
   return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
 
 def load_and_precondition_particles(args):

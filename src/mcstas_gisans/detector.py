@@ -153,16 +153,16 @@ class Detector:
 
     return xDetCoord, yDetCoord, zDetCoord
 
-  def get_detector_angle_maximum(self, sample_detector_distance):
-    """Calculate the 4 opening angles [horiz_min, horiz_max, vert_min, vert_max] covered by the detector (in deg)"""
-    angle_horiz_min_deg = np.rad2deg(np.arctan2(self.min_edge_x, sample_detector_distance))
-    angle_horiz_max_deg = np.rad2deg(np.arctan2(self.max_edge_x, sample_detector_distance))
+  def calculate_angles_from_spatial_bounds(self, sample_detector_distance, x_min, x_max, y_min_nexus, y_max_nexus):
+    """
+    Calculate opening angles [horiz_min, horiz_max, vert_min, vert_max] in degrees
+    for given horizontal (x_min, x_max) and vertical (y_min_nexus, y_max_nexus) spatial boundaries in Nexus coord system.
+    """
+    angle_horiz_min_deg = np.rad2deg(np.arctan2(x_min, sample_detector_distance))
+    angle_horiz_max_deg = np.rad2deg(np.arctan2(x_max, sample_detector_distance))
 
-    y_top_nexus = self.max_edge_y
-    y_bottom_nexus = self.min_edge_y
-
-    y_top, z_top = self.transform_to_bornagain_coordinate_system(y_top_nexus, sample_detector_distance)
-    y_bottom, z_bottom = self.transform_to_bornagain_coordinate_system(y_bottom_nexus, sample_detector_distance)
+    y_top, z_top = self.transform_to_bornagain_coordinate_system(y_max_nexus, sample_detector_distance)
+    y_bottom, z_bottom = self.transform_to_bornagain_coordinate_system(y_min_nexus, sample_detector_distance)
 
     y_angle_top = np.arctan2(y_top, z_top)
     y_angle_bottom = np.arctan2(y_bottom, z_bottom)
@@ -176,3 +176,57 @@ class Detector:
     angle_vert_max_deg = np.rad2deg(max(y_angle_bottom, y_angle_top))
 
     return angle_horiz_min_deg, angle_horiz_max_deg, angle_vert_min_deg, angle_vert_max_deg
+
+  def get_detector_angle_maximum(self, sample_detector_distance):
+    """Calculate the 4 opening angles [horiz_min, horiz_max, vert_min, vert_max] covered by the detector (in deg)"""
+    return self.calculate_angles_from_spatial_bounds(
+        sample_detector_distance,
+        self.min_edge_x, self.max_edge_x,
+        self.min_edge_y, self.max_edge_y
+    )
+
+  def get_masked_angle_range(self, sample_detector_distance, mask, len_y_centres, factor=1.0):
+    """
+    Calculate the minimum opening angles [horiz_min, horiz_max, vert_min, vert_max] in degrees
+    enclosing all unmasked (True) pixels in mask. Uses exact pixel outer boundaries.
+    Optional factor scales the angular span symmetrically around the center (e.g., 1.05 for 5% margin).
+    """
+    x_edges = np.linspace(self.min_edge_x, self.max_edge_x, self.pixels_x + 1)
+    y_nexus_edges = np.linspace(self.min_edge_y, self.max_edge_y, self.pixels_y + 1)
+
+    if mask.shape[0] == len_y_centres:
+      j_indices = np.where(np.any(mask, axis=1))[0]
+      i_indices = np.where(np.any(mask, axis=0))[0]
+    else:
+      i_indices = np.where(np.any(mask, axis=1))[0]
+      j_indices = np.where(np.any(mask, axis=0))[0]
+
+    if len(j_indices) == 0 or len(i_indices) == 0:
+      return self.get_detector_angle_maximum(sample_detector_distance)
+
+    j_min, j_max = int(np.min(j_indices)), int(np.max(j_indices))
+    i_min, i_max = int(np.min(i_indices)), int(np.max(i_indices))
+
+    # Outer pixel boundaries
+    x_min = x_edges[j_min]
+    x_max = x_edges[j_max + 1]
+
+    y_min_nexus = y_nexus_edges[i_min]
+    y_max_nexus = y_nexus_edges[i_max + 1]
+
+    h_min, h_max, v_min, v_max = self.calculate_angles_from_spatial_bounds(
+        sample_detector_distance,
+        x_min, x_max,
+        y_min_nexus, y_max_nexus
+    )
+
+    if factor != 1.0:
+      h_center = 0.5 * (h_min + h_max)
+      h_half = 0.5 * (h_max - h_min) * factor
+      h_min, h_max = h_center - h_half, h_center + h_half
+
+      v_center = 0.5 * (v_min + v_max)
+      v_half = 0.5 * (v_max - v_min) * factor
+      v_min, v_max = v_center - v_half, v_center + v_half
+
+    return h_min, h_max, v_min, v_max
