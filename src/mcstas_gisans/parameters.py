@@ -29,8 +29,17 @@ def pack_parameters(args, particle_type):
 
   sample = Sample(args.sample_size_y, args.sample_size_x, args.model, args.sample_arguments)
 
+  if getattr(args, 'outgoing_directions_horizontal', None) is not None:
+    outgoing_directions_horizontal = args.outgoing_directions_horizontal
+    outgoing_directions_vertical = args.outgoing_directions_vertical
+  else:
+    outgoing_directions = getattr(args, 'outgoing_directions', 20)
+    outgoing_directions_horizontal = outgoing_directions
+    outgoing_directions_vertical = outgoing_directions
+
   return {
-    'outgoing_direction_number': args.outgoing_direction_number,
+    'outgoing_directions_horizontal': outgoing_directions_horizontal,
+    'outgoing_directions_vertical': outgoing_directions_vertical,
     'angle_range': angle_range,
     'raw_output': args.raw_output,
     'bins': hist_bins,

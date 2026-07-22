@@ -56,7 +56,7 @@ SAMPLE_ARGS="radius=${PARAM_RADIUS};interferenceRange=${PARAM_INTERFERENCE_RANGE
 ###############################################################################
 ############################# SIMULATION SETTINGS #############################
 ###############################################################################
-OUTGOING_DIRECTION_NUMBER=100
+OUTGOING_DIRECTIONS=100
 
 ###############################################################################
 ############################# INPUT/OUTPUT PATHS ##############################
@@ -80,7 +80,7 @@ mg_run \
   --sample_size_y $SAMPLE_SIZE_Y \
   --sample_size_x $SAMPLE_SIZE_X \
   --alpha $INCIDENT_ANGLE \
-  --outgoing_direction_number $OUTGOING_DIRECTION_NUMBER \
+  --outgoing_directions $OUTGOING_DIRECTIONS \
   --allow_sample_miss \
   --specular 'include_specular' \
   --use_avg_materials \

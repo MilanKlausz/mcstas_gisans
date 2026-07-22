@@ -19,9 +19,9 @@ from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
-def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization, analyzer_direction, analyzer_efficiency, analyzer_transmission):
+def get_simulation(sample, outgoing_directions_horizontal, outgoing_directions_vertical, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization, analyzer_direction, analyzer_efficiency, analyzer_transmission):
   """
-  Create a simulation with pixel_number pixels covering the 4-element angle_range
+  Create a simulation with outgoing_directions_horizontal and _vertical pixels covering the 4-element angle_range
   [horiz_min, horiz_max, vert_min, vert_max] in degrees. The rand_deg_y and rand_deg_z
   values are relative rotations of the detector within one pixel to finely sample the outgoing
   direction space.
@@ -30,16 +30,16 @@ def get_simulation(sample, pixel_number, angle_range, wavelength, alpha_i, p, ra
 
   horiz_min, horiz_max, vert_min, vert_max = angle_range
 
-  step_phi = (horiz_max - horiz_min) / (pixel_number - 1) if pixel_number > 1 else 0.0
-  step_alpha = (vert_max - vert_min) / (pixel_number - 1) if pixel_number > 1 else 0.0
+  step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
+  step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
 
   rand_deg_phi = rand_z * step_phi
   rand_deg_alpha = rand_y * step_alpha
 
   # Define detector
   detector = ba.SphericalDetector(
-      pixel_number, (horiz_min + rand_deg_phi)*deg, (horiz_max + rand_deg_phi)*deg,
-      pixel_number, (vert_min + rand_deg_alpha)*deg, (vert_max + rand_deg_alpha)*deg
+      outgoing_directions_horizontal, (horiz_min + rand_deg_phi)*deg, (horiz_max + rand_deg_phi)*deg,
+      outgoing_directions_vertical, (vert_min + rand_deg_alpha)*deg, (vert_max + rand_deg_alpha)*deg
   )
   if polarization:
     beam.setPolarization(ba.R3(*polarization))
@@ -61,8 +61,7 @@ def get_result_intensities(res):
       # BornAgain 23.0
       nx = res.xAxis().size()
       ny = res.yAxis().size()
-      #note: not sure about x,y, but it doesn't matter as long as nx=ny
-      pout = np.array(res.flatVector()).reshape(nx, ny)
+      pout = np.array(res.flatVector()).reshape(ny, nx)
       pout = np.flipud(pout)
     else:
       print("ERROR: Could not extract data from the simulation result.")
@@ -90,7 +89,8 @@ def process_particles(particles, params, queue=None):
   sample_model = sample_module.get_sample(**sample.kwargs)
 
   calculate_q = params['instrument'].calculate_q
-  outgoing_direction_number = params['outgoing_direction_number']
+  outgoing_directions_horizontal = params['outgoing_directions_horizontal']
+  outgoing_directions_vertical = params['outgoing_directions_vertical']
   angle_range = params['angle_range']
   raw_output = params['raw_output']
   hist_ranges = params['hist_ranges']
@@ -127,13 +127,12 @@ def process_particles(particles, params, queue=None):
       q_array = calculate_q(x, y, z, t, [vx], [vy], [vz])
       weights = np.array([p])
     else:
-      # Calculate scattering probability for (outgoing_direction_number)^2
-      # outgoing beams. The outgoing direction grid is evenly spaced within the
+      # Calculate scattering probability for outgoing beams. The outgoing direction grid is evenly spaced within the
       # sampled angle range, but random angle offset of the whole grid in both
       # directions is applied for better sampling of the outgoing directions
       rand_y = 2*np.random.random()-1
       rand_z = 2*np.random.random()-1
-      sim = get_simulation(sample_model, outgoing_direction_number, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization,
+      sim = get_simulation(sample_model, outgoing_directions_horizontal, outgoing_directions_vertical, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization,
                            analyzer_direction=analyzer_direction,
                            analyzer_efficiency=analyzer_efficiency,
                            analyzer_transmission=analyzer_transmission)
@@ -145,14 +144,14 @@ def process_particles(particles, params, queue=None):
 
       # calculate the components of the velocity vector for all outgoing directions
       horiz_min, horiz_max, vert_min, vert_max = angle_range
-      step_phi = (horiz_max - horiz_min) / (outgoing_direction_number - 1) if outgoing_direction_number > 1 else 0.0
-      step_alpha = (vert_max - vert_min) / (outgoing_direction_number - 1) if outgoing_direction_number > 1 else 0.0
+      step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
+      step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
 
       rand_deg_phi = rand_z * step_phi
       rand_deg_alpha = rand_y * step_alpha
 
-      alpha_f = np.linspace(vert_max, vert_min, outgoing_direction_number) + rand_deg_alpha
-      phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_direction_number) + rand_deg_phi
+      alpha_f = np.linspace(vert_max, vert_min, outgoing_directions_vertical) + rand_deg_alpha
+      phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_directions_horizontal) + rand_deg_phi
       alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
       VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
@@ -256,7 +255,11 @@ def main():
   particles = precondition(particles, args)
 
   ### BornAgain simulation ###
-  savename = f"q_events_pix{args.outgoing_direction_number}" if args.savename == '' else args.savename
+  if args.outgoing_directions is not None:
+    suffix = args.outgoing_directions
+  else:
+    suffix = f"{args.outgoing_directions_horizontal}_{args.outgoing_directions_vertical}"
+  savename = f"q_events_pix{suffix}" if args.savename == '' else args.savename
   print('Number of particles being processed: ', len(particles))
 
   #pack parameters necessary for processing

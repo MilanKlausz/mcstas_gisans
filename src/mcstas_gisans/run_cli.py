@@ -7,6 +7,7 @@ from .instrument_defaults import instrument_defaults, required_keys_for_wfm, set
 from .sample import Sample
 builtin_samples = Sample.list_builtin_samples()
 builtin_str = ', '.join(builtin_samples)
+DEFAULT_OUTGOING_DIRECTIONS = 20
 
 def create_argparser():
   parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -21,7 +22,9 @@ def create_argparser():
 
   bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
   bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-  bornagainGroup.add_argument('-n','--outgoing_direction_number', default=20, type=int, help = 'Number of outgoing directions (in both x and y) within the sampled angle range of the BornAgain simulation.')
+  bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. (default: {DEFAULT_OUTGOING_DIRECTIONS})') #default value is not handled by the argparser to allow checking if outgoing_directions is used together with outgoing_directions_horizontal/outgoing_directions_vertical
+  bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction.')
+  bornagainGroup.add_argument('--outgoing_directions_vertical', type=int, help='Number of outgoing directions in the vertical direction.')
   bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help = 'Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
   bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help = 'BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
   bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation' ], type=str.lower, help="Control specular reflection in the simulation. "
@@ -86,6 +89,16 @@ def create_argparser():
 
 def parse_args(parser):
   args = parser.parse_args()
+  # Validate outgoing directions options
+  has_outgoing_directions = hasattr(args, 'outgoing_directions')
+  if has_outgoing_directions and (args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None):
+    parser.error("Cannot specify --outgoing_directions together with --outgoing_directions_horizontal or --outgoing_directions_vertical")
+  if (args.outgoing_directions_horizontal is not None) != (args.outgoing_directions_vertical is not None):
+    parser.error("Both --outgoing_directions_horizontal and --outgoing_directions_vertical must be specified together")
+  if not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
+    args.outgoing_directions = DEFAULT_OUTGOING_DIRECTIONS
+  elif not has_outgoing_directions:
+    args.outgoing_directions = None #needed because of default=argparse.SUPPRESS
 
   # Apply instrument parameter overrides in instrument_defaults
   set_instrument_parameters(args)
