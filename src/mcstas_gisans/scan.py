@@ -81,6 +81,8 @@ def create_scan_parser():
                          help='Specify parameter names to fit as integers (e.g. --fit_integer layerNumber). These parameters will be constrained to integer values during optimization (rounded for Nelder-Mead and Powell, and natively handled for Differential Evolution).')
   fit_group.add_argument('--optimizer', type=str, default='nelder-mead', choices=['nelder-mead', 'powell', 'differential-evolution'],
                          help='Optimization algorithm to use (default: nelder-mead).')
+  fit_group.add_argument('--popsize', type=int, default=15,
+                         help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
   fit_group.add_argument('--max_evals', type=int, default=10,
                          help='Maximum number of objective function evaluations for the optimizer (default: 10).')
   fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
@@ -379,18 +381,24 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     
   return reduced_chi2, log_residual, record
 
+def save_summary_csv(records, output_dir, filename):
+  if not records:
+    return
+  os.makedirs(output_dir, exist_ok=True)
+  summary_path = os.path.join(output_dir, filename)
+  fieldnames = list(records[0].keys())
+  with open(summary_path, mode='w', newline='') as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    for r in records:
+      writer.writerow(r)
+
 def save_and_print_summary(records, output_dir, filename, title_header, extra_summary_text=None):
   if records and 'reduced_chi2' in records[0]:
     records.sort(key=lambda r: (np.isnan(r['reduced_chi2']), r['reduced_chi2']))
 
+  save_summary_csv(records, output_dir, filename)
   summary_path = os.path.join(output_dir, filename)
-  if records:
-    fieldnames = list(records[0].keys())
-    with open(summary_path, mode='w', newline='') as f:
-      writer = csv.DictWriter(f, fieldnames=fieldnames)
-      writer.writeheader()
-      for r in records:
-        writer.writerow(r)
         
   print(f"\n{title_header} complete! Summary saved to: {summary_path}")
   
@@ -535,6 +543,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     rec['reduced_chi2'] = reduced_chi2
     rec['log_residual'] = log_residual
     records.append(rec)
+    save_summary_csv(records, args.output_dir, "fit_summary.csv")
     
     loss = log_residual if args.loss_function == 'log_residual' else reduced_chi2
     if np.isnan(loss):
@@ -552,11 +561,16 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
 
   if args.optimizer.lower() == 'differential-evolution':
     integrality = [name in fit_integers for name in param_names]
+    # Each generation in DE evaluates popsize * len(param_names) times (default popsize is 15).
+    # We scale maxiter so that the total evaluations respect args.max_evals.
+    popsize = args.popsize
+    de_maxiter = max(1, args.max_evals // (popsize * len(param_names)))
     opt_res = scipy.optimize.differential_evolution(
         objective_function,
         bounds,
         x0=x0,
-        maxiter=args.max_evals,
+        maxiter=de_maxiter,
+        popsize=popsize,
         integrality=integrality,
         polish=False
     )
@@ -639,6 +653,7 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
     
     print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     records.append(record)
+    save_summary_csv(records, args.output_dir, "scan_summary.csv")
     
   total_runtime = time.time() - start_total_time
   avg_iter_runtime = total_runtime / max(1, total_evals)
