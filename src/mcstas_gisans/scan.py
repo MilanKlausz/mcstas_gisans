@@ -77,7 +77,9 @@ def create_scan_parser():
   fit_group = parser.add_argument_group('Automated optimization / fitting options')
   fit_group.add_argument('--fit', action='append', nargs='+', required=False,
                          help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')
-  fit_group.add_argument('--optimizer', type=str, default='nelder-mead', choices=['nelder-mead', 'powell'],
+  fit_group.add_argument('--fit_integer', action='append', nargs='+', required=False, default=None,
+                         help='Specify parameter names to fit as integers (e.g. --fit_integer layerNumber). These parameters will be constrained to integer values during optimization (rounded for Nelder-Mead and Powell, and natively handled for Differential Evolution).')
+  fit_group.add_argument('--optimizer', type=str, default='nelder-mead', choices=['nelder-mead', 'powell', 'differential-evolution'],
                          help='Optimization algorithm to use (default: nelder-mead).')
   fit_group.add_argument('--max_evals', type=int, default=10,
                          help='Maximum number of objective function evaluations for the optimizer (default: 10).')
@@ -257,6 +259,12 @@ def validate_scan_args(args, parser):
       parser.error("Either --scan or --fit must be specified.")
   if not args.nxs:
     parser.error("the following arguments are required: --nxs")
+  if args.fit and args.optimizer.lower() == 'differential-evolution':
+    param_names = [item[0] for item in args.fit]
+    _, _, bounds = parse_fit_arguments(args.fit)
+    for name, (low, high) in zip(param_names, bounds):
+      if low is None or high is None:
+        parser.error(f"Differential Evolution optimizer requires finite bounds for all fitted parameters. Please specify bounds in --fit for '{name}' (e.g. --fit {name} <initial_guess> <min_bound> <max_bound>).")
 
 def prepare_experimental_data(args):
   wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
@@ -465,8 +473,16 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
 
   param_names, x0, bounds = parse_fit_arguments(args.fit)
   
+  fit_integers = set()
+  if args.fit_integer:
+    for item in args.fit_integer:
+      for name in item:
+        fit_integers.add(name)
+
   print(f"\nStarting automated optimization using {args.optimizer.upper()} optimizer...")
   print(f"Parameters to fit: {param_names}")
+  if fit_integers:
+    print(f"Integer parameters: {sorted(list(fit_integers))}")
   print(f"Initial guess x0: {x0}")
   print(f"Bounds: {bounds}")
   print(f"Max evaluations: {args.max_evals}")
@@ -480,25 +496,33 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   def objective_function(x):
     eval_start_time = time.time()
     eval_counter[0] += 1
-    grid_point = {name: float(val) for name, val in zip(param_names, x)}
+    
+    # Map continuous variables to rounded integers where configured
+    grid_point = {}
+    for name, val in zip(param_names, x):
+      if name in fit_integers:
+        grid_point[name] = int(np.round(val))
+      else:
+        grid_point[name] = float(val)
       
     # Bounds penalty
-    for val, (low, high) in zip(x, bounds):
-      if low is not None and val < low:
+    for name, val, (low, high) in zip(param_names, x, bounds):
+      eval_val = int(np.round(val)) if name in fit_integers else val
+      if low is not None and eval_val < low:
         eval_duration = time.time() - eval_start_time
         total_elapsed = time.time() - start_total_time
         avg_iter_time = total_elapsed / eval_counter[0]
         remaining = args.max_evals - eval_counter[0]
         eta = avg_iter_time * max(0, remaining)
-        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({val:.4f} < {low}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({eval_val} < {low}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         return 1e9
-      if high is not None and val > high:
+      if high is not None and eval_val > high:
         eval_duration = time.time() - eval_start_time
         total_elapsed = time.time() - start_total_time
         avg_iter_time = total_elapsed / eval_counter[0]
         remaining = args.max_evals - eval_counter[0]
         eta = avg_iter_time * max(0, remaining)
-        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({val:.4f} > {high}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({eval_val} > {high}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         return 1e9
         
     reduced_chi2, log_residual, record = run_simulation_evaluation(
@@ -522,23 +546,34 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     remaining = args.max_evals - eval_counter[0]
     eta = avg_iter_time * max(0, remaining)
     
-    param_str = ', '.join(f"{k}={v:.4f}" for k, v in grid_point.items())
+    param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={v:.4f}" for k, v in grid_point.items())
     print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     return loss
 
-  opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
-  opt_options = {'maxiter': args.max_evals}
-  if opt_method == 'nelder-mead':
-    opt_options['maxfev'] = args.max_evals
-    opt_options['xatol'] = args.xatol
-    opt_options['fatol'] = args.fatol
-  elif opt_method == 'powell':
-    opt_options['xtol'] = args.xatol
-    opt_options['ftol'] = args.fatol
-    
-  opt_res = scipy.optimize.minimize(
-      objective_function, x0, method=opt_method, options=opt_options
-  )
+  if args.optimizer.lower() == 'differential-evolution':
+    integrality = [name in fit_integers for name in param_names]
+    opt_res = scipy.optimize.differential_evolution(
+        objective_function,
+        bounds,
+        x0=x0,
+        maxiter=args.max_evals,
+        integrality=integrality,
+        polish=False
+    )
+  else:
+    opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
+    opt_options = {'maxiter': args.max_evals}
+    if opt_method == 'nelder-mead':
+      opt_options['maxfev'] = args.max_evals
+      opt_options['xatol'] = args.xatol
+      opt_options['fatol'] = args.fatol
+    elif opt_method == 'powell':
+      opt_options['xtol'] = args.xatol
+      opt_options['ftol'] = args.fatol
+      
+    opt_res = scipy.optimize.minimize(
+        objective_function, x0, method=opt_method, options=opt_options
+    )
   
   total_runtime = time.time() - start_total_time
   total_evals = max(1, eval_counter[0])
@@ -552,7 +587,11 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   ]
   best_params = dict(zip(param_names, opt_res.x))
   for k, v in best_params.items():
-    fit_results_lines.append(f"  {k} = {v:.4f}")
+    if k in fit_integers:
+      val_str = str(int(np.round(v)))
+    else:
+      val_str = f"{v:.4f}"
+    fit_results_lines.append(f"  {k} = {val_str}")
     
   fit_results_lines.extend([
       "\n--- Runtime Statistics ---",
