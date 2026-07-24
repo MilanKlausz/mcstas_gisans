@@ -49,6 +49,7 @@ def create_scan_parser():
   scan_group.add_argument('--nxs', type=str, required=True, help='Path to experimental NeXus file to match.')
   scan_group.add_argument('--experiment_time', type=float, default=None, help='Virtual experiment time in seconds for upscaling the simulation.')
   scan_group.add_argument('--background', type=float, default=0.0, help='Flat background level added during upscaling.')
+  scan_group.add_argument('--poisson_sampling', action='store_true', help='Enable random Poisson noise sampling on the simulated data. (Off by default during scans/fits to ensure deterministic, smooth objective function evaluation for optimizer convergence.)')
   scan_group.add_argument('--output_dir', type=str, default='scan_results', help='Directory to save scan results.')
   
   scan_plot_group = parser.add_argument_group('Plotting options for scan results')
@@ -355,7 +356,10 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
       raise ValueError(f"Incompatible shapes: NeXus={hist_nxs.shape}, Sim={hist_sim.shape}")
       
   if args.experiment_time:
-    hist_sim, hist_sim_error = upscale_simple(hist_sim, hist_sim_error, args.experiment_time, args.background)
+    hist_sim, hist_sim_error = upscale_simple(
+        hist_sim, hist_sim_error, args.experiment_time, args.background,
+        poisson_sampling=args.poisson_sampling
+    )
     
   hist_sim_masked = apply_mask(hist_sim, mask, np.nan)
   hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)

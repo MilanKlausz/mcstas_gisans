@@ -6,7 +6,7 @@ the results and adjusting the uncertainties.
 import numpy as np
 import math as m
 
-def upscale_simple(hist, hist_error, experiment_time, background):
+def upscale_simple(hist, hist_error, experiment_time, background, poisson_sampling=True):
   """Upscale simulated results by a virtual experiment time,
   applying Poisson distribution and background to the data"""
   #scale to experiment time
@@ -17,10 +17,16 @@ def upscale_simple(hist, hist_error, experiment_time, background):
   # Poisson distribution for the whole dataset.)
   hist += background
 
-  #sample Poisson distribution for each bin with lambda='simulated counts'
-  rng = np.random.default_rng()
-  hist = rng.poisson(lam=hist)
-  hist_error = np.sqrt(hist)
+  if poisson_sampling:
+    #sample Poisson distribution for each bin with lambda='simulated counts'
+    rng = np.random.default_rng()
+    hist = rng.poisson(lam=hist)
+    hist_error = np.sqrt(hist)
+  else:
+    # For optimization/fitting: use the deterministic expected value and combine
+    # the scaled Monte Carlo simulation error with the expected Poisson uncertainty.
+    # Variance = (MC error)^2 + Expected Poisson variance (which is equal to the mean 'hist')
+    hist_error = np.sqrt(hist_error**2 + hist)
 
   return hist, hist_error
 

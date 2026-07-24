@@ -36,6 +36,7 @@ def test_fit_integer_rounding(monkeypatch):
         fit = [["layerNumber", "3.2", "1.0", "10.0"]]
         fit_integer = [["layerNumber"]]
         optimizer = "nelder-mead"
+        poisson_sampling = False
         max_evals = 2
         loss_function = "reduced_chi2"
         xatol = 0.01
@@ -85,6 +86,8 @@ def test_differential_evolution_execution(monkeypatch):
         fit = [["layerNumber", "3.0", "1.0", "10.0"], ["radius", "50.0", "40.0", "60.0"]]
         fit_integer = [["layerNumber"]]
         optimizer = "differential-evolution"
+        popsize = 2
+        poisson_sampling = False
         max_evals = 2
         loss_function = "reduced_chi2"
         xatol = 0.01
