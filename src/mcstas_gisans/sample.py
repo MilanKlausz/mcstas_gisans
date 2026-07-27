@@ -38,7 +38,7 @@ class Sample:
   def parse_sample_arguments(self, sample_arguments):
     """Parse the ample_arguments string into keyword arguments."""
     kwargs = {}
-    pairs = sample_arguments.split(';')
+    pairs = [p for p in sample_arguments.split(';') if p.strip()]
     for pair in pairs:
       key, value = pair.split('=')
       kwargs[key.strip()] = self.convert_numbers(value.strip())

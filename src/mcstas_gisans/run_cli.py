@@ -157,7 +157,7 @@ def parse_args(parser):
     parser.error(f"The sample sizes can not be negative. (For direct beam simulation, set either of the sample sizes to zero.)")
 
   if args.sample_arguments:
-    pairs = args.sample_arguments.split(';')
+    pairs = [p for p in args.sample_arguments.split(';') if p.strip()]
     for pair in pairs:
         if '=' not in pair:
             parser.error(f"Invalid argument format for --sample_arguments: {pair}. Should be arg=value.")
