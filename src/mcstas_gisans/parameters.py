@@ -20,7 +20,7 @@ def pack_parameters(args, particle_type):
   ]
   #reorder x,y,z because user input is in BornAgain geometry, but for now the
   #script uses the McStas axis labeling. FIXME
-  hist_bins = [args.bins[1], args.bins[2], args.bins[0]] if args.bins else [instrument.detector.pixels_x, instrument.detector.pixels_y, 1]
+  hist_bins = [args.bins[1], args.bins[2], args.bins[0]] if args.bins else [instrument.detector.pixels_y_bornagain, instrument.detector.pixels_z_bornagain, 1]
 
   default_angle_range = list(instrument.get_detector_angle_maximum())
   angle_range = list(args.angle_range) if args.angle_range else default_angle_range

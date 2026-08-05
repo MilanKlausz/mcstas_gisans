@@ -46,12 +46,12 @@ def test_instrument_overrides():
     inst = params['instrument']
 
     assert inst.sample_detector_distance == 15.5
-    assert inst.detector.pixels_x == 512
-    assert inst.detector.pixels_y == 256
-    assert inst.detector.size_x == 2.048
-    assert inst.detector.size_y == 2.048
-    assert inst.detector.direct_beam_centre_offset_x == 0.1
-    assert inst.detector.direct_beam_centre_offset_y == -0.2
+    assert inst.detector.pixels_y_bornagain == 512
+    assert inst.detector.pixels_z_bornagain == 256
+    assert inst.detector.size_y_bornagain == 2.048
+    assert inst.detector.size_z_bornagain == 2.048
+    assert inst.detector.direct_beam_centre_offset_y_bornagain == 0.1
+    assert inst.detector.direct_beam_centre_offset_z_bornagain == -0.2
 
   finally:
     # Restore original defaults

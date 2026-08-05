@@ -85,24 +85,24 @@ class Instrument:
     Calculate the min and max q values for a wavelength using the xy min and
     max coordinates of the detector (it is an approximation).
     """
-    # Since the Detector class constructor already swaps the active area coordinates (size_x, size_y, min_edge_x, min_edge_y)
-    # in accordance with the sample_orientation, self.detector.min_edge_x/y are already in the sample frame.
+    # Since the Detector class constructor already swaps the active area coordinates (size_y_bornagain, size_z_bornagain, min_edge_y_bornagain, min_edge_z_bornagain)
+    # in accordance with the sample_orientation, self.detector.min_edge_y/z_bornagain are already in the sample frame.
     
-    # 1. Start with the limits in the uninclined sample frame (where x is horizontal, y is vertical, z is distance).
-    q_min_x_sample = self.detector.min_edge_x
-    q_max_x_sample = self.detector.max_edge_x
+    # 1. Start with transverse horizontal bounds (Y_BA) which are already in BornAgain frame
+    q_min_y_ba = self.detector.min_edge_y_bornagain
+    q_max_y_ba = self.detector.max_edge_y_bornagain
 
-    # 2. Project the vertical (y) and longitudinal (z) limits to the inclined BornAgain coordinate system.
-    q_min_y_sample, q_min_z_sample = self.detector.transform_to_bornagain_coordinate_system(
-        self.detector.min_edge_y, self.sample_detector_distance
+    # 2. Project vertical height (Z_BA_uninclined) and longitudinal distance for sample inclination alpha
+    q_min_x_ba, q_min_z_ba = self.detector.coords.transform_inclination_plane(
+        self.sample_detector_distance, self.detector.min_edge_z_bornagain
     )
-    q_max_y_sample, q_max_z_sample = self.detector.transform_to_bornagain_coordinate_system(
-        self.detector.max_edge_y, self.sample_detector_distance
+    q_max_x_ba, q_max_z_ba = self.detector.coords.transform_inclination_plane(
+        self.sample_detector_distance, self.detector.max_edge_z_bornagain
     )
 
-    # 3. Combine into coordinate limit vectors in BornAgain space.
-    q_min_coords = [q_min_x_sample, q_min_y_sample[0], q_min_z_sample[0]]
-    q_max_coords = [q_max_x_sample, q_max_y_sample[0], q_max_z_sample[0]]
+    # 3. Combine into coordinate limit vectors in BornAgain space [Y_BA, Z_BA, X_BA].
+    q_min_coords = [q_min_y_ba, q_min_z_ba, q_min_x_ba]
+    q_max_coords = [q_max_y_ba, q_max_z_ba, q_max_x_ba]
 
     # 4. Convert coordinate limits to outgoing direction unit vectors.
     outgoing_direction_q_min = q_min_coords / np.linalg.norm(q_min_coords)
@@ -129,8 +129,8 @@ class Instrument:
     boundary on the detector, relying on the detector's pixel dimensions.
     """
     q_min, q_max = self.calculate_q_limits(wavelength)
-    q_y = np.linspace(q_min[0], q_max[0], num=self.detector.pixels_x + 1)
-    q_z = np.linspace(q_min[1], q_max[1], num=self.detector.pixels_y + 1)
+    q_y = np.linspace(q_min[0], q_max[0], num=self.detector.pixels_y_bornagain + 1)
+    q_z = np.linspace(q_min[1], q_max[1], num=self.detector.pixels_z_bornagain + 1)
     return q_y, q_z
 
   def get_expected_specular_peak_q(self, wavelength=None):
