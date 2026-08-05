@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Executes a parameter scan (grid sweep) of BornAgain simulations, evaluates the 
-match against experimental NeXus data, and outputs a summary of fit metrics.
+Executes automated parameter fitting or parameter scans (grid sweeps) of BornAgain
+simulations, evaluates the match against experimental NeXus data, and outputs fit metrics.
 """
 
 import os
@@ -34,7 +34,7 @@ def format_time(seconds):
   else:
     return f"{seconds:.2f}s"
 
-def create_scan_parser():
+def create_fit_parser():
   parser = create_run_parser()
   
   # Make filename optional for the run parser, since we may only want to view masks without running a simulation
@@ -254,7 +254,7 @@ def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
   plt.close(fig)
   print(f"Created comparison plot: {savename}")
 
-def validate_scan_args(args, parser):
+def validate_fit_args(args, parser):
   if not args.mask_view:
     if not args.filename:
       parser.error("the following arguments are required: filename")
@@ -673,11 +673,11 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
   save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text)
 
 def main():
-  parser = create_scan_parser()
+  parser = create_fit_parser()
   args = parse_run_args(parser)
   os.makedirs(args.output_dir, exist_ok=True)
   
-  validate_scan_args(args, parser)
+  validate_fit_args(args, parser)
   
   hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw = prepare_experimental_data(args)
   

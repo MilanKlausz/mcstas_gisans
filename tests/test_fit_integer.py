@@ -1,10 +1,10 @@
 import pytest
 import sys
-from mcstas_gisans.scan import create_scan_parser, run_automated_fit
-import mcstas_gisans.scan as scan
+from mcstas_gisans.fit import create_fit_parser, run_automated_fit
+import mcstas_gisans.fit as fit
 
 def test_fit_integer_parsing():
-    parser = create_scan_parser()
+    parser = create_fit_parser()
     argv = [
         "dummy.mcpl.gz",
         "-i", "d22",
@@ -29,8 +29,8 @@ def test_fit_integer_rounding(monkeypatch):
         called_points.append(grid_point)
         return 1.0, 1.0, {"reduced_chi2": 1.0, "log_residual": 1.0, **grid_point}
         
-    monkeypatch.setattr(scan, "run_simulation_evaluation", mock_run_simulation_evaluation)
-    monkeypatch.setattr(scan, "save_and_print_summary", lambda *args, **kwargs: None)
+    monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
+    monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
     
     class DummyArgs:
         fit = [["layerNumber", "3.2", "1.0", "10.0"]]
@@ -53,7 +53,7 @@ def test_fit_integer_rounding(monkeypatch):
     assert isinstance(called_points[0]["layerNumber"], int)
 
 def test_differential_evolution_validation_missing_bounds():
-    parser = create_scan_parser()
+    parser = create_fit_parser()
     # Missing bounds for layerNumber (only initial value provided)
     argv = [
         "dummy.mcpl.gz",
@@ -69,7 +69,7 @@ def test_differential_evolution_validation_missing_bounds():
         from mcstas_gisans.run_cli import parse_args
         args = parse_args(parser)
         with pytest.raises(SystemExit):
-            scan.validate_scan_args(args, parser)
+            fit.validate_fit_args(args, parser)
     finally:
         sys.argv = sys_argv_backup
 
@@ -79,8 +79,8 @@ def test_differential_evolution_execution(monkeypatch):
         called_points.append(grid_point)
         return 1.0, 1.0, {"reduced_chi2": 1.0, "log_residual": 1.0, **grid_point}
         
-    monkeypatch.setattr(scan, "run_simulation_evaluation", mock_run_simulation_evaluation)
-    monkeypatch.setattr(scan, "save_and_print_summary", lambda *args, **kwargs: None)
+    monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
+    monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
     
     class DummyArgs:
         fit = [["layerNumber", "3.0", "1.0", "10.0"], ["radius", "50.0", "40.0", "60.0"]]
