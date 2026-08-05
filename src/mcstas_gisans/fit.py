@@ -95,6 +95,26 @@ def create_fit_parser():
   fit_group.add_argument('--gif', action='store_true',
                          help='Generate animated GIF showing the evolution of the fitting process.')
 
+  joint_fit_group = parser.add_argument_group('Joint / Dual-sample fitting options (Secondary Sample)')
+  joint_fit_group.add_argument('--nxs2', type=str, default=None,
+                               help='Path to secondary experimental NeXus file to match for joint sample fitting.')
+  joint_fit_group.add_argument('--fit2', action='append', nargs='+', required=False, default=None,
+                               help='Parameter to fit specifically for secondary sample (sample 2), e.g., --fit2 latticeParameter 120 100 130')
+  joint_fit_group.add_argument('--fit_common', action='append', nargs='+', required=False, default=None,
+                               help='Parameter to fit in common across both samples (sample 1 and 2), e.g., --fit_common radius 51 40 60')
+  joint_fit_group.add_argument('--sample_arguments2', type=str, default=None,
+                               help='Non-fitted sample arguments specifically for secondary sample (sample 2), e.g., --sample_arguments2 "radius=51;interferenceRange=5"')
+  joint_fit_group.add_argument('--filename2', type=str, default=None,
+                               help='Optional secondary particle file for sample 2. Defaults to main --filename if omitted.')
+  joint_fit_group.add_argument('--intensity_factor2', type=float, default=None,
+                               help='Optional secondary intensity factor for sample 2. Defaults to main --intensity_factor if omitted.')
+  joint_fit_group.add_argument('--alpha2', type=float, default=None,
+                               help='Optional incident angle alpha for sample 2 [deg]. Defaults to main --alpha if omitted.')
+  joint_fit_group.add_argument('--experiment_time2', type=float, default=None,
+                               help='Optional virtual experiment time for sample 2 [s]. Defaults to main --experiment_time if omitted.')
+  joint_fit_group.add_argument('--background2', type=float, default=None,
+                               help='Optional flat background level for sample 2. Defaults to main --background if omitted.')
+
   return parser
 
 def parse_scan_arguments(scan_args):
@@ -254,20 +274,188 @@ def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
   plt.close(fig)
   print(f"Created comparison plot: {savename}")
 
+def parse_joint_fit_arguments(args):
+  """
+  Parses parameter fit definitions for single or joint fitting.
+  Combines --fit_common (common to both samples), --fit (sample 1), and --fit2 (sample 2).
+  Returns:
+    param_names: list of parameter display names in optimization vector x
+    x0_list: list of initial values
+    bounds_list: list of (min, max) bounds
+    s1_map: dict mapping internal sample 1 parameter name -> index in x
+    s2_map: dict mapping internal sample 2 parameter name -> index in x
+  """
+  common_names, common_x0, common_bounds = parse_fit_arguments(args.fit_common) if args.fit_common else ([], [], [])
+  s1_names, s1_x0, s1_bounds = parse_fit_arguments(args.fit) if args.fit else ([], [], [])
+  s2_names, s2_x0, s2_bounds = parse_fit_arguments(args.fit2) if args.fit2 else ([], [], [])
+
+  param_names = []
+  x0_list = []
+  bounds_list = []
+
+  s1_map = {}
+  s2_map = {}
+
+  # 1. Common parameters apply to both sample 1 and sample 2
+  for name, x0, b in zip(common_names, common_x0, common_bounds):
+    idx = len(param_names)
+    param_names.append(name)
+    x0_list.append(x0)
+    bounds_list.append(b)
+    s1_map[name] = idx
+    s2_map[name] = idx
+
+  # 2. Sample 1 specific parameters
+  for name, x0, b in zip(s1_names, s1_x0, s1_bounds):
+    idx = len(param_names)
+    display_name = f"s1_{name}" if (name in s2_names or name in common_names) else name
+    param_names.append(display_name)
+    x0_list.append(x0)
+    bounds_list.append(b)
+    s1_map[name] = idx
+
+  # 3. Sample 2 specific parameters
+  for name, x0, b in zip(s2_names, s2_x0, s2_bounds):
+    idx = len(param_names)
+    display_name = f"s2_{name}" if (name in s1_names or name in common_names) else name
+    param_names.append(display_name)
+    x0_list.append(x0)
+    bounds_list.append(b)
+    s2_map[name] = idx
+
+  return param_names, x0_list, bounds_list, s1_map, s2_map
+
+def make_secondary_args(args):
+  """Create secondary arguments object for Sample 2 evaluation."""
+  args2 = copy.deepcopy(args)
+  if getattr(args, 'nxs2', None):
+    args2.nxs = args.nxs2
+  if getattr(args, 'sample_arguments2', None):
+    args2.sample_arguments = args.sample_arguments2
+  if getattr(args, 'filename2', None):
+    args2.filename = args.filename2
+  if getattr(args, 'intensity_factor2', None) is not None:
+    args2.intensity_factor = args.intensity_factor2
+  if getattr(args, 'alpha2', None) is not None:
+    args2.alpha = args.alpha2
+  if getattr(args, 'experiment_time2', None) is not None:
+    args2.experiment_time = args.experiment_time2
+  if getattr(args, 'background2', None) is not None:
+    args2.background = args.background2
+  return args2
+
+def save_joint_comparison_plot(
+    hist_nxs1, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1,
+    hist_sim_masked1, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1,
+    hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2,
+    hist_sim_masked2, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1,
+    q_min, q_max, y_plot_range, z_plot_range,
+    savename, label_sim1="Sample 1 Sim", label_sim2="Sample 2 Sim"
+):
+  import matplotlib.pyplot as plt
+  from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
+
+  intensity_min = 1.0
+  fig, axes = plt.subplots(3, 2, figsize=(16, 16))
+
+  # 1. Row 0: Sample 1 NeXus & Sim
+  vmax1 = hist_nxs1[~np.isnan(hist_nxs1)].max() if np.any(~np.isnan(hist_nxs1)) else 100.0
+  log_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, "Sample 1 Measurement", ax=axes[0, 0],
+              intensity_min=intensity_min, intensity_max=vmax1,
+              y_range=y_plot_range, z_range=z_plot_range, output='none')
+  log_plot_2d(hist_sim_masked1, edges_sim1_0, edges_sim1_1, label_sim1, ax=axes[0, 1],
+              intensity_min=intensity_min, intensity_max=vmax1,
+              y_range=y_plot_range, z_range=z_plot_range, output='none')
+
+  # 2. Row 1: Sample 2 NeXus & Sim
+  vmax2 = hist_nxs2[~np.isnan(hist_nxs2)].max() if np.any(~np.isnan(hist_nxs2)) else 100.0
+  log_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, "Sample 2 Measurement", ax=axes[1, 0],
+              intensity_min=intensity_min, intensity_max=vmax2,
+              y_range=y_plot_range, z_range=z_plot_range, output='none')
+  log_plot_2d(hist_sim_masked2, edges_sim2_0, edges_sim2_1, label_sim2, ax=axes[1, 1],
+              intensity_min=intensity_min, intensity_max=vmax2,
+              y_range=y_plot_range, z_range=z_plot_range, output='none')
+
+  # 3. Row 2: Merged for 1D Q-slice overlay
+  gs = axes[2, 0].get_gridspec()
+  axes[2, 0].remove()
+  axes[2, 1].remove()
+  ax_bottom = fig.add_subplot(gs[2, :])
+
+  qz_min_index1 = np.digitize(q_min, edges_sim1_1) - 1
+  qz_max_index1 = np.digitize(q_max, edges_sim1_1)
+
+  qz_min_index2 = np.digitize(q_min, edges_sim2_1) - 1
+  qz_max_index2 = np.digitize(q_max, edges_sim2_1)
+
+  # Sample 1 1D curves
+  hist_nxs1_1d = np.nan_to_num(hist_nxs1, nan=0.0)
+  hist_sim1_1d = np.nan_to_num(hist_sim_masked1, nan=0.0)
+  val_nxs1, err_nxs1, y_bins_nxs1, z_limits1 = extract_range_to_1d(
+      hist_nxs1_1d, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1, [qz_min_index1, qz_max_index1]
+  )
+  plot_q_1d(val_nxs1, err_nxs1, y_bins_nxs1, 'Qy [1/nm]', color='blue',
+            title_text='', label='Sample 1 Measurement', ax=ax_bottom, limits=y_plot_range, output='none')
+
+  val_sim1, err_sim1, y_bins_sim1, _ = extract_range_to_1d(
+      hist_sim1_1d, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1, [qz_min_index1, qz_max_index1]
+  )
+  plot_q_1d(val_sim1, err_sim1, y_bins_sim1, 'Qy [1/nm]', color='cyan',
+            label=label_sim1, ax=ax_bottom, limits=y_plot_range, output='none')
+
+  # Sample 2 1D curves
+  hist_nxs2_1d = np.nan_to_num(hist_nxs2, nan=0.0)
+  hist_sim2_1d = np.nan_to_num(hist_sim_masked2, nan=0.0)
+  val_nxs2, err_nxs2, y_bins_nxs2, _ = extract_range_to_1d(
+      hist_nxs2_1d, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, [qz_min_index2, qz_max_index2]
+  )
+  plot_q_1d(val_nxs2, err_nxs2, y_bins_nxs2, 'Qy [1/nm]', color='red',
+            label='Sample 2 Measurement', ax=ax_bottom, limits=y_plot_range, output='none')
+
+  val_sim2, err_sim2, y_bins_sim2, _ = extract_range_to_1d(
+      hist_sim2_1d, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1, [qz_min_index2, qz_max_index2]
+  )
+  plot_q_1d(val_sim2, err_sim2, y_bins_sim2, 'Qy [1/nm]', color='orange',
+            label=label_sim2, ax=ax_bottom, limits=y_plot_range, output='none')
+
+  # Highlight Qz slice on 2D plots
+  for ax, z_edges, qz_min_idx, qz_max_idx in [
+      (axes[0, 0], z_edges_nxs1, qz_min_index1, qz_max_index1),
+      (axes[0, 1], edges_sim1_1, qz_min_index1, qz_max_index1),
+      (axes[1, 0], z_edges_nxs2, qz_min_index2, qz_max_index2),
+      (axes[1, 1], edges_sim2_1, qz_min_index2, qz_max_index2),
+  ]:
+    if 0 <= qz_min_idx < len(z_edges):
+      ax.axhline(z_edges[qz_min_idx], color='magenta', linestyle='--')
+    if 0 <= qz_max_idx < len(z_edges):
+      ax.axhline(z_edges[qz_max_idx], color='magenta', linestyle='--')
+
+  ax_bottom.set_title(f"Qz=[{z_limits1[0]:.4f} 1/nm, {z_limits1[1]:.4f} 1/nm]")
+  ax_bottom.grid(True, which='major')
+  ax_bottom.legend(loc='upper left')
+
+  plt.tight_layout()
+  plt.savefig(savename, dpi=300)
+  plt.close(fig)
+  print(f"Created joint comparison plot: {savename}")
+
 def validate_fit_args(args, parser):
   if not args.mask_view:
     if not args.filename:
       parser.error("the following arguments are required: filename")
-    if not args.scan and not args.fit:
-      parser.error("Either --scan or --fit must be specified.")
+    if not args.scan and not args.fit and not args.fit_common and not args.fit2:
+      parser.error("Either --scan, --fit, --fit2, or --fit_common must be specified.")
   if not args.nxs:
     parser.error("the following arguments are required: --nxs")
-  if args.fit and args.optimizer.lower() == 'differential-evolution':
-    param_names = [item[0] for item in args.fit]
-    _, _, bounds = parse_fit_arguments(args.fit)
+
+  if (args.fit2 or args.sample_arguments2) and not args.nxs2:
+    args.nxs2 = args.nxs  # Default secondary NeXus dataset to primary NeXus dataset if omitted
+
+  if (args.fit or args.fit2 or args.fit_common) and args.optimizer.lower() == 'differential-evolution':
+    param_names, _, bounds, _, _ = parse_joint_fit_arguments(args)
     for name, (low, high) in zip(param_names, bounds):
       if low is None or high is None:
-        parser.error(f"Differential Evolution optimizer requires finite bounds for all fitted parameters. Please specify bounds in --fit for '{name}' (e.g. --fit {name} <initial_guess> <min_bound> <max_bound>).")
+        parser.error(f"Differential Evolution optimizer requires finite bounds for all fitted parameters. Please specify bounds in --fit/--fit2/--fit_common for '{name}' (e.g. --fit {name} <initial_guess> <min_bound> <max_bound>).")
 
 def prepare_experimental_data(args):
   wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
@@ -383,7 +571,13 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
         plot_path, f"Sim ({param_str})"
     )
     
-  return reduced_chi2, log_residual, record
+  sim_data = {
+      'hist_sim_masked': hist_sim_masked,
+      'hist_sim_error_masked': hist_sim_error_masked,
+      'edges': edges
+  }
+
+  return reduced_chi2, log_residual, record, sim_data
 
 def save_summary_csv(records, output_dir, filename):
   if not records:
@@ -483,10 +677,26 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   if args.gif:
     args.png = True
 
-  param_names, x0, bounds = parse_fit_arguments(args.fit)
-  
+  is_joint_fit = bool(getattr(args, 'nxs2', None) or getattr(args, 'fit2', None) or getattr(args, 'fit_common', None))
+
+  if is_joint_fit:
+    print("\n========== JOINT / DUAL-SAMPLE FITTING MODE ==========")
+    args2 = make_secondary_args(args)
+    hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, _, _ = prepare_experimental_data(args2)
+
+    if getattr(args, 'filename2', None) or (getattr(args, 'alpha2', None) is not None and args.alpha2 != args.alpha):
+      particles2, particle_type2 = load_and_precondition_particles(args2)
+    else:
+      particles2, particle_type2 = particles, particle_type
+
+    param_names, x0, bounds, s1_map, s2_map = parse_joint_fit_arguments(args)
+  else:
+    param_names, x0, bounds = parse_fit_arguments(args.fit)
+    s1_map = {name: idx for idx, name in enumerate(param_names)}
+    s2_map = {}
+
   fit_integers = set()
-  if args.fit_integer:
+  if getattr(args, 'fit_integer', None):
     for item in args.fit_integer:
       for name in item:
         fit_integers.add(name)
@@ -508,15 +718,18 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   def objective_function(x):
     eval_start_time = time.time()
     eval_counter[0] += 1
-    
+
     # Map continuous variables to rounded integers where configured
-    grid_point = {}
-    for name, val in zip(param_names, x):
-      if name in fit_integers:
-        grid_point[name] = int(np.round(val))
-      else:
-        grid_point[name] = float(val)
-      
+    grid_point_s1 = {}
+    for name, idx in s1_map.items():
+      val = x[idx]
+      grid_point_s1[name] = int(np.round(val)) if (param_names[idx] in fit_integers or name in fit_integers) else float(val)
+
+    display_point = {}
+    for idx, name in enumerate(param_names):
+      val = x[idx]
+      display_point[name] = int(np.round(val)) if name in fit_integers else float(val)
+
     # Bounds penalty
     for name, val, (low, high) in zip(param_names, x, bounds):
       eval_val = int(np.round(val)) if name in fit_integers else val
@@ -526,7 +739,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
         avg_iter_time = total_elapsed / eval_counter[0]
         remaining = args.max_evals - eval_counter[0]
         eta = avg_iter_time * max(0, remaining)
-        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({eval_val} < {low}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({name}: {eval_val} < {low}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         return 1e9
       if high is not None and eval_val > high:
         eval_duration = time.time() - eval_start_time
@@ -534,32 +747,83 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
         avg_iter_time = total_elapsed / eval_counter[0]
         remaining = args.max_evals - eval_counter[0]
         eta = avg_iter_time * max(0, remaining)
-        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({eval_val} > {high}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({name}: {eval_val} > {high}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         return 1e9
-        
-    reduced_chi2, log_residual, record = run_simulation_evaluation(
-        grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-        save_npz=False, label_prefix=f"fit_eval_{eval_counter[0]}"
-    )
-    
-    rec = copy.deepcopy(grid_point)
-    rec['eval_index'] = eval_counter[0]
-    rec['reduced_chi2'] = reduced_chi2
-    rec['log_residual'] = log_residual
-    records.append(rec)
-    save_summary_csv(records, args.output_dir, "fit_summary.csv")
-    
-    loss = log_residual if args.loss_function == 'log_residual' else reduced_chi2
+
+    if not is_joint_fit:
+      res = run_simulation_evaluation(
+          grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
+          save_npz=False, label_prefix=f"fit_eval_{eval_counter[0]}"
+      )
+      reduced_chi2, log_residual = res[0], res[1]
+      rec = copy.deepcopy(display_point)
+      rec['eval_index'] = eval_counter[0]
+      rec['reduced_chi2'] = reduced_chi2
+      rec['log_residual'] = log_residual
+      records.append(rec)
+      save_summary_csv(records, args.output_dir, "fit_summary.csv")
+
+      loss = log_residual if args.loss_function == 'log_residual' else reduced_chi2
+    else:
+      grid_point_s2 = {}
+      for name, idx in s2_map.items():
+        grid_point_s2[name] = int(np.round(x[idx])) if (param_names[idx] in fit_integers or name in fit_integers) else float(x[idx])
+
+      png_backup = getattr(args, 'png', False)
+      args.png = False
+      res1 = run_simulation_evaluation(
+          grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
+          save_npz=False, label_prefix=f"fit_eval_s1_{eval_counter[0]}"
+      )
+      res2 = run_simulation_evaluation(
+          grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2,
+          save_npz=False, label_prefix=f"fit_eval_s2_{eval_counter[0]}"
+      )
+      args.png = png_backup
+
+      reduced_chi2_1, log_res_1, sim_data1 = res1[0], res1[1], res1[3] if len(res1) > 3 else {}
+      reduced_chi2_2, log_res_2, sim_data2 = res2[0], res2[1], res2[3] if len(res2) > 3 else {}
+      args.png = png_backup
+
+      joint_reduced_chi2 = reduced_chi2_1 + reduced_chi2_2
+      joint_log_residual = log_res_1 + log_res_2
+
+      rec = copy.deepcopy(display_point)
+      rec['eval_index'] = eval_counter[0]
+      rec['chi2_sample1'] = reduced_chi2_1
+      rec['chi2_sample2'] = reduced_chi2_2
+      rec['reduced_chi2'] = joint_reduced_chi2
+      rec['log_res_sample1'] = log_res_1
+      rec['log_res_sample2'] = log_res_2
+      rec['log_residual'] = joint_log_residual
+      records.append(rec)
+      save_summary_csv(records, args.output_dir, "fit_summary.csv")
+
+      loss = joint_log_residual if args.loss_function == 'log_residual' else joint_reduced_chi2
+
+      if args.png:
+        plot_path = os.path.join(args.output_dir, f"fit_eval_{eval_counter[0]:03d}.png")
+        y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
+        z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
+        save_joint_comparison_plot(
+            hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
+            sim_data1['hist_sim_masked'], sim_data1['hist_sim_error_masked'], sim_data1['edges'][0], sim_data1['edges'][1],
+            hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2,
+            sim_data2['hist_sim_masked'], sim_data2['hist_sim_error_masked'], sim_data2['edges'][0], sim_data2['edges'][1],
+            args.q_min, args.q_max, y_plot_range, z_plot_range,
+            plot_path
+        )
+
     if np.isnan(loss):
       loss = 1e9
-      
+
     eval_duration = time.time() - eval_start_time
     total_elapsed = time.time() - start_total_time
     avg_iter_time = total_elapsed / eval_counter[0]
     remaining = args.max_evals - eval_counter[0]
     eta = avg_iter_time * max(0, remaining)
     
-    param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={v:.4f}" for k, v in grid_point.items())
+    param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={v:.4f}" for k, v in display_point.items())
     print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     return loss
 
@@ -644,7 +908,7 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
     iter_start_time = time.time()
     current_count = idx + 1
     print(f"\n[{current_count}/{total_evals}] Running simulation with: {grid_point}")
-    reduced_chi2, log_residual, record = run_simulation_evaluation(
+    reduced_chi2, log_residual, record, _ = run_simulation_evaluation(
         grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
         save_npz=True, label_prefix="sim"
     )
