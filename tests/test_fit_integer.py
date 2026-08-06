@@ -129,7 +129,7 @@ def test_joint_fit_execution(monkeypatch):
         fit2 = [["latticeParameter", "120.0", "100.0", "130.0"]]
         sample_arguments2 = "radius=51;interferenceRange=5"
         optimizer = "nelder-mead"
-        fit_integer = None
+        fit_integer = [["latticeParameter"]]
         poisson_sampling = False
         max_evals = 2
         loss_function = "reduced_chi2"
@@ -146,5 +146,6 @@ def test_joint_fit_execution(monkeypatch):
     assert "radius" in called_points1[0]
     assert "radius" in called_points2[0]
     assert called_points1[0]["radius"] == called_points2[0]["radius"]
+    assert isinstance(called_points2[0]["latticeParameter"], int)
     assert called_points1[0]["latticeParameter"] == 114.0
     assert called_points2[0]["latticeParameter"] == 120.0
