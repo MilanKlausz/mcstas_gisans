@@ -636,33 +636,41 @@ def save_and_print_summary(records, output_dir, filename, title_header, extra_su
     with open(summary_path, mode='a') as f:
       f.write("\n\n" + summary_text_block + "\n")
 
-def create_fit_evolution_gif(output_dir, gif_name="fit_evolution.gif", duration=500):
+def create_fit_evolution_gif(output_dir, gif_name="fit_evolution.gif", duration=500, is_joint=False):
   """
   Finds all fit_eval_*.png files in output_dir, sorts them by evaluation index,
   and compiles them into an animated GIF.
   """
   import glob
+  import re
   from PIL import Image
-  
-  pattern = os.path.join(output_dir, "fit_eval_*.png")
-  png_files = glob.glob(pattern)
-  
+
+  if is_joint:
+    pattern = os.path.join(output_dir, "fit_eval_joint_*.png")
+    png_files = glob.glob(pattern)
+    if not png_files:
+      pattern = os.path.join(output_dir, "fit_eval_*.png")
+      png_files = [f for f in glob.glob(pattern) if "_s1_" not in os.path.basename(f) and "_s2_" not in os.path.basename(f)]
+  else:
+    pattern = os.path.join(output_dir, "fit_eval_*.png")
+    png_files = [f for f in glob.glob(pattern) if "_joint_" not in os.path.basename(f)]
+
   if not png_files:
     print("No fit evaluation PNG figures found to create GIF.")
     return
-    
+
   def get_eval_index(filepath):
     basename = os.path.basename(filepath)
-    parts = basename.split('_')
-    if len(parts) >= 3 and parts[2].isdigit():
-      return int(parts[2])
+    match = re.search(r'(\d+)', basename)
+    if match:
+      return int(match.group(1))
     return 0
-    
+
   png_files.sort(key=get_eval_index)
-  
+
   images = [Image.open(f) for f in png_files]
   gif_path = os.path.join(output_dir, gif_name)
-  
+
   images[0].save(
       gif_path,
       save_all=True,
@@ -802,7 +810,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       loss = joint_log_residual if args.loss_function == 'log_residual' else joint_reduced_chi2
 
       if args.png:
-        plot_path = os.path.join(args.output_dir, f"fit_eval_{eval_counter[0]:03d}.png")
+        plot_path = os.path.join(args.output_dir, f"fit_eval_joint_{eval_counter[0]:03d}.png")
         y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
         z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
         save_joint_comparison_plot(
@@ -887,7 +895,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text)
 
   if args.gif:
-    create_fit_evolution_gif(args.output_dir)
+    create_fit_evolution_gif(args.output_dir, is_joint=is_joint_fit)
 
 def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
   scanned_params = parse_scan_arguments(args.scan)

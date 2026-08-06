@@ -18,6 +18,39 @@ class Sample:
     self.size_y = size_y
     self.size_x = size_x
     self.kwargs = self.parse_sample_arguments(sample_arguments) if sample_arguments else {}
+    self.validate_kwargs()
+
+  def validate_kwargs(self):
+    """Validate sample keyword arguments against get_sample() function signature.
+    Ignores unsupported parameters and prints a warning for the user."""
+    if not self.kwargs:
+      return
+
+    try:
+      module = self.get_module()
+      if not hasattr(module, 'get_sample'):
+        return
+
+      import inspect
+      sig = inspect.signature(module.get_sample)
+      has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
+      if not has_var_kw:
+        valid_kwargs = {}
+        ignored_params = []
+        for k, v in self.kwargs.items():
+          if k in sig.parameters:
+            valid_kwargs[k] = v
+          else:
+            ignored_params.append(k)
+
+        if ignored_params:
+          ignored_str = ", ".join(f"'{p}'" for p in ignored_params)
+          print(f"WARNING: The following sample argument(s) are ignored because sample model '{self.sim_module_name}' does not accept them in get_sample(): {ignored_str}")
+
+        self.kwargs = valid_kwargs
+    except Exception:
+      pass
 
   @staticmethod
   def get_models_dir():

@@ -332,6 +332,15 @@ def main():
         horisontal_axis_label = 'Qy [1/nm]'
         plot_q_1d(values, errors, y_bins, horisontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=args.savename, output=plot_output)
 
+        if ax1 is not None:
+          if 0 <= qz_min_index_exp < len(z_edges):
+            ax1.axhline(z_edges[qz_min_index_exp], color='magenta', linestyle='--')
+          if 0 <= qz_max_index_exp < len(z_edges):
+            ax1.axhline(z_edges[qz_max_index_exp], color='magenta', linestyle='--')
+
+        if ax2 is not None:
+          ax2.grid(True)
+
   if args.dual_plot:
     if not args.pdf and not args.png:
       plt.show()

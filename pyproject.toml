@@ -38,6 +38,6 @@ mg_run = "mcstas_gisans.run:main"
 mg_plot = "mcstas_gisans.plot:main"
 mg_fit_monitor = "mcstas_gisans.fit_monitor:main"
 mg_beam_centre_correction = "mcstas_gisans.beam_centre_correction:main"
-mg_scan = "mcstas_gisans.scan:main"
+mg_fit = "mcstas_gisans.fit:main"
 
 
