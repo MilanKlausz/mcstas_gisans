@@ -48,7 +48,7 @@ def pack_parameters(args, particle_type):
     'instrument': instrument,
     'use_avg_materials': args.use_avg_materials,
     'specular': args.specular,
-    'analyzer_direction': args.analyzer_direction,
+    'analyzer_direction': args.analyzer_direction if any(args.analyzer_direction) else None,
     'analyzer_efficiency': args.analyzer_efficiency,
     'analyzer_transmission': args.analyzer_transmission,
   }

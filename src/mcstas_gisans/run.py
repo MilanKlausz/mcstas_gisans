@@ -43,7 +43,8 @@ def get_simulation(sample, outgoing_directions_horizontal, outgoing_directions_v
   )
   if polarization:
     beam.setPolarization(ba.R3(*polarization))
-    detector.setAnalyzer(ba.R3(*analyzer_direction), analyzer_efficiency, analyzer_transmission)
+    if analyzer_direction:
+      detector.setAnalyzer(ba.R3(*analyzer_direction), analyzer_efficiency, analyzer_transmission)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
@@ -54,15 +55,19 @@ def get_simulation_specular(sample, wavelength, alpha_i):
 
 def get_result_intensities(res):
     # get probability (intensity) for all outgoing directions
-    if hasattr(res, 'array'):
-      # BornAgainon 21.2
+    if hasattr(res, 'intensities'):
+      # BornAgain 24 / 25
+      pout = np.flipud(res.intensities())
+    elif hasattr(res, 'array'):
+      # BornAgain 21.2
       pout = res.array()
     elif hasattr(res, 'flatVector'):
-      # BornAgain 23.0
+      # BornAgain 22 / 23
       nx = res.xAxis().size()
       ny = res.yAxis().size()
       pout = np.array(res.flatVector()).reshape(ny, nx)
       pout = np.flipud(pout)
+
     else:
       print("ERROR: Could not extract data from the simulation result.")
       print(f"Object type: {type(res)}")
