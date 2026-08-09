@@ -36,3 +36,9 @@ This project includes the following third-party files:
   - Original source: http://dx.doi.org/10.5291/ILL-DATA.8-02-912
   - Copyright and attribution:
     - Nicolò Paracini; H Boyd; CARDENAS; Christopher J. Garvey; GUTFREUND Philipp; LARSSON Johan; PORCAR Lionel and WOLFF Maximilian. (2021). Effect of membrane curvature on lipid in-plane sorting: A GISANS study of nanoparticle supported lipid bilayers.. Institut Laue-Langevin (ILL) doi:10.5291/ILL-DATA.8-02-912
+
+# Citation
+
+If this simulation framework proved to be useful for your work, we would appreciate it if you would use the following primary reference in your work:
+
+Klausz, M., Glavic, A., Köhler, S., Arnold, T., Paracini, N., Gutfreund, P., Cárdenas, M., Wolff, M., & Nylander, T. (2026). mcstas_gisans : combining ray tracing with the distorted-wave Born approximation using McStas and BornAgain for virtual GISANS experiments. *Journal of Applied Crystallography*, 59(3), 827–836. https://doi.org/10.1107/s160057672600213x
