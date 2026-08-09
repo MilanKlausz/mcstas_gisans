@@ -1,10 +1,12 @@
 .*
+!.github/
 *.out
 *.exe
 *.zip
 *.c
 
 *png
+!doc/source/_static/images/*.png
 # ingore simulation outputs
 *.npz
 # allow simulation output used as an example
@@ -12,4 +14,5 @@
 
 *.egg-info/
 build/
+doc/build/
 __pycache__/

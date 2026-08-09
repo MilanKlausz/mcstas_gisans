@@ -19,7 +19,7 @@ histogram (and corresponding uncertainty) in an NPZ file that can be processed
 with a plotting script.
 
 Detailed documentation of installation and usage can be found at:
-https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/edit?usp=sharing
+https://milanklausz.github.io/mcstas_gisans/
 
 # Third-Party files
 
