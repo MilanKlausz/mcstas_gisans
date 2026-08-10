@@ -19,3 +19,8 @@ bornagain_versions/
 build/
 doc/build/
 __pycache__/
+
+# Local scratch files and directories
+*_local*
+*.local
+**/local/
