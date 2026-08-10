@@ -51,7 +51,7 @@ def get_datasets(args):
   if args.nxs:
     nxs_labels = args.nxs_label if args.nxs_label else args.nxs #default to filename if no label provided
     for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
-        from .read_d22 import read_nexus_data
+        from .nexus_reader import read_nexus_data
         hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, args.alpha, args.wavelength, args.sample_orientation)
         nxs_sum = np.sum(hist)
         if args.verbose:

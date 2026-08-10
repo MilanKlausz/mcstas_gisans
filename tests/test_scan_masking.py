@@ -32,7 +32,7 @@ def test_get_mask_exclude_and_include_box():
 
 def test_simulate_mask_angle_range_q_box_matching():
     import os
-    from mcstas_gisans.read_d22 import read_nexus_data
+    from mcstas_gisans.nexus_reader import read_nexus_data
     from mcstas_gisans.instrument import Instrument
     from mcstas_gisans.instrument_defaults import instrument_defaults
 

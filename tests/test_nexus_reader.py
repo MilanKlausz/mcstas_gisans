@@ -1,9 +1,9 @@
 """
-Tests for read_d22 module
+Tests for nexus_reader module
 """
 import os
 import numpy as np
-from mcstas_gisans.read_d22 import read_nexus_data
+from mcstas_gisans.nexus_reader import read_nexus_data
 
 
 def test_read_nexus_data_scaling():

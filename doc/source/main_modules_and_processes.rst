@@ -648,7 +648,7 @@ Input files can be provided with the ``--filename`` input option. The two handle
 
 2) raw Q events file from the :ref:`mg_run <run_simulations_with_mg_run>` script, that is the old output format (still available with ``--raw_output`` input option). This file contains a list of Q events that need to be histogrammed for plotting, that will be carried out based on the input values into ``--bins`` number of histogram bins, within the ``--y_range, --z_range`` Qy and Qz ranges.
 
-There is a special third format that serves for reading measured data. The current implementation in the :ref:`read_d22.py <read_d22_module>` module is a dedicated (hardcoded) function to retrieve 2D histogram data (with uncertainty and bin edges) from nexus files that correspond to measurements carried out at the D22 instrument at ILL. The path to the nexus file can be provided with the ``--nxs`` input option.
+There is a special third format that serves for reading measured data. The current implementation in the :ref:`nexus_reader.py <nexus_reader_module>` module is a dedicated (hardcoded) function to retrieve 2D histogram data (with uncertainty and bin edges) from nexus files that correspond to measurements carried out at the D22 instrument at ILL. The path to the nexus file can be provided with the ``--nxs`` input option.
 
 Multiple files can be provided of either format, with optional labels (``--label``) that has to be provided in the same order as the files (without provided labels, the file names themselves will be used). This can be particularly important for overlay plots, described in :ref:`Plotting options <plotting_options_section>`, where the labels are used in the legend.
 

@@ -38,7 +38,7 @@ def test_plot_instrument_overrides():
     assert current_d22['detector']['direct_beam_centre_offset'] == [0.1, -0.2]
 
     # Verify that calling read_nexus_data loads the overriden settings
-    from mcstas_gisans.read_d22 import read_nexus_data
+    from mcstas_gisans.nexus_reader import read_nexus_data
     _, _, q_y, q_z = read_nexus_data("data/paper/d22_measurement/073174.nxs", alpha=0.24, wavelength=6.0)
     
     print("DEBUG: len(q_y) =", len(q_y), "len(q_z) =", len(q_z))

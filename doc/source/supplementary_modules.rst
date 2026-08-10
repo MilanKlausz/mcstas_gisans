@@ -124,9 +124,9 @@ experiment_time.py
 
 Contains utilities for scaling simulated data in order to make them comparable with real measurements, as described in :ref:`Scaling to absolute measurement times <scaling_to_absolute_measurement_times_section>`. This module is used internally by the :ref:`mg_plot <plot_simulation_results_section>` script.
 
-.. _read_d22_module:
+.. _nexus_reader_module:
 
-read_d22.py
+nexus_reader.py
 -----------
 
 As described in the :ref:`Input files <input_files_section>` section, this is a module with a dedicated (hardcoded) function to retrieve 2D histogram data (with uncertainty and bin edges) from nexus files, that correspond to measurements carried out at the D22 instrument at ILL. This module is used internally by the :ref:`mg_plot <plot_simulation_results_section>` script.

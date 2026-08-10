@@ -18,7 +18,7 @@ from .input_output import get_particles, save_q_histogram_file
 from .preconditioning import precondition
 from .parameters import pack_parameters
 from .run import process_particles, process_particles_parallelly
-from .read_d22 import read_nexus_data
+from .nexus_reader import read_nexus_data
 from .experiment_time import upscale_simple
 from .masking import get_mask, apply_mask, save_view_masks_plot
 

@@ -8,7 +8,7 @@ import copy
 import numpy as np
 from scipy.optimize import root
 
-from .read_d22 import read_nexus_data
+from .nexus_reader import read_nexus_data
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
