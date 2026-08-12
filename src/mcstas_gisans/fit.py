@@ -736,11 +736,13 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     display_point = {}
     for idx, name in enumerate(param_names):
       val = x[idx]
-      display_point[name] = int(np.round(val)) if name in fit_integers else float(val)
+      base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
+      display_point[name] = int(np.round(val)) if (name in fit_integers or base_name in fit_integers) else float(val)
 
     # Bounds penalty
     for name, val, (low, high) in zip(param_names, x, bounds):
-      eval_val = int(np.round(val)) if name in fit_integers else val
+      base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
+      eval_val = int(np.round(val)) if (name in fit_integers or base_name in fit_integers) else val
       if low is not None and eval_val < low:
         eval_duration = time.time() - eval_start_time
         total_elapsed = time.time() - start_total_time
@@ -836,7 +838,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     return loss
 
   if args.optimizer.lower() == 'differential-evolution':
-    integrality = [name in fit_integers for name in param_names]
+    integrality = [name in fit_integers or (name[3:] if name.startswith(('s1_', 's2_')) else name) in fit_integers for name in param_names]
     # Each generation in DE evaluates popsize * len(param_names) times (default popsize is 15).
     # We scale maxiter so that the total evaluations respect args.max_evals.
     popsize = args.popsize
@@ -877,7 +879,8 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   ]
   best_params = dict(zip(param_names, opt_res.x))
   for k, v in best_params.items():
-    if k in fit_integers:
+    base_name = k[3:] if k.startswith(('s1_', 's2_')) else k
+    if k in fit_integers or base_name in fit_integers:
       val_str = str(int(np.round(v)))
     else:
       val_str = f"{v:.4f}"
