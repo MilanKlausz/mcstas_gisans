@@ -3,7 +3,7 @@ import numpy as np
 
 class CoordinateTransform:
   """
-  Handles coordinate transformations between NeXus laboratory coordinate system
+  Handles coordinate transformations between NeXus coordinate system
   and BornAgain sample-centric coordinate system, taking into account:
   1. Sample orientation (rotation around the beam axis Z_nexus by 0, +/-90 degrees)
   2. Sample inclination angle alpha (rotation in the vertical-longitudinal plane)
@@ -24,17 +24,20 @@ class CoordinateTransform:
         [np.sin(-sample_inclination), np.cos(-sample_inclination)],
     ])
 
-    # Pre-bind sample orientation methods for zero-branching performance
+    # Pre-bind sample orientation dependent methods to eliminate branching when they are used
     match sample_orientation:
       case 0:  # Vertical sample, beam from left (-90 deg rotation)
-        self._apply_sample_orientation = self._transform_sample_orient_0
-        self._apply_inverse_sample_orientation = self._inverse_sample_orient_0
+        """Beam hitting vertical sample from the left: -90 deg rotation"""
+        self.apply_sample_orientation_transform = self._transform_sample_orient_0
+        self._apply_inverse_sample_orientation_transform = self._inverse_sample_orient_0
       case 1:  # Horizontal sample (no rotation)
-        self._apply_sample_orientation = self._transform_sample_orient_1
-        self._apply_inverse_sample_orientation = self._inverse_sample_orient_1
+        """Horizontal sample: no rotation"""
+        self.apply_sample_orientation_transform = self._transform_sample_orient_1
+        self._apply_inverse_sample_orientation_transform = self._inverse_sample_orient_1
       case 2:  # Vertical sample, beam from right (+90 deg rotation)
-        self._apply_sample_orientation = self._transform_sample_orient_2
-        self._apply_inverse_sample_orientation = self._inverse_sample_orient_2
+        """Beam hitting vertical sample from the right: -90 deg rotation"""
+        self.apply_sample_orientation_transform = self._transform_sample_orient_2
+        self._apply_inverse_sample_orientation_transform = self._inverse_sample_orient_2
       case _:
         raise ValueError(
             f"Unknown sample orientation: {sample_orientation}"
@@ -58,113 +61,107 @@ class CoordinateTransform:
   def _inverse_sample_orient_2(self, x_uninclined, y_uninclined):
     return -y_uninclined, x_uninclined
 
-  def transform_inclination_plane(self, z_nexus, y_nexus):
+  def rotate_detector_image(self, hist_nexus):
+    """
+    Rotates a 2D NeXus detector image matrix (horizontal x vertical) to match the
+    (uninclined) BornAgain sample frame.
+    """
+    match self.sample_orientation:
+      case 0:
+        return np.rot90(hist_nexus, -1)
+      case 1:
+        return hist_nexus
+      case 2:
+        return np.rot90(hist_nexus, 1)
+      case _:
+        raise ValueError(f"Unknown sample orientation: {self.sample_orientation}")
+
+  def apply_inclination_angle_transformation(self, x_uninclined, z_uninclined):
     """
     Apply sample inclination angle rotation (alpha) to the 2D vertical-longitudinal plane
-    (z_nexus = distance, y_nexus = vertical height).
-    Returns (z_bornagain, y_bornagain).
-    """
-    z_arr = np.asarray(z_nexus)
-    y_arr = np.asarray(y_nexus)
-    is_scalar = (z_arr.ndim == 0) and (y_arr.ndim == 0)
+    (x = forward, z = up).
 
+    Accepts both scalar and array/vector inputs.
+    """
+    x_arr = np.asarray(x_uninclined)
+    z_arr = np.asarray(z_uninclined)
+
+    x_flat = np.ravel(x_arr)
     z_flat = np.ravel(z_arr)
-    y_flat = np.ravel(y_arr)
 
     rotated = np.matmul(
         self.sample_inclination_rotation_matrix,
-        np.vstack((z_flat, y_flat)),
+        np.vstack((x_flat, z_flat)),
     )
-    z_ba = rotated[0].reshape(z_arr.shape)
-    y_ba = rotated[1].reshape(y_arr.shape)
+    x_bornagain = rotated[0].reshape(x_arr.shape)
+    z_bornagain = rotated[1].reshape(z_arr.shape)
 
-    if is_scalar:
-      return z_ba.item(), y_ba.item()
+    return x_bornagain, z_bornagain
 
-    return z_ba, y_ba
-
-  def inverse_transform_inclination_plane(self, z_ba, y_ba):
+  def apply_inverse_inclination_angle_transformation(self, x_bornagain, z_bornagain):
     """
     Apply inverse sample inclination angle rotation (+alpha) to the 2D vertical-longitudinal plane.
-    Returns (z_nexus, y_nexus).
-    """
-    z_arr = np.asarray(z_ba)
-    y_arr = np.asarray(y_ba)
-    is_scalar = (z_arr.ndim == 0) and (y_arr.ndim == 0)
 
+    Accepts both scalar and array/vector inputs.
+    """
+    x_arr = np.asarray(x_bornagain)
+    z_arr = np.asarray(z_bornagain)
+
+    x_flat = np.ravel(x_arr)
     z_flat = np.ravel(z_arr)
-    y_flat = np.ravel(y_arr)
 
     rotated = np.matmul(
         self.inverse_sample_inclination_rotation_matrix,
-        np.vstack((z_flat, y_flat)),
+        np.vstack((x_flat, z_flat)),
     )
-    z_nexus = rotated[0].reshape(z_arr.shape)
-    y_nexus = rotated[1].reshape(y_arr.shape)
+    x_uninclined = rotated[0].reshape(x_arr.shape)
+    z_uninclined = rotated[1].reshape(z_arr.shape)
 
-    if is_scalar:
-      return z_nexus.item(), y_nexus.item()
-
-    return z_nexus, y_nexus
+    return x_uninclined, z_uninclined
 
   def nexus_to_bornagain(self, x_nexus, y_nexus, z_nexus):
     """
     Transform 3D position or velocity vector from NeXus coordinate system to BornAgain coordinate system.
-    NeXus: X=horizontal, Y=vertical up, Z=longitudinal beam.
-    BornAgain: X=horizontal transverse, Y=vertical, Z=longitudinal beam.
+    NeXus: X=horizontal left, Y=vertical up, Z=longitudinal forward.
+    BornAgain: X=longitudinal forward, Y=horizontal left, Z=vertical up.
+    The transformation (depends on sample orientation and inclination
+
+    Accepts both scalar and array/vector inputs.
     """
     x_arr = np.asarray(x_nexus)
     y_arr = np.asarray(y_nexus)
     z_arr = np.asarray(z_nexus)
-    is_scalar = (x_arr.ndim == 0) and (y_arr.ndim == 0) and (z_arr.ndim == 0)
 
-    x_uninclined, y_uninclined = self._apply_sample_orientation(x_arr, y_arr)
-    z_uninclined = z_arr
+    x_horiz, y_vert = self.apply_sample_orientation_transform(x_arr, y_arr)
 
-    z_flat = np.ravel(z_uninclined)
-    y_flat = np.ravel(y_uninclined)
+    x_bornagain_uninclined = z_arr
+    y_bornagain_uninclined = x_horiz
+    z_bornagain_uninclined = y_vert
 
-    rotated = np.matmul(
-        self.sample_inclination_rotation_matrix,
-        np.vstack((z_flat, y_flat)),
-    )
-    z_bornagain = rotated[0].reshape(z_uninclined.shape)
-    y_bornagain = rotated[1].reshape(y_uninclined.shape)
-    x_bornagain = x_uninclined
-
-    if is_scalar:
-      return x_bornagain.item(), y_bornagain.item(), z_bornagain.item()
+    x_bornagain, z_bornagain = self.apply_inclination_angle_transformation(x_bornagain_uninclined, z_bornagain_uninclined)
+    y_bornagain = y_bornagain_uninclined
 
     return x_bornagain, y_bornagain, z_bornagain
 
   def bornagain_to_nexus(self, x_bornagain, y_bornagain, z_bornagain):
     """
     Transform 3D position or velocity vector from BornAgain coordinate system to NeXus coordinate system.
-    BornAgain: X=horizontal transverse, Y=vertical, Z=longitudinal beam.
-    NeXus: X=horizontal, Y=vertical up, Z=longitudinal beam.
+    BornAgain: X=longitudinal forward, Y=horizontal left, Z=vertical up.
+    NeXus: X=horizontal left, Y=vertical up, Z=longitudinal forward.
+
+    Accepts both scalar and array/vector inputs.
     """
     x_arr = np.asarray(x_bornagain)
     y_arr = np.asarray(y_bornagain)
     z_arr = np.asarray(z_bornagain)
-    is_scalar = (x_arr.ndim == 0) and (y_arr.ndim == 0) and (z_arr.ndim == 0)
 
-    z_flat = np.ravel(z_arr)
-    y_flat = np.ravel(y_arr)
+    x_uninclined, z_uninclined = self.apply_inverse_inclination_angle_transformation(x_arr, z_arr)
+    y_uninclined = y_arr
 
-    rotated = np.matmul(
-        self.inverse_sample_inclination_rotation_matrix,
-        np.vstack((z_flat, y_flat)),
-    )
-    z_uninclined = rotated[0].reshape(z_arr.shape)
-    y_uninclined = rotated[1].reshape(y_arr.shape)
-    x_uninclined = x_arr
+    x_horiz = y_uninclined
+    y_vert = z_uninclined
+    z_nexus = x_uninclined
 
-    x_nexus, y_nexus = self._apply_inverse_sample_orientation(
-        x_uninclined, y_uninclined
-    )
-    z_nexus = z_uninclined
-
-    if is_scalar:
-      return x_nexus.item(), y_nexus.item(), z_nexus.item()
+    x_nexus, y_nexus = self._apply_inverse_sample_orientation_transform(x_horiz, y_vert)
 
     return x_nexus, y_nexus, z_nexus

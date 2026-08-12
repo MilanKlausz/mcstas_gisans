@@ -66,8 +66,9 @@ def get_datasets(args):
       with np.load(filename) as npFile:
         if 'hist' in npFile.files: #new file with histograms
           hist, hist_error, _, y_edges, z_edges = unpack_q_histogram_file(npFile)
-          hist = np.sum(hist, axis=2)
-          hist_error = np.sum(hist_error, axis=2)
+          # Project along the longitudinal (X) axis (axis 0 in BornAgain [Qx, Qy, Qz] order)
+          hist = np.sum(hist, axis=0)
+          hist_error = np.sum(hist_error, axis=0)
           y_data_range = [y_edges[0], y_edges[-1]]
           z_data_range = [z_edges[0], z_edges[-1]]
         else: #old 'raw data' file with a list of unhistogrammed qEvents #FIXME still uses McStas axis labels
@@ -147,11 +148,11 @@ def main():
       plot_2d_axes = axes_top[dataset_index]
       line_color = line_colors[dataset_index]
       hist, hist_error, y_edges, z_edges, label = dataset
-      
+
     #   print(f"X bin number: {len(y_edges)-1}, Y bin number: {len(z_edges)-1}")
     #   print(f"X bin range: [{y_edges[0]}, {y_edges[-1]}], Y bin range: [{z_edges[0]}, {z_edges[-1]}]")
     #   print(f"Label: {label}")
-      
+
       common_maximum = max_value if args.individual_colorbars is False else None
       log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
 
@@ -227,7 +228,7 @@ def main():
           res_err_2d = np.sqrt(hist_error**2 + hist_error_0**2)
           diff2d = abs(hist_0-hist)/res_err_2d
           title_text = 'Normalized residuals'
-          
+
         cmap = plt.get_cmap('jet')
         cmap.set_bad('k') # Handle empty bins giving error with LogNorm
         ax=plot_2d_axes
@@ -252,7 +253,7 @@ def main():
       # plot_2d_axes.axvline(y_edges[qy_min_index], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished but unused
       # plot_2d_axes.axvline(y_edges[qy_max_index], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished but unused
       # ### TODO in dev ###
-  
+
       # ### TEMP manual work
       # y_first_peak_min = 0.04 #TODO
       # y_first_peak_max = 0.085 #TODO

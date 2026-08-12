@@ -28,7 +28,7 @@ def get_particles(filename, intensity_factor, tof_limits, input_weight_limit, us
     with mcpl.MCPLFile(filename) as myfile:
       convert_particle_properties, particle_type = get_particle_converter(myfile.opt_universalpdgcode)
       particles = np.array(
-        [convert_particle_properties(p, intensity_factor, use_polarization=use_polarization) for p in myfile.particles 
+        [convert_particle_properties(p, intensity_factor, use_polarization=use_polarization) for p in myfile.particles
          if (p.weight > input_weight_limit and
              tof_limits[0] < p.time and p.time < tof_limits[1])]
         )
@@ -47,8 +47,7 @@ def get_particles(filename, intensity_factor, tof_limits, input_weight_limit, us
 
 def save_q_histogram_file(savename, q_hist, q_hist_error, edges):
   """Save the histograms are corresponding bin edges in an NPZ file"""
-  np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[2], yEdges=edges[0], zEdges=edges[1])
-  # np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
+  np.savez_compressed(savename, hist=q_hist, error=q_hist_error, xEdges=edges[0], yEdges=edges[1], zEdges=edges[2])
   print(f"Created {savename}.npz")
 
 def unpack_q_histogram_file(np_file):

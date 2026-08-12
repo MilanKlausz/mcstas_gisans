@@ -118,16 +118,13 @@ def process_particles(particles, params, queue=None):
     if id%200==0:
       print(f'{id:10}/{len(particles)}') #print output to indicate progress
     # Particle positions, velocities and corresponding calculations are expressed
-    # in the McStas coord system (X - left; Y - up; Z - forward 'along the beam')
-    # not in the BornAgain coord system (X - forward, Y - left, Z - up),
-    # but with the SphericalDetector, BornAgain only deals with alpha_i (input),
-    # alpha_f and phi_f (output), which are the same if calculated correctly
+    # in the BornAgain coord system (X - forward, Y - left, Z - up)
     p, x, y, z, vx, vy, vz, wavelength, t, *polarization = particle
-    alpha_i = np.rad2deg(np.arctan(-vy/vz)) #[deg]
-    phi_i = np.rad2deg(np.arctan(vx/vz)) #[deg], not used in sim, added to phi_f
+    alpha_i = np.rad2deg(np.arctan(-vz/vx)) #[deg]
+    phi_i = np.rad2deg(np.arctan(vy/vx)) #[deg], not used in sim, added to phi_f
     v = np.sqrt(vx**2+vy**2+vz**2)
 
-    if sample.sample_missed(x, y, z, vy):
+    if sample.sample_missed(x, y, z, vz):
       # Particles missed the sample so the q value is calculated after propagation
       # to the detector surface without scattering simulation
       q_array = calculate_q(x, y, z, t, [vx], [vy], [vz])
@@ -160,9 +157,9 @@ def process_particles(particles, params, queue=None):
       alpha_f = np.linspace(vert_max, vert_min, outgoing_directions_vertical) + rand_deg_alpha
       phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_directions_horizontal) + rand_deg_phi
       alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
-      VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
-      VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
-      VZ_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) #this is X in BA coord system) (horizontal - forward)
+      VX_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) # X in BA coord system is forward(horizontal)
+      VY_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) # Y in BA coord system is to the left(horizontal)
+      VZ_grid = v * np.sin(alpha_grid)                    # Z in BA coord system is up (vertical)
 
       q_array = calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
@@ -170,13 +167,13 @@ def process_particles(particles, params, queue=None):
     if specular == 'specular_simulation':
       q_specular_sim = []
       weight_specular_sim = []
-      
+
       # Calculated reflected and transmitted (1-reflected) beams
       ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
       res = ssim.simulate()
       refl_fraction = np.array(res.flatVector())[0]
 
-      # Reflected beam
+      # Reflected beam (reverse vertical velocity in BA, which is vz)
       q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [-vz]))
       weight_specular_sim.append(np.array([p * refl_fraction]))
 
@@ -297,9 +294,9 @@ def main():
   print("Sum intensity in the q-histogram: ", sum(sum(q_hist)))
 
   if args.quick_plot:
-    hist2D = np.sum(q_hist, axis=2)
+    hist2D = np.sum(q_hist, axis=0)
     from .plotting_utils import log_plot_2d
-    log_plot_2d(hist2D, edges[0], edges[1], y_range=params['hist_ranges'][0], z_range=params['hist_ranges'][1], output='show')
+    log_plot_2d(hist2D, edges[1], edges[2], y_range=params['hist_ranges'][1], z_range=params['hist_ranges'][2], output='show')
 
 if __name__=='__main__':
   main()

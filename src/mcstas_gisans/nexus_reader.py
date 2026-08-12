@@ -23,15 +23,14 @@ def read_nexus_data(filepath, alpha, wavelength, sample_orientation=1, scale_fac
   hist = detector_data[:,:,0]
   if scale_factor is not None:
     hist = hist * scale_factor
-  if sample_orientation == 0:
-      # Sample rotated +90 deg CCW -> Rotate detector -90 deg CW in sample frame
-      hist = np.rot90(hist, -1)
-  elif sample_orientation == 2:
-      # Sample rotated -90 deg CW -> Rotate detector +90 deg CCW in sample frame
-      hist= np.rot90(hist, 1)
   hist_error = np.sqrt(hist)
 
   instrument = Instrument(instrument_defaults['d22'], alpha, wavelength, sample_orientation)
+  
+  # Rotate the NeXus detector image to match the BornAgain sample frame
+  hist = instrument.detector.coords.rotate_detector_image(hist)
+  hist_error = instrument.detector.coords.rotate_detector_image(hist_error)
+
   q_y, q_z = instrument.get_q_pixel_limits()
 
 

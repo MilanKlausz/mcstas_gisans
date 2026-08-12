@@ -11,16 +11,14 @@ def pack_parameters(args, particle_type):
 
   wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
   q_min, q_max = instrument.calculate_q_limits(wavelength)
-  #reorder x,y,z because user input is in BornAgain geometry, but for now the
-  #script uses the McStas axis labeling. FIXME
+  # The axes are now in BornAgain geometry: X=forward, Y=left, Z=up.
   hist_ranges = [
-    args.y_range if args.y_range else [q_min[0], q_max[0]],
-    args.z_range if args.z_range else [q_min[1], q_max[1]],
     args.x_range if args.x_range else [-1000, 1000],
+    args.y_range if args.y_range else [q_min[1], q_max[1]],
+    args.z_range if args.z_range else [q_min[2], q_max[2]],
   ]
-  #reorder x,y,z because user input is in BornAgain geometry, but for now the
-  #script uses the McStas axis labeling. FIXME
-  hist_bins = [args.bins[1], args.bins[2], args.bins[0]] if args.bins else [instrument.detector.pixels_y_bornagain, instrument.detector.pixels_z_bornagain, 1]
+
+  hist_bins = [args.bins[0], args.bins[1], args.bins[2]] if args.bins else [1, instrument.detector.pixels_y_bornagain, instrument.detector.pixels_z_bornagain]
 
   default_angle_range = list(instrument.get_detector_angle_maximum())
   angle_range = list(args.angle_range) if args.angle_range else default_angle_range

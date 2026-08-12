@@ -501,7 +501,7 @@ def prepare_experimental_data(args):
 
     len_y_centres = len(y_edges_nxs) - 1
     factor = getattr(args, 'simulate_mask_angle_range_factor', 1.0)
-    mask_angle_range = list(instrument.get_masked_angle_range(mask, len_y_centres, factor=factor))
+    mask_angle_range = list(instrument.get_masked_angle_range(mask, factor=factor))
     args.angle_range = mask_angle_range
     print(f"Mask angle range [deg] (factor={factor:.2f}): horiz=[{mask_angle_range[0]:.4f}, {mask_angle_range[1]:.4f}], vert=[{mask_angle_range[2]:.4f}, {mask_angle_range[3]:.4f}]")
 
@@ -548,8 +548,8 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     savename = os.path.join(args.output_dir, f"{label_prefix}_{param_str}")
     save_q_histogram_file(savename, q_hist, q_hist_error, edges)
 
-  hist_sim = np.sum(q_hist, axis=2)
-  hist_sim_error = np.sqrt(np.sum(q_hist_weights_squared, axis=2))
+  hist_sim = np.sum(q_hist, axis=0)
+  hist_sim_error = np.sqrt(np.sum(q_hist_weights_squared, axis=0))
 
   if hist_nxs.shape != hist_sim.shape:
     if hist_nxs.shape == hist_sim.T.shape:
@@ -581,7 +581,7 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
     save_comparison_plot(
         hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
-        hist_sim_masked, hist_sim_error_masked, edges[0], edges[1],
+        hist_sim_masked, hist_sim_error_masked, edges[1], edges[2],
         args.q_min, args.q_max, y_plot_range, z_plot_range,
         plot_path, f"Sim ({param_str})"
     )
@@ -832,9 +832,9 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
         z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
         save_joint_comparison_plot(
             hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
-            sim_data1['hist_sim_masked'], sim_data1['hist_sim_error_masked'], sim_data1['edges'][0], sim_data1['edges'][1],
+            sim_data1['hist_sim_masked'], sim_data1['hist_sim_error_masked'], sim_data1['edges'][1], sim_data1['edges'][2],
             hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2,
-            sim_data2['hist_sim_masked'], sim_data2['hist_sim_error_masked'], sim_data2['edges'][0], sim_data2['edges'][1],
+            sim_data2['hist_sim_masked'], sim_data2['hist_sim_error_masked'], sim_data2['edges'][1], sim_data2['edges'][2],
             args.q_min, args.q_max, y_plot_range, z_plot_range,
             plot_path
         )

@@ -34,7 +34,7 @@ class Instrument:
     Calculate the reference incident direction, taking gravity drop into account
     from the sample to the detector surface if needed.
     """
-    incident_dir_straight = np.array([0.0, -np.sin(self.alpha_inc), np.cos(self.alpha_inc)])
+    incident_dir_straight = np.array([np.cos(self.alpha_inc), 0.0, -np.sin(self.alpha_inc)])
     if self.no_gravity or wavelength is None:
       return incident_dir_straight
 
@@ -87,29 +87,29 @@ class Instrument:
     """
     # Since the Detector class constructor already swaps the active area coordinates (size_y_bornagain, size_z_bornagain, min_edge_y_bornagain, min_edge_z_bornagain)
     # in accordance with the sample_orientation, self.detector.min_edge_y/z_bornagain are already in the sample frame.
-    
+
     # 1. Start with transverse horizontal bounds (Y_BA) which are already in BornAgain frame
     q_min_y_ba = self.detector.min_edge_y_bornagain
     q_max_y_ba = self.detector.max_edge_y_bornagain
 
     # 2. Project vertical height (Z_BA_uninclined) and longitudinal distance for sample inclination alpha
-    q_min_x_ba, q_min_z_ba = self.detector.coords.transform_inclination_plane(
+    q_min_x_ba, q_min_z_ba = self.detector.coords.apply_inclination_angle_transformation(
         self.sample_detector_distance, self.detector.min_edge_z_bornagain
     )
-    q_max_x_ba, q_max_z_ba = self.detector.coords.transform_inclination_plane(
+    q_max_x_ba, q_max_z_ba = self.detector.coords.apply_inclination_angle_transformation(
         self.sample_detector_distance, self.detector.max_edge_z_bornagain
     )
 
-    # 3. Combine into coordinate limit vectors in BornAgain space [Y_BA, Z_BA, X_BA].
-    q_min_coords = [q_min_y_ba, q_min_z_ba, q_min_x_ba]
-    q_max_coords = [q_max_y_ba, q_max_z_ba, q_max_x_ba]
+    # 3. Combine into coordinate limit vectors in BornAgain space [X_BA, Y_BA, Z_BA].
+    q_min_coords = [q_min_x_ba, q_min_y_ba, q_min_z_ba]
+    q_max_coords = [q_max_x_ba, q_max_y_ba, q_max_z_ba]
 
     # 4. Convert coordinate limits to outgoing direction unit vectors.
     outgoing_direction_q_min = q_min_coords / np.linalg.norm(q_min_coords)
     outgoing_direction_q_max = q_max_coords / np.linalg.norm(q_max_coords)
 
     wavenumber = self.get_wavenumber(wavelength)
-    
+
     # 5. Compute the reference incident direction. For non-TOF instruments, this uses the pre-calculated gravity-dropped reference direction.
     if not self.is_tof_instrument:
       w = wavelength if wavelength is not None else self.wavelength_selected
@@ -118,8 +118,12 @@ class Instrument:
       incident_direction = self.incident_direction
 
     # 6. Calculate min and max scattering vector (Q) limits.
-    q_min = (outgoing_direction_q_min - incident_direction) * wavenumber
-    q_max = (outgoing_direction_q_max - incident_direction) * wavenumber
+    q_min_raw = (outgoing_direction_q_min - incident_direction) * wavenumber
+    q_max_raw = (outgoing_direction_q_max - incident_direction) * wavenumber
+
+    # Ensure that q_min strictly contains the minimums and q_max the maximums
+    q_min = np.minimum(q_min_raw, q_max_raw)
+    q_max = np.maximum(q_min_raw, q_max_raw)
 
     return q_min, q_max
 
@@ -129,13 +133,14 @@ class Instrument:
     boundary on the detector, relying on the detector's pixel dimensions.
     """
     q_min, q_max = self.calculate_q_limits(wavelength)
-    q_y = np.linspace(q_min[0], q_max[0], num=self.detector.pixels_y_bornagain + 1)
-    q_z = np.linspace(q_min[1], q_max[1], num=self.detector.pixels_z_bornagain + 1)
+    q_y = np.linspace(q_min[1], q_max[1], num=self.detector.pixels_y_bornagain + 1)
+    q_z = np.linspace(q_min[2], q_max[2], num=self.detector.pixels_z_bornagain + 1)
     return q_y, q_z
 
   def get_expected_specular_peak_q(self, wavelength=None):
     """Calculate approximate q value for the specular peak (without gravity)"""
-    outgoing_direction = np.array([self.incident_direction[0], -self.incident_direction[1], self.incident_direction[2]])
+    # In BornAgain, specular reflection reverses the vertical component (Z axis)
+    outgoing_direction = np.array([self.incident_direction[0], self.incident_direction[1], -self.incident_direction[2]])
     wavenumber = self.get_wavenumber(wavelength)
     specular_peak_expected_q = (outgoing_direction - self.incident_direction) * wavenumber
     print("specular_peak_expected_q", specular_peak_expected_q)
@@ -143,5 +148,5 @@ class Instrument:
   def get_detector_angle_maximum(self):
     return self.detector.get_detector_angle_maximum(self.sample_detector_distance)
 
-  def get_masked_angle_range(self, mask, len_y_centres, factor=1.0):
-    return self.detector.get_masked_angle_range(self.sample_detector_distance, mask, len_y_centres, factor=factor)
+  def get_masked_angle_range(self, mask, factor=1.0):
+    return self.detector.get_masked_angle_range(self.sample_detector_distance, mask, factor=factor)

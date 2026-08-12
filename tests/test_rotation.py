@@ -2,7 +2,7 @@
 Tests for checking rotation consistency of position, velocity, and polarization components.
 """
 import numpy as np
-from mcstas_gisans.preconditioning import sample_orientation_transform, transform_to_sample_system
+from mcstas_gisans.preconditioning import sample_orientation_transform, transform_to_bornagain_coordinate_system
 
 def test_rotation_consistency():
   # Create a dummy particle with distinct components
@@ -36,48 +36,52 @@ def test_rotation_consistency():
     else:
       tp, tx, ty, tz, tvx, tvy, tvz, tw, tt = unpacked
 
-    # Scalars/Z-only components should not change
+    # Scalars should not change
     assert np.isclose(tp, p)
-    assert np.isclose(tz, z)
-    assert np.isclose(tvz, vz)
     assert np.isclose(tw, w)
     assert np.isclose(tt, t)
-    if has_polarization:
-      assert np.isclose(tpolz, polz)
 
-    # Check 2D rotation of X/Y components
+    # In BornAgain coordinates, x_ba is forward (which was Z in NeXus)
+    assert np.isclose(tx, z)
+    assert np.isclose(tvx, vz)
+    if has_polarization:
+      assert np.isclose(tpolx, polz)
+
+    # Check 2D rotation of Y (left) and Z (up) components, which were X and Y in NeXus
     if orientation == 0:
-      # +90 degrees rotation: (x,y) -> (-y, x)
-      assert np.isclose(tx, -y)
-      assert np.isclose(ty, x)
-      assert np.isclose(tvx, -vy)
-      assert np.isclose(tvy, vx)
+      # -90 degrees rotation: (x_nx, y_nx) -> (-y_nx, x_nx)
+      # Y_ba is left (-y_nx)
+      # Z_ba is up (x_nx)
+      assert np.isclose(ty, -y)
+      assert np.isclose(tz, x)
+      assert np.isclose(tvy, -vy)
+      assert np.isclose(tvz, vx)
       if has_polarization:
-        assert np.isclose(tpolx, -poly)
-        assert np.isclose(tpoly, polx)
+        assert np.isclose(tpoly, -poly)
+        assert np.isclose(tpolz, polx)
     elif orientation == 1:
-      # No rotation
-      assert np.isclose(tx, x)
-      assert np.isclose(ty, y)
-      assert np.isclose(tvx, vx)
-      assert np.isclose(tvy, vy)
+      # No rotation: Y_ba is x_nx, Z_ba is y_nx
+      assert np.isclose(ty, x)
+      assert np.isclose(tz, y)
+      assert np.isclose(tvy, vx)
+      assert np.isclose(tvz, vy)
       if has_polarization:
-        assert np.isclose(tpolx, polx)
-        assert np.isclose(tpoly, poly)
+        assert np.isclose(tpoly, polx)
+        assert np.isclose(tpolz, poly)
     elif orientation == 2:
-      # -90 degrees rotation: (x,y) -> (y, -x)
-      assert np.isclose(tx, y)
-      assert np.isclose(ty, -x)
-      assert np.isclose(tvx, vy)
-      assert np.isclose(tvy, -vx)
+      # +90 degrees rotation: (x_nx, y_nx) -> (y_nx, -x_nx)
+      assert np.isclose(ty, y)
+      assert np.isclose(tz, -x)
+      assert np.isclose(tvy, vy)
+      assert np.isclose(tvz, -vx)
       if has_polarization:
-        assert np.isclose(tpolx, poly)
-        assert np.isclose(tpoly, -polx)
+        assert np.isclose(tpoly, poly)
+        assert np.isclose(tpolz, -polx)
 
   # Test transform_to_sample_system for different orientations and alpha incident angles
   for orientation in [0, 1, 2]:
     for alpha in [-1.5, 0.0, 0.24, 1.0, 5.0]:
-      transformed_sys = transform_to_sample_system(particles, alpha, orientation, 0.0)
+      transformed_sys = transform_to_bornagain_coordinate_system(particles, alpha, orientation, 0.0)
       unpacked_sys = transformed_sys[0]
       if has_polarization:
         tp, tx, ty, tz, tvx, tvy, tvz, tw, tt, tpolx, tpoly, tpolz = unpacked_sys
@@ -98,28 +102,25 @@ def test_rotation_consistency():
       sin_a = np.sin(-alpha_rad)
       rotation_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
 
-      # Verify coordinate rotation of Z/Y components under alpha_inc
-      expected_z_y = np.dot(rotation_matrix, [oz, oy])
-      assert np.isclose(tz, expected_z_y[0])
-      assert np.isclose(ty, expected_z_y[1])
+      # Verify coordinate rotation of X/Z components under alpha_inc
+      expected_x_z = np.dot(rotation_matrix, [ox, oz])
+      assert np.isclose(tx, expected_x_z[0])
+      assert np.isclose(tz, expected_x_z[1])
+      assert np.isclose(ty, oy)
 
-      expected_vz_vy = np.dot(rotation_matrix, [ovz, ovy])
-      assert np.isclose(tvz, expected_vz_vy[0])
-      assert np.isclose(tvy, expected_vz_vy[1])
+      expected_vx_vz = np.dot(rotation_matrix, [ovx, ovz])
+      assert np.isclose(tvx, expected_vx_vz[0])
+      assert np.isclose(tvz, expected_vx_vz[1])
+      assert np.isclose(tvy, ovy)
 
       if has_polarization:
-        expected_polz_poly = np.dot(rotation_matrix, [opolz, opoly])
-        assert np.isclose(tpolz, expected_polz_poly[0])
-        assert np.isclose(tpoly, expected_polz_poly[1])
-
-      # The X components are not affected by transform_to_sample_system's alpha rotation
-      assert np.isclose(tx, ox)
-      assert np.isclose(tvx, ovx)
-      if has_polarization:
-        assert np.isclose(tpolx, opolx)
+        expected_px_pz = np.dot(rotation_matrix, [opolx, opolz])
+        assert np.isclose(tpolx, expected_px_pz[0])
+        assert np.isclose(tpolz, expected_px_pz[1])
+        assert np.isclose(tpoly, opoly)
 
   print("All rotation consistency checks passed successfully!")
-  
+
 def test_declination_no_rotation():
   # Create a dummy particle
   p = 1.0
@@ -131,18 +132,18 @@ def test_declination_no_rotation():
 
   # If alpha_inc_deg == beam_declination_angle, rotation angle should be 0.0
   # Thus, transform_to_sample_system should only apply sample_orientation_transform
-  # (which for orientation 1 is no rotation at all).
+  # (which for orientation 1 maps X_nx to Y_ba (left) and Z_nx to X_ba (forward)).
   alpha = 0.44
   beam_declination = 0.44
-  transformed = transform_to_sample_system(particles, alpha, 1, beam_declination)
+  transformed = transform_to_bornagain_coordinate_system(particles, alpha, 1, beam_declination)
   unpacked = transformed[0]
-  
-  assert np.isclose(unpacked[1], x)
-  assert np.isclose(unpacked[2], y)
-  assert np.isclose(unpacked[3], z)
-  assert np.isclose(unpacked[4], vx)
-  assert np.isclose(unpacked[5], vy)
-  assert np.isclose(unpacked[6], vz)
+
+  assert np.isclose(unpacked[1], z) # x_ba is z_nx
+  assert np.isclose(unpacked[2], x) # y_ba is x_nx
+  assert np.isclose(unpacked[3], y) # z_ba is y_nx
+  assert np.isclose(unpacked[4], vz)
+  assert np.isclose(unpacked[5], vx)
+  assert np.isclose(unpacked[6], vy)
   print("Declination rotation cancellation check passed successfully!")
 
 if __name__ == "__main__":

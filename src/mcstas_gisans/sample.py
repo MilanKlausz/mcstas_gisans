@@ -14,7 +14,7 @@ class Sample:
   def __init__(self, size_y, size_x, sim_module_name, sample_arguments):
     self.sim_module_name = sim_module_name
     self.get_module = self._resolve_sample_source()
-          
+
     self.size_y = size_y
     self.size_x = size_x
     self.kwargs = self.parse_sample_arguments(sample_arguments) if sample_arguments else {}
@@ -87,14 +87,15 @@ class Sample:
       except ValueError:
         return value
 
-  def sample_missed(self, x, y, z, vy):
+  def sample_missed(self, x, y, z, vz):
     """Decide if position is outside the area of the sample surface or the
-    particle is not approaching the sample surface (i.e., vy >= 0)."""
+    particle is not approaching the sample surface (i.e., vz >= 0).
+    In BornAgain coordinates: x is forward (longitudinal), y is left (horizontal), z is up (vertical)."""
     return (
-        (abs(x) > 0.5 * self.size_y) or  # Outside horizontal bounds
-        (abs(z) > 0.5 * self.size_x) or  # Outside longitudinal bounds
-        (y < -1e-12) or                  # Already below the sample surface
-        (vy >= 0)                        # Moving away from or parallel to surface
+        (abs(x) > 0.5 * self.size_x) or  # Outside longitudinal bounds
+        (abs(y) > 0.5 * self.size_y) or  # Outside horizontal bounds
+        (z < -1e-12) or                  # Already below the sample surface
+        (vz >= 0)                        # Moving away from or parallel to surface
     )
 
   def _resolve_sample_source(self):
