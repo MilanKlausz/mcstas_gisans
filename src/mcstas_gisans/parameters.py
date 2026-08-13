@@ -51,4 +51,5 @@ def pack_parameters(args, particle_type):
     'analyzer_direction': args.analyzer_direction if any(args.analyzer_direction) else None,
     'analyzer_efficiency': args.analyzer_efficiency,
     'analyzer_transmission': args.analyzer_transmission,
+    'bornagain_number_of_threads': args.bornagain_number_of_threads,
   }

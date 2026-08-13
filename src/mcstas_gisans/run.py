@@ -105,6 +105,7 @@ def process_particles(particles, params, queue=None):
   analyzer_direction = params['analyzer_direction']
   analyzer_efficiency = params['analyzer_efficiency']
   analyzer_transmission = params['analyzer_transmission']
+  bornagain_number_of_threads = params.get('bornagain_number_of_threads')
 
   if raw_output:
     q_events = [] #p, Qx, Qy, Qz, t
@@ -143,7 +144,8 @@ def process_particles(particles, params, queue=None):
                            analyzer_transmission=analyzer_transmission)
       sim.options().setUseAvgMaterials(use_avg_materials)
       sim.options().setIncludeSpecular(specular == 'include_specular')
-      # sim.options().setNumberOfThreads(n) ##Experiment with this? If not parallel processing?
+      if bornagain_number_of_threads is not None:
+          sim.options().setNumberOfThreads(bornagain_number_of_threads)
       res = sim.simulate()
       pout = get_result_intensities(res)
 
