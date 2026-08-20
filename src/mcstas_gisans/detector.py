@@ -16,6 +16,19 @@ class Detector:
     pixels_nexus = det_params['pixels']
     res_nexus = det_params['resolution']
     offset_nexus = det_params['direct_beam_centre_offset']
+    # Physical detector parameters in NeXus coordinate system (X=horizontal, Y=vertical)
+    self.size_x_nexus = size_nexus[0]
+    self.size_y_nexus = size_nexus[1]
+    self.pixels_x_nexus = pixels_nexus[0]
+    self.pixels_y_nexus = pixels_nexus[1]
+    self.pixel_size_x_nexus = self.size_x_nexus / self.pixels_x_nexus
+    self.pixel_size_y_nexus = self.size_y_nexus / self.pixels_y_nexus
+    self.direct_beam_centre_offset_x_nexus = offset_nexus[0]
+    self.direct_beam_centre_offset_y_nexus = offset_nexus[1]
+    self.min_edge_x_nexus = self.direct_beam_centre_offset_x_nexus - 0.5 * self.size_x_nexus
+    self.min_edge_y_nexus = self.direct_beam_centre_offset_y_nexus - 0.5 * self.size_y_nexus
+    self.max_edge_x_nexus = self.direct_beam_centre_offset_x_nexus + 0.5 * self.size_x_nexus
+    self.max_edge_y_nexus = self.direct_beam_centre_offset_y_nexus + 0.5 * self.size_y_nexus
 
     self.coords = CoordinateTransform(sample_inclination, sample_orientation)
     self.sample_orientation = sample_orientation
@@ -58,6 +71,43 @@ class Detector:
     y_smeared = np.random.normal(y_bornagain, self.sigma_y_bornagain, size=y_bornagain.shape)
     z_smeared = np.random.normal(z_bornagain, self.sigma_z_bornagain, size=z_bornagain.shape)
     return y_smeared, z_smeared
+
+  def get_pixel_indices_from_position(self, x_nexus, y_nexus):
+    """
+    Find 0-indexed integer pixel indices (idx_x, idx_y) corresponding to positions (x, y)
+    in the raw physical NeXus detector frame.
+    Returns (idx_x, idx_y, valid_mask).
+    """
+    idx_x = np.floor((x_nexus - self.min_edge_x_nexus) / self.pixel_size_x_nexus).astype(int)
+    idx_y = np.floor((y_nexus - self.min_edge_y_nexus) / self.pixel_size_y_nexus).astype(int)
+    valid_mask = (idx_x >= 0) & (idx_x < self.pixels_x_nexus) & (idx_y >= 0) & (idx_y < self.pixels_y_nexus)
+    return idx_x, idx_y, valid_mask
+
+  def calculate_pixel_hit(self, x_intersection_bornagain, y_intersection_bornagain, z_intersection_bornagain):
+    """
+    Calculate physical detector pixel indices (idx_x_nexus, idx_y_nexus) in raw NeXus frame for intersection coordinates.
+    All operations are vectorized across outgoing rays.
+    """
+    x_intersection_bornagain_uninclined, z_intersection_bornagain_uninclined = self.coords.apply_inverse_inclination_angle_transformation(x_intersection_bornagain, z_intersection_bornagain)
+    y_smeared_bornagain, z_smeared_bornagain_uninclined = self.apply_position_smearing(y_intersection_bornagain, z_intersection_bornagain_uninclined)
+
+    # Pixel hit in BA sample frame detector grid (y is horizontal, z is vertical)
+    idx_y_bornagain = np.floor((y_smeared_bornagain - self.min_edge_y_bornagain) / self.pixel_size_y_bornagain).astype(int)
+    idx_z_bornagain = np.floor((z_smeared_bornagain_uninclined - self.min_edge_z_bornagain) / self.pixel_size_z_bornagain).astype(int)
+    valid_mask = (idx_y_bornagain >= 0) & (idx_y_bornagain < self.pixels_y_bornagain) & (idx_z_bornagain >= 0) & (idx_z_bornagain < self.pixels_z_bornagain)
+
+    match self.sample_orientation:
+      case 0:
+        idx_x_nexus = self.pixels_x_nexus - 1 - idx_z_bornagain
+        idx_y_nexus = idx_y_bornagain
+      case 1:
+        idx_x_nexus = idx_y_bornagain
+        idx_y_nexus = idx_z_bornagain
+      case 2:
+        idx_x_nexus = idx_z_bornagain
+        idx_y_nexus = self.pixels_y_nexus - 1 - idx_y_bornagain
+
+    return idx_x_nexus, idx_y_nexus, valid_mask
 
   def get_pixel_centre_from_position(self, y_bornagain, z_bornagain):
     """ Find the centre of the pixel corresponding to the y, z coordinates in BornAgain frame."""
@@ -193,3 +243,18 @@ class Detector:
       v_min, v_max = v_center - v_half, v_center + v_half
 
     return h_min, h_max, v_min, v_max
+
+  def get_pixel_positions(self, sample_detector_distance):
+    x_centers = np.linspace(self.min_edge_x_nexus + self.pixel_size_x_nexus/2, 
+                            self.max_edge_x_nexus - self.pixel_size_x_nexus/2, 
+                            self.pixels_x_nexus)
+    y_centers = np.linspace(self.min_edge_y_nexus + self.pixel_size_y_nexus/2, 
+                            self.max_edge_y_nexus - self.pixel_size_y_nexus/2, 
+                            self.pixels_y_nexus)
+    X, Y = np.meshgrid(x_centers, y_centers, indexing='ij')
+    num_pixels = self.pixels_x_nexus * self.pixels_y_nexus
+    positions = np.zeros((num_pixels, 3))
+    positions[:, 0] = X.flatten()
+    positions[:, 1] = Y.flatten()
+    positions[:, 2] = sample_detector_distance
+    return positions

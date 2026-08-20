@@ -2,14 +2,14 @@
 import argparse
 from .instrument_defaults import instrument_defaults, set_instrument_parameters
 
-def zeroToOne(x):
+def zero_to_one(x):
   """Argparser type check function for float number in range [0.0, 1.0]"""
   try:
       x = float(x)
   except ValueError:
-      raise argparse.ArgumentTypeError("%r not a floating-point literal" % (x,))
+      raise argparse.ArgumentTypeError(f"{x!r} not a floating-point literal")
   if x < 0.0 or x > 1.0:
-      raise argparse.ArgumentTypeError("%r not in range [0.0, 1.0]"%(x,))
+      raise argparse.ArgumentTypeError(f"{x!r} not in range [0.0, 1.0]")
   return x
 
 def create_argparser():
@@ -23,7 +23,7 @@ def create_argparser():
   parser.add_argument('--background', default=0, type=float, help = 'Add Poisson background to each bin.')
   parser.add_argument('-v', '--verbose', action='store_true', help = 'Verbose output.')
   parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
-  parser.add_argument('-i', '--instrument', default='d22', type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
+  # The instrument option was moved to instrumentGroup
 
   plotParamGroup = parser.add_argument_group('Control plotting', 'Parameters and options for plotting.')
   plotParamGroup.add_argument('--font_size', type=int, default=14, help = 'Global font size for plot elements.')
@@ -37,12 +37,7 @@ def create_argparser():
   plotParamGroup.add_argument('--z_plot_range', nargs=2, type=float, help = 'Plot z range.')
   plotParamGroup.add_argument('--plot_differences', default=0, type=int, help = 'Plot some measure of difference: 0 - none, 1 - relative absolute difference, 2 - relative difference, 3 - normalised residuals')
 
-  # findTimeParamGroup = parser.add_argument_group('Find experiment time', 'Parameters and options for finding the experiment time to scale up to.')
-  # findTimeParamGroup.add_argument('--find_experiment_time', action='store_true', help = 'Find the minimum experiment time the results need to be upscaled to in order to get a certain minimum number of counts in the bins.')
-  # findTimeParamGroup.add_argument('-i', '--iterate', action='store_true', help = 'Iteratively find the experiment time for which the bin count criterion is fulfilled after adding Gaussian noise.')
-  # findTimeParamGroup.add_argument('--maximum_iteration_number', type=int, default=50, help = 'Maximum number of iterations.')
-  # findTimeParamGroup.add_argument('--minimum_count_number', default=36, type=int, help = 'Minimum number of counts expected in the bins.')
-  # findTimeParamGroup.add_argument('--minimum_count_fraction', type=zeroToOne, default=0.8, help = 'The fraction of bins that are required to fulfill the minimum count number criterion. [0,1]')
+
 
   rawFormat = parser.add_argument_group('Raw Q events data', 'Use (old) raw data format with Q event list in the file instead of an already histogrammed data.')
   rawFormat.add_argument('--bins', nargs=2, type=int, default=[256, 128], help='Number of histogram bins in y,z directions.')
@@ -59,6 +54,7 @@ def create_argparser():
   storedDataParamGroup.add_argument('--wavelength', type=float, default=6.0, help = 'Wavelength in Angstroms.')
 
   instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
+  instrumentGroup.add_argument('-i', '--instrument_name', default='d22', type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
   instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
   instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
   instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
@@ -69,7 +65,26 @@ def create_argparser():
   instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
   instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
   instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
-  instrumentGroup.add_argument('--instrument_beam_declination_angle', type=float, help='Override beam declination angle. [deg]')
+  instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, it is automatically calculated from the simulation events using arcsin(mean(v_transverse) / mean(v_total)).')
+
+  nxsInstrumentGroup = parser.add_argument_group('NeXus Instrument overrides', 'Override parameters specifically for the NeXus instrument used to parse the measured data.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_name', type=str.lower, choices=list(instrument_defaults.keys()), help='NeXus instrument name. Defaults to the simulated instrument if not provided.')
+  nxsInstrumentGroup.add_argument('--nxs_sample_orientation', choices=[0,1,2], type=float, help = 'Orientation of the sample in the NeXus experiment. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right. Defaults to the simulated sample orientation.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_nominal_source_sample_distance', type=float, help='Override NeXus nominal source to sample distance. [m]')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_sample_detector_distance', type=float, help='Override NeXus sample to detector distance. [m]')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_detector_size', nargs=2, type=float, help='Override NeXus detector dimensions [size_x, size_y] in meters.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_detector_centre_offset', nargs=2, type=float, help='Override NeXus detector centre offset [offset_x, offset_y] in meters.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_detector_pixels', nargs=2, type=int, help='Override NeXus detector pixel counts [pixels_x, pixels_y].')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_detector_resolution', nargs=2, type=float, help='Override NeXus detector resolution FWHM [res_x, res_y] in meters.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_tof_instrument', type=str.lower, choices=['true', 'false'], help='Override whether the NeXus instrument is a Time-of-Flight (TOF) instrument.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_t0_monitor_name', type=str, help='Override NeXus t0 monitor name.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_wfm_t0_monitor_name', type=str, help='Override NeXus WFM t0 monitor name.')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_wfm_virtual_source_distance', type=float, help='Override NeXus WFM virtual source distance. [m]')
+  nxsInstrumentGroup.add_argument('--nxs_instrument_beam_angle', type=float, help='Override the NeXus instrument beam angle [deg].')
+
+  # Data slicing options
+  sliceGroup = parser.add_argument_group('Data Slicing', 'Options for slicing event data (e.g. TOF).')
+  sliceGroup.add_argument('--wavelength_slice', nargs=2, type=float, metavar=('MIN', 'MAX'), help='Slice TOF event data by wavelength range [angstrom] before plotting.')
 
   return parser
 
@@ -88,11 +103,7 @@ def parse_args(parser):
   if (args.experiment_time is not None) and args.experiment_time <= 0:
     parser.error('The --experiment_time must be a positive integer.')
 
-  # if args.minimum_count_number < 0:
-  #   parser.error('The --minimum_count_number must be a non-negative integer.')
 
-  # if args.iterate and not args.find_experiment_time:
-  #   parser.error('The --iterate option can only be used when --find_experiment_time is also in use.')
 
   if args.normalise_to_nxs and not args.nxs:
     parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')

@@ -9,28 +9,62 @@ from .instrument_defaults import instrument_defaults
 
 from .coordinates import CoordinateTransform
 
-def transform_to_bornagain_coordinate_system(particles, alpha_inc_deg, sample_orientation, beam_declination_angle):
+def calculate_beam_angle(vx_nexus, vy_nexus, vz_nexus, p, sample_orientation):
+  """
+  Calculate the beam declination angle from the average particle velocities in the NeXus frame.
+  NeXus: X=horizontal left, Y=vertical up, Z=longitudinal forward.
+  """
+  avg_vx = np.average(vx_nexus, weights=p)
+  avg_vy = np.average(vy_nexus, weights=p)
+  avg_vz = np.average(vz_nexus, weights=p)
+
+  if sample_orientation == 1:
+    # Horizontal sample: declination is in the Y-Z plane (vertical plane)
+    angle_rad = np.arctan2(avg_vy, avg_vz)
+  elif sample_orientation in [0, 2]:
+    # Vertical sample: declination is in the X-Z plane (horizontal plane)
+    angle_rad = np.arctan2(avg_vx, avg_vz)
+  else:
+    raise ValueError(f"Unknown sample orientation: {sample_orientation}")
+  
+  return float(np.rad2deg(angle_rad))
+
+def transform_to_bornagain_coordinate_system(particles, alpha_inc_deg, sample_orientation, beam_angle, nexus_y_shift=0.0):
   """Apply coordinate transformation to express particle parameters in a
   coordinate system with the sample in the centre and being horizontal.
+  Also calculates and returns the actual beam angle used.
   """
-  # In case the beam is not horizontal (beam_declination_angle is not 0), the
-  # beam_declination_angle must be taken into account when calculating the
+  p, x_nexus, y_nexus, z_nexus, vx_nexus, vy_nexus, vz_nexus, w, t, *polarization = particles.T
+
+  if nexus_y_shift != 0.0:
+      y_nexus = y_nexus + nexus_y_shift
+
+  calculated_beam_angle = calculate_beam_angle(vx_nexus, vy_nexus, vz_nexus, p, sample_orientation)
+  print(f"    Calculated beam angle: {calculated_beam_angle:.6f} deg")
+  
+  actual_beam_angle = beam_angle if beam_angle is not None else calculated_beam_angle
+  print(f"    Actual beam angle used for simulation: {actual_beam_angle:.6f} deg")
+
+  # In case the beam is not horizontal (beam_angle is not 0), the
+  # beam_angle must be taken into account when calculating the
   # rotation angle that needs to be applied to the particle coordinates.
-  rotation_angle_deg = alpha_inc_deg - beam_declination_angle
+  # We want the incident beam (angle: calculated_beam_angle) to have an angle
+  # of -alpha_inc_deg in the BornAgain frame.
+  # So: calculated_beam_angle + rotation = -alpha_inc_deg
+  # rotation = calculated_beam_angle + alpha_inc_deg
+  rotation_angle_deg = actual_beam_angle + alpha_inc_deg
   alpha_inc = float(np.deg2rad(rotation_angle_deg))
 
   transform = CoordinateTransform(alpha_inc, sample_orientation)
-
-  p, x_nexus, y_nexus, z_nexus, vx_nexus, vy_nexus, vz_nexus, w, t, *polarization = particles.T
 
   x_ba, y_ba, z_ba = transform.nexus_to_bornagain(x_nexus, y_nexus, z_nexus)
   vx_ba, vy_ba, vz_ba = transform.nexus_to_bornagain(vx_nexus, vy_nexus, vz_nexus)
 
   if polarization:
     polx_ba, poly_ba, polz_ba = transform.nexus_to_bornagain(polarization[0], polarization[1], polarization[2])
-    return np.vstack([p, x_ba, y_ba, z_ba, vx_ba, vy_ba, vz_ba, w, t, polx_ba, poly_ba, polz_ba]).T
+    return np.vstack([p, x_ba, y_ba, z_ba, vx_ba, vy_ba, vz_ba, w, t, polx_ba, poly_ba, polz_ba]).T, actual_beam_angle
   else:
-    return np.vstack([p, x_ba, y_ba, z_ba, vx_ba, vy_ba, vz_ba, w, t]).T
+    return np.vstack([p, x_ba, y_ba, z_ba, vx_ba, vy_ba, vz_ba, w, t]).T, actual_beam_angle
 
 def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_sample_miss):
   """Propagate particles to z=0, the sample surface (in BornAgain coordinates, z is up).
@@ -125,8 +159,14 @@ def precondition(particles, args):
   3) Optionally apply T0 (time-of-flight) correction
   """
   instr_params = instrument_defaults.get(args.instrument, {})
-  beam_declination_angle = instr_params.get('beam_declination_angle', 0.0)
-  particles = transform_to_bornagain_coordinate_system(particles, args.alpha, args.sample_orientation, beam_declination_angle)
+  beam_angle = getattr(args, 'instrument_beam_angle', None)
+  if beam_angle is None:
+      beam_angle = instr_params.get('beam_angle', None)
+  
+  particles, actual_beam_angle = transform_to_bornagain_coordinate_system(
+      particles, args.alpha, args.sample_orientation, beam_angle, getattr(args, 'nexus_y_shift', 0.0))
+  
+  args.instrument_beam_angle = actual_beam_angle
   particles = propagate_to_sample_surface(particles, args.sample_size_y, args.sample_size_x, args.allow_sample_miss)
   if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
     print("No T0 correction is applied.")

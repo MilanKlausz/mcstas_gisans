@@ -10,15 +10,6 @@ def pack_parameters(args, particle_type):
   instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.sample_orientation, args.wfm, no_gravity)
 
   wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
-  q_min, q_max = instrument.calculate_q_limits(wavelength)
-  # The axes are now in BornAgain geometry: X=forward, Y=left, Z=up.
-  hist_ranges = [
-    args.x_range if args.x_range else [-1000, 1000],
-    args.y_range if args.y_range else [q_min[1], q_max[1]],
-    args.z_range if args.z_range else [q_min[2], q_max[2]],
-  ]
-
-  hist_bins = [args.bins[0], args.bins[1], args.bins[2]] if args.bins else [1, instrument.detector.pixels_y_bornagain, instrument.detector.pixels_z_bornagain]
 
   default_angle_range = list(instrument.get_detector_angle_maximum())
   angle_range = list(args.angle_range) if args.angle_range else default_angle_range
@@ -39,15 +30,13 @@ def pack_parameters(args, particle_type):
     'outgoing_directions_horizontal': outgoing_directions_horizontal,
     'outgoing_directions_vertical': outgoing_directions_vertical,
     'angle_range': angle_range,
-    'raw_output': args.raw_output,
-    'bins': hist_bins,
-    'hist_ranges': hist_ranges,
     'sample': sample,
     'instrument': instrument,
     'use_avg_materials': args.use_avg_materials,
     'specular': args.specular,
     'analyzer_direction': args.analyzer_direction if any(args.analyzer_direction) else None,
     'analyzer_efficiency': args.analyzer_efficiency,
+    'instrument_name': args.instrument,
     'analyzer_transmission': args.analyzer_transmission,
     'bornagain_number_of_threads': args.bornagain_number_of_threads,
   }

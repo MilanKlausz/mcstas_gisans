@@ -11,8 +11,9 @@ from .particle_calculations import calculate_neutron_wavelength, calculate_waven
 
 class Instrument:
   def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, sample_orientation, wfm=False, no_gravity=False):
-    beam_declination_angle = instr_params.get('beam_declination_angle', 0)
-    sample_inclination = float(np.deg2rad(alpha_inc_deg - beam_declination_angle))
+    beam_angle = instr_params.get('beam_angle', 0)
+    self.beam_angle = beam_angle
+    sample_inclination = float(np.deg2rad(alpha_inc_deg + beam_angle))
     self.detector = Detector(instr_params['detector'], sample_inclination, sample_orientation, no_gravity)
 
     #TODO there should be a user warning for wft=True but no instr_params['wfm_virtual_source_distance']
@@ -47,38 +48,189 @@ class Instrument:
 
   def get_wavenumber(self, wavelength):
     """ Return the wavenumber that is fixed in case of non-TOF instrument """
+    if wavelength is None:
+        wavelength = self.wavelength_selected
     return calculate_wavenumber(wavelength) if self.is_tof_instrument else self.wavenumber_fixed
 
-  def calculate_q(self, x, y, z, t, VX, VY, VZ):
+  def compute_q_scipp(self, scipp_da):
     """
-    Calculate Q values (x,y,z) from positions at the detector surface.
-    All outgoing directions from the BornAgain simulation of a single particle are
-    handled at the same time using operations on vectors.
-    - Outgoing direction is calculated by propagating particles to the detector surface,
-    and assuming that the particle is scattered at the centre of the sample (the origin).
-    - Incident direction is fixed.
-    - For non-TOF instruments the (2*pi/(wavelength)) factor is fixed, calculated
-      from the wavelength selected by the monochromator (wavelength_selected).
-      For TOF instruments the wavelength is calculated from the TOF at the
-      detector surface position and the nominal distance travelled by the
-      particle until that position.
+    Calculate Q values from positions at the detector surface using Scipp.
+    Applies small angle approximations or full vector operations including gravity drop.
     """
-    sample_detector_tof, x_detector_plane, y_detector_plane, z_detector_plane = self.detector.detector_plane_intersection(x, y, z, VX, VY, VZ, self.sample_detector_distance)
-    x_detection, y_detection, z_detection = self.detector.calculate_detection_coordinate(x_detector_plane, y_detector_plane, z_detector_plane)
+    import scipp as sc
+    import scippneutron as scn
+    import scipy.constants as const
 
-    detection_coordinate = np.vstack((x_detection, y_detection, z_detection)).T
-    sample_detector_path_length = np.linalg.norm(detection_coordinate, axis=1)
-    outgoing_direction = detection_coordinate / sample_detector_path_length[:, np.newaxis]
+    # m_n / h in s/m^2 (approx 252.77) -> h / m_n in m^2/s
+    h_over_m = sc.scalar(const.h / const.m_n, unit='m**2/s')
+
+    # Convert detector positions from NeXus to BornAgain coordinate system
+    pos = scipp_da.coords['position']
+    pos_x = pos.fields.x
+    pos_y = pos.fields.y
+    pos_z = pos.fields.z
+
+    if self.detector.sample_orientation == 0:
+        x_horiz = -pos_y
+        y_vert = pos_x
+    elif self.detector.sample_orientation == 1:
+        x_horiz = pos_x
+        y_vert = pos_y
+    elif self.detector.sample_orientation == 2:
+        x_horiz = pos_y
+        y_vert = -pos_x
+    else:
+        raise ValueError(f"Unknown sample orientation: {self.detector.sample_orientation}")
+
+    x_ba_uninclined = pos_z
+    y_ba_uninclined = x_horiz
+    z_ba_uninclined = y_vert
+
+    alpha = self.detector.coords.sample_inclination
+    cos_a = np.cos(alpha)
+    sin_a = np.sin(alpha)
+
+    # Note: the matrix is M11=cos_a, M12=sin_a, M21=-sin_a, M22=cos_a
+    pos_ba_x = x_ba_uninclined * cos_a + z_ba_uninclined * sin_a
+    pos_ba_y = y_ba_uninclined
+    pos_ba_z = -x_ba_uninclined * sin_a + z_ba_uninclined * cos_a
+
+    L2 = sc.sqrt(pos_ba_x**2 + pos_ba_y**2 + pos_ba_z**2)
+    out_dir_x = pos_ba_x / L2
+    out_dir_y = pos_ba_y / L2
+    out_dir_z = pos_ba_z / L2
 
     if self.is_tof_instrument:
-      tof_total = t + sample_detector_tof
-      path_length_total = self.nominal_source_sample_distance + sample_detector_path_length
-      wavelength = calculate_neutron_wavelength(tof_total, path_length_total)
-      wavenumber = calculate_wavenumber(wavelength)[:, np.newaxis]
-    else: #not TOF instruments
-      wavenumber = self.wavenumber_fixed
+        if scipp_da.bins is not None:
+            if 'wavelength' not in scipp_da.bins.coords:
+                scipp_da = scn.convert(scipp_da, origin='tof', target='wavelength', scatter=True)
+            wavelength = scipp_da.bins.coords['wavelength']
+        else:
+            if 'wavelength' not in scipp_da.coords:
+                scipp_da = scn.convert(scipp_da, origin='tof', target='wavelength', scatter=True)
+            wavelength = scipp_da.coords['wavelength']
+    else:
+        wavelength_val = self.wavelength_selected if self.wavelength_selected is not None else 0.0
+        if wavelength_val == 0.0:
+            wavelength = sc.scalar(1.0, unit='angstrom') # fallback
+        else:
+            wavelength = sc.scalar(wavelength_val, unit='angstrom')
 
-    return (outgoing_direction - self.incident_direction) * wavenumber
+    wavenumber = 2.0 * np.pi / wavelength
+
+    inc_dir_straight_x = sc.scalar(np.cos(self.alpha_inc))
+    inc_dir_straight_z = sc.scalar(-np.sin(self.alpha_inc))
+
+    if self.no_gravity or getattr(self, 'wavelength_selected', None) == 0.0:
+        inc_dir_x = inc_dir_straight_x
+        inc_dir_y = sc.scalar(0.0)
+        inc_dir_z = inc_dir_straight_z
+    else:
+        wavelength_m = sc.to_unit(wavelength, 'm')
+        velocity = h_over_m / wavelength_m
+        
+        L_nom = sc.scalar(self.sample_detector_distance, unit='m')
+        t_flight = L_nom / velocity
+        gx, gy, gz = self.detector.gravity_acceleration_vector
+        drop_x = sc.scalar(0.5 * gx, unit='m/s**2') * (t_flight ** 2)
+        drop_y = sc.scalar(0.5 * gy, unit='m/s**2') * (t_flight ** 2)
+        drop_z = sc.scalar(0.5 * gz, unit='m/s**2') * (t_flight ** 2)
+        
+        straight_pos_x = inc_dir_straight_x * L_nom
+        straight_pos_y = sc.scalar(0.0, unit='m')
+        straight_pos_z = inc_dir_straight_z * L_nom
+        
+        dropped_pos_x = straight_pos_x + drop_x
+        dropped_pos_y = straight_pos_y + drop_y
+        dropped_pos_z = straight_pos_z + drop_z
+        
+        dropped_norm = sc.sqrt(dropped_pos_x**2 + dropped_pos_y**2 + dropped_pos_z**2)
+        inc_dir_x = dropped_pos_x / dropped_norm
+        inc_dir_y = dropped_pos_y / dropped_norm
+        inc_dir_z = dropped_pos_z / dropped_norm
+
+    Qx = (out_dir_x - inc_dir_x) * wavenumber
+    Qy = (out_dir_y - inc_dir_y) * wavenumber
+    Qz = (out_dir_z - inc_dir_z) * wavenumber
+
+    if scipp_da.bins is not None:
+        scipp_da.bins.coords['Qx'] = Qx
+        scipp_da.bins.coords['Qy'] = Qy
+        scipp_da.bins.coords['Qz'] = Qz
+    else:
+        scipp_da.coords['Qx'] = Qx
+        scipp_da.coords['Qy'] = Qy
+        scipp_da.coords['Qz'] = Qz
+
+    return scipp_da
+
+  def calculate_pixel_hit(self, x, y, z, t, VX, VY, VZ):
+    """
+    Calculate physical detector pixel indices (idx_x_nexus, idx_y_nexus) in raw NeXus frame for all outgoing rays.
+    All operations are vectorized across outgoing rays for high performance.
+    x, y, z, VX, VY, VZ are in the BornAgain frame.
+    Returns (idx_x_nexus, idx_y_nexus, valid_mask, sample_detector_tof).
+    """
+    sample_detector_tof, x_intersection, y_intersection, z_intersection = self.detector.detector_plane_intersection(x, y, z, VX, VY, VZ, self.sample_detector_distance)
+    idx_x_nexus, idx_y_nexus, valid_mask = self.detector.calculate_pixel_hit(x_intersection, y_intersection, z_intersection)
+    return idx_x_nexus, idx_y_nexus, valid_mask, sample_detector_tof
+
+  def create_scipp_container(self, tof_bin_edges=None):
+    """
+    Creates an empty Scipp DataArray to store the simulation results.
+    Follows standard NeXus/Scipp conventions: 
+    - 1D flattened dimension 'detector_id'
+    - 'position' coordinate with sc.vectors (3D positions)
+    """
+    import scipp as sc
+
+    # Calculate pixel centers
+    x_centers = np.linspace(self.detector.min_edge_x_nexus + self.detector.pixel_size_x_nexus/2, 
+                            self.detector.max_edge_x_nexus - self.detector.pixel_size_x_nexus/2, 
+                            self.detector.pixels_x_nexus)
+    y_centers = np.linspace(self.detector.min_edge_y_nexus + self.detector.pixel_size_y_nexus/2, 
+                            self.detector.max_edge_y_nexus - self.detector.pixel_size_y_nexus/2, 
+                            self.detector.pixels_y_nexus)
+    
+    # Create 1D flattened positions array (x_index is major axis)
+    X, Y = np.meshgrid(x_centers, y_centers, indexing='ij')
+    num_pixels = self.detector.pixels_x_nexus * self.detector.pixels_y_nexus
+    positions = np.zeros((num_pixels, 3))
+    positions[:, 0] = X.flatten()
+    positions[:, 1] = Y.flatten()
+    positions[:, 2] = self.sample_detector_distance
+
+    coords = {
+        'position': sc.vectors(dims=['detector_id'], values=positions, unit='m'),
+        'sample_position': sc.vector(value=[0, 0, 0], unit='m'),
+        'source_position': sc.vector(value=[0, 0, -self.nominal_source_sample_distance], unit='m'),
+        'is_tof_instrument': sc.scalar(self.is_tof_instrument),
+        'wavelength_selected': sc.scalar(self.wavelength_selected if self.wavelength_selected is not None else 0.0, unit='angstrom'),
+        'alpha_inc_deg': sc.scalar(np.rad2deg(self.alpha_inc), unit='deg'),
+        'instrument_name': sc.scalar('unknown'),
+        'sample_orientation': sc.scalar(self.detector.sample_orientation),
+        'beam_angle': sc.scalar(self.beam_angle, unit='deg'),
+    }
+
+    if not self.is_tof_instrument:
+      values = np.zeros(num_pixels, dtype=np.float64)
+      variances = np.zeros(num_pixels, dtype=np.float64)
+
+      return sc.DataArray(
+          data=sc.array(dims=['detector_id'], values=values, variances=variances, unit='counts'),
+          coords=coords
+      )
+    else:
+      if tof_bin_edges is None:
+        raise ValueError("tof_bin_edges must be provided when creating a TOF Scipp container")
+      coords['tof'] = sc.array(dims=['tof'], values=tof_bin_edges, unit='s')
+      values = np.zeros((num_pixels, len(tof_bin_edges) - 1), dtype=np.float64)
+      variances = np.zeros((num_pixels, len(tof_bin_edges) - 1), dtype=np.float64)
+
+      return sc.DataArray(
+          data=sc.array(dims=['detector_id', 'tof'], values=values, variances=variances, unit='counts'),
+          coords=coords
+      )
 
   def calculate_q_limits(self, wavelength=None):
     """

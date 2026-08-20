@@ -34,11 +34,7 @@ def create_argparser():
   bornagainGroup.add_argument('--bornagain_number_of_threads', type=int, default=None, help='Number of internal threads BornAgain should use. If None, uses BornAgain default.')
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
-  outputGroup.add_argument('--raw_output', default=False, action='store_true', help = 'Create a raw list of Q events as output instead of the default histogrammed data. Warning: this option may require too much memory for high incident event and pixel numbers.')
-  outputGroup.add_argument('--bins', nargs=3, type=int, help='Number of histogram bins in x,y,z directions (In BornAgain geometry).')
-  outputGroup.add_argument('--x_range', nargs=2, type=float, help='Qx range of the histogram. (In BornAgain geometry). Default calculated from detector parameters.')
-  outputGroup.add_argument('--y_range', nargs=2, type=float, help='Qy range of the histogram. (In BornAgain geometry). Default calculated from detector parameters.')
-  outputGroup.add_argument('--z_range', nargs=2, type=float, help='Qz range of the histogram. (In BornAgain geometry). Default wide enough to include everything.')
+  outputGroup.add_argument('--temp_read_chunk_size', type=int, default=1000000, help='Chunk size for reading temporary intermediate files at the end of the simulation (default: 1000000)')
   outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qy-Qz plot from the histogram result.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
@@ -84,7 +80,8 @@ def create_argparser():
   instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
   instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
   instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
-  instrumentGroup.add_argument('--instrument_beam_declination_angle', type=float, help='Override beam declination angle. [deg]')
+  instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, it is automatically calculated from the simulation events using arcsin(mean(v_transverse) / mean(v_total)).')
+  instrumentGroup.add_argument('--nexus_y_shift', type=float, default=0.0, help='Shift the beam slightly upwards (in NeXus frame) to ensure it hits the sample surface. E.g. 0.0065')
 
   return parser
 
@@ -123,15 +120,6 @@ def parse_args(parser):
       parser.error(f"The --wavelength parameter should not be used for non-TOF instruments. Use the --wavelength_selected parameter instead.")
     if not args.wavelength_selected:
       parser.error(f"For non-TOF instruments the --wavelength_selected parameter is required.")
-
-  if not args.wavelength and not args.wavelength_selected:
-    """Automatic Q histogram limits rely on a wavelength of interest"""
-    if not args.x_range:
-      parser.error(f"The --x_range parameter is required if neither the --wavelength nor the --wavelength_selected is used.")
-    if not args.y_range:
-      parser.error(f"The --y_range parameter is required if neither the --wavelength nor the --wavelength_selected is used.")
-    if not args.z_range:
-      parser.error(f"The --z_range parameter is required if neither the --wavelength nor the --wavelength_selected is used.")
 
   if args.no_t0_correction:
     if args.t0_fixed:

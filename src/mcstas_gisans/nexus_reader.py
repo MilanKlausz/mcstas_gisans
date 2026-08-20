@@ -9,7 +9,7 @@ import numpy as np
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
-def read_nexus_data(filepath, alpha, wavelength, sample_orientation=1, scale_factor=None):
+def read_nexus_data(filepath, instrument, scale_factor=None):
   """
   Read data from measurements at D22(ILL) from nxs files.
   """
@@ -25,8 +25,6 @@ def read_nexus_data(filepath, alpha, wavelength, sample_orientation=1, scale_fac
     hist = hist * scale_factor
   hist_error = np.sqrt(hist)
 
-  instrument = Instrument(instrument_defaults['d22'], alpha, wavelength, sample_orientation)
-  
   # Rotate the NeXus detector image to match the BornAgain sample frame
   hist = instrument.detector.coords.rotate_detector_image(hist)
   hist_error = instrument.detector.coords.rotate_detector_image(hist_error)

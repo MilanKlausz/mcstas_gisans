@@ -32,12 +32,15 @@ def test_run_without_polarization():
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, f"Run failed with stderr: {result.stderr}"
     
-    # Verify npz file was created and is valid
-    npz_path = savename + ".npz"
-    assert os.path.exists(npz_path), f"Output file {npz_path} not created"
-    data = np.load(npz_path)
-    assert "hist" in data
-    assert "error" in data
+    # Verify h5 file was created and is valid
+    h5_path = savename + "_scipp.h5"
+    assert os.path.exists(h5_path), f"Output file {h5_path} not created"
+    
+    # We can use h5py to do a simple check
+    import h5py
+    with h5py.File(h5_path, 'r') as f:
+      assert "data" in f.keys()
+      assert "coords" in f.keys()
 
 def test_run_with_polarization_default_analyzer():
   """
@@ -57,12 +60,14 @@ def test_run_with_polarization_default_analyzer():
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, f"Run failed with stderr: {result.stderr}"
     
-    # Verify npz file was created and is valid
-    npz_path = savename + ".npz"
-    assert os.path.exists(npz_path), f"Output file {npz_path} not created"
-    data = np.load(npz_path)
-    assert "hist" in data
-    assert "error" in data
+    # Verify h5 file was created and is valid
+    h5_path = savename + "_scipp.h5"
+    assert os.path.exists(h5_path), f"Output file {h5_path} not created"
+    
+    import h5py
+    with h5py.File(h5_path, 'r') as f:
+      assert "data" in f.keys()
+      assert "coords" in f.keys()
 
 def test_analyzer_arguments_parsing():
   """

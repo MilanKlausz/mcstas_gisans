@@ -91,7 +91,7 @@ mg_run \
 ## run plotting using the output of the simulation (OUTPUT_FILE_PATH)
 ## uncomment last line to create png output
 mg_plot \
-  --filename "${OUTPUT_FILE_PATH}.npz" \
+  --filename "${OUTPUT_FILE_PATH}.h5" \
   --label "D22 simulation" \
   --nxs $D22_NXS_FILE \
   --nxs_label "D22 measurement" \
@@ -104,8 +104,9 @@ mg_plot \
   --q_min 0.072 \
   --q_max 0.102 \
   --plot_differences 1 \
-  --sample_orientation 2 \
-  --instrument_detector_centre_offset -0.290202 0.009179 \
-  --alpha 0.24 \
   --wavelength 6.0 \
+  --png \
+#   --sample_orientation 2 \
+#   --instrument_detector_centre_offset -0.290202 0.009179 \
+#   --alpha 0.24 \
 #   --savename "d22_sim_vs_measurement" --png

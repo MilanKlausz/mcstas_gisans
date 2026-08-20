@@ -12,7 +12,7 @@ from .nexus_reader import read_nexus_data
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
-def find_required_centre_offset(filepath, initial_guess=None, beam_declination_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
+def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
   """
   Find the required centre_offset values for the detector so that the beam centre
   measured in a NeXus file is positioned at (qy, qz) = (0, 0) in Q-space.
@@ -24,7 +24,7 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_declination_a
   initial_guess : list or np.ndarray, optional
       Initial guess for the centre_offset [x, y] in meters.
       If None, the default centre_offset for the selected instrument is used.
-  beam_declination_angle : float, optional
+  beam_angle : float, optional
       Override beam declination angle in degrees.
   wavelength : float, optional
       Wavelength in Angstroms (default: 6.0).
@@ -40,10 +40,10 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_declination_a
   centre_offset : np.ndarray
       The calculated centre_offset [x, y] in meters.
   """
-  original_declination = None
-  if beam_declination_angle is not None and instrument_name in instrument_defaults:
-    original_declination = instrument_defaults[instrument_name].get('beam_declination_angle')
-    instrument_defaults[instrument_name]['beam_declination_angle'] = beam_declination_angle
+  original_beam_angle = None
+  if beam_angle is not None and instrument_name in instrument_defaults:
+    original_beam_angle = instrument_defaults[instrument_name].get('beam_angle')
+    instrument_defaults[instrument_name]['beam_angle'] = beam_angle
 
   try:
     alpha_inc_deg = 0.0 #for direct beam measurements, the incident angle is 0 degrees
@@ -93,8 +93,8 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_declination_a
 
     return res.x
   finally:
-    if original_declination is not None:
-      instrument_defaults[instrument_name]['beam_declination_angle'] = original_declination
+    if original_beam_angle is not None:
+      instrument_defaults[instrument_name]['beam_angle'] = original_beam_angle
 
 
 def main():
@@ -104,7 +104,7 @@ def main():
   parser.add_argument('--wavelength', type=float, default=6.0, help="Wavelength in Angstroms (default: 6.0).")
   parser.add_argument('--sample_orientation', type=int, default=1, help="Sample orientation (default: 1).")
   parser.add_argument('--instrument', type=str, default='d22', help="Instrument name in instrument_defaults (default: 'd22').")
-  parser.add_argument('--beam_declination', type=float, default=None, help="Override beam declination angle in degrees (default: loaded from instrument defaults).")
+  parser.add_argument('--beam_angle', type=float, default=None, help="Override beam declination angle in degrees (default: loaded from instrument defaults).")
   parser.add_argument('--verbose', action='store_true', help="Print detailed optimization progress.")
   
   args = parser.parse_args()
@@ -112,7 +112,7 @@ def main():
   try:
     offset = find_required_centre_offset(
         args.filepath,
-        beam_declination_angle=args.beam_declination,
+        beam_angle=args.beam_angle,
         wavelength=args.wavelength,
         sample_orientation=args.sample_orientation,
         instrument_name=args.instrument,

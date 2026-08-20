@@ -7,9 +7,9 @@ Main plotting script to create 2D/1D Q plots from simulation results
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .plotting_utils import plot_q_1d, log_plot_2d, create_2d_histogram, extract_range_to_1d#, extract_range_to_1d_vertical
+from .plotting_utils import plot_q_1d, log_plot_2d, create_2d_histogram, extract_range_to_1d, show_or_save
 from .experiment_time import upscale_simple
-from .input_output import unpack_q_histogram_file, unpack_raw_q_list_file
+from .input_output import load_scipp_file
 
 def get_plot_ranges(datasets, y_plot_range, z_plot_range):
   """Get plot ranges. Return ranges if provided, otherwise find the minimum and
@@ -41,18 +41,109 @@ def get_overlay_plot_axes(column=2):
   axes_top = [axes[i] for i in range(column)]
   return axes_top, axes_bottom
 
+def setup_global_instrument(args):
+  import sys
+  from .instrument import Instrument
+  from .instrument_defaults import instrument_defaults
+  
+  if getattr(args, 'filename', None):
+    for filename in args.filename:
+      if filename.endswith('.h5'):
+        scipp_da_meta = load_scipp_file(filename)
+        metadata = {}
+        if scipp_da_meta is not None and scipp_da_meta.coords is not None:
+            if 'sample_orientation' in scipp_da_meta.coords:
+                metadata['sample_orientation'] = scipp_da_meta.coords['sample_orientation'].value
+            if 'alpha_inc_deg' in scipp_da_meta.coords:
+                metadata['alpha'] = scipp_da_meta.coords['alpha_inc_deg'].value
+            if 'beam_angle' in scipp_da_meta.coords:
+                metadata['beam_angle'] = scipp_da_meta.coords['beam_angle'].value
+            if 'instrument_detector_centre_offset_x' in scipp_da_meta.coords and 'instrument_detector_centre_offset_y' in scipp_da_meta.coords:
+                metadata['instrument_detector_centre_offset'] = [
+                    scipp_da_meta.coords['instrument_detector_centre_offset_x'].value,
+                    scipp_da_meta.coords['instrument_detector_centre_offset_y'].value
+                ]
+            if 'instrument_name' in scipp_da_meta.coords:
+                name = scipp_da_meta.coords['instrument_name'].value
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8')
+                metadata['instrument_name'] = name
+                
+        cli_instrument = getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22'))
+        instr_name = metadata.get('instrument_name', cli_instrument)
+        if instr_name == 'unknown':
+            instr_name = cli_instrument
+            
+        if '--instrument_name' in sys.argv or '--instrument' in sys.argv or '-i' in sys.argv:
+            instr_name = cli_instrument
+            
+        alpha = metadata.get('alpha', args.alpha)
+        if '--alpha' in sys.argv or '-a' in sys.argv:
+            alpha = args.alpha
+            
+        sample_orientation = metadata.get('sample_orientation', args.sample_orientation)
+        if '--sample_orientation' in sys.argv:
+            sample_orientation = args.sample_orientation
+            
+        beam_angle = metadata.get('beam_angle', 0.0)
+        if getattr(args, 'instrument_beam_angle', None) is not None:
+            beam_angle = args.instrument_beam_angle
+            
+        centre_offset = metadata.get('instrument_detector_centre_offset', None)
+        if getattr(args, 'instrument_detector_centre_offset', None) is not None:
+            centre_offset = args.instrument_detector_centre_offset
+            
+        instr_params = instrument_defaults[instr_name]
+        instr_params['beam_angle'] = beam_angle
+        if centre_offset is not None:
+            instr_params['detector']['direct_beam_centre_offset'] = centre_offset
+            
+        return Instrument(instr_params, alpha, args.wavelength, sample_orientation), instr_name, alpha, sample_orientation
+  return None, getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22')), args.alpha, args.sample_orientation
+
 def get_datasets(args):
-  """Prepare the datasets to be plotted. Process input files, and scale to
-  experiment time if required"""
+  """
+  Prepare the datasets to be plotted.
+  Loads data from NeXus measurement files (.nxs) or McStas/BornAgain simulation 
+  results (.h5). For TOF simulations, data is loaded as Scipp event data arrays,
+  Q-values are calculated per event using the instrument geometry, and binned 
+  into 2D histograms. 
+  Scales intensities to experiment time if required.
+  """
   datasets = []
   y_data_range = args.y_range
   z_data_range = args.z_range
 
+  global_instrument, instr_name, alpha, sample_orientation = setup_global_instrument(args)
+
+  if global_instrument is None:
+    from .instrument import Instrument
+    from .instrument_defaults import instrument_defaults
+    instr_name = getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22'))
+    instr_params = instrument_defaults[instr_name]
+    beam_angle = getattr(args, 'instrument_beam_angle', 0.0)
+    if beam_angle is None: beam_angle = 0.0
+    instr_params['beam_angle'] = beam_angle
+    alpha = args.alpha
+    sample_orientation = args.sample_orientation
+    global_instrument = Instrument(instr_params, alpha, args.wavelength, sample_orientation)
+
   if args.nxs:
     nxs_labels = args.nxs_label if args.nxs_label else args.nxs #default to filename if no label provided
     for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
+        from .instrument_defaults import get_nxs_instrument_parameters
+        from .instrument import Instrument
+        nxs_instr_params = get_nxs_instrument_parameters(args, default_instr_name=instr_name)
+        if nxs_instr_params is not None:
+            nxs_sample_orient = getattr(args, 'nxs_sample_orientation', None)
+            if nxs_sample_orient is None:
+                nxs_sample_orient = sample_orientation
+            nxs_instrument = Instrument(nxs_instr_params, alpha, args.wavelength, nxs_sample_orient)
+        else:
+            nxs_instrument = global_instrument
+
         from .nexus_reader import read_nexus_data
-        hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, args.alpha, args.wavelength, args.sample_orientation)
+        hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument)
         nxs_sum = np.sum(hist)
         if args.verbose:
           print(f"{nxs_filename} sum: {nxs_sum}")
@@ -63,19 +154,83 @@ def get_datasets(args):
   if args.filename:
     labels = args.label if args.label else args.filename #default to filename if no label is provided
     for filename, label in zip(args.filename, labels):
-      with np.load(filename) as npFile:
-        if 'hist' in npFile.files: #new file with histograms
-          hist, hist_error, _, y_edges, z_edges = unpack_q_histogram_file(npFile)
-          # Project along the longitudinal (X) axis (axis 0 in BornAgain [Qx, Qy, Qz] order)
-          hist = np.sum(hist, axis=0)
-          hist_error = np.sum(hist_error, axis=0)
-          y_data_range = [y_edges[0], y_edges[-1]]
-          z_data_range = [z_edges[0], z_edges[-1]]
-        else: #old 'raw data' file with a list of unhistogrammed qEvents #FIXME still uses McStas axis labels
-          x, y, _, weights = unpack_raw_q_list_file(npFile)
-          bins_hor = args.bins[0] if not args.nxs else len(y_edges)-1 #override bin number to match stored data for better comparison
-          bins_vert = args.bins[1] if not args.nxs else len(z_edges)-1
-          hist, hist_error, y_edges, z_edges = create_2d_histogram(x, y, weights, y_bins=bins_hor, z_bins=bins_vert, y_range=y_data_range, z_range=z_data_range)
+      if filename.endswith('.h5'):
+        scipp_da = load_scipp_file(filename)
+        
+        import copy
+        from .instrument_defaults import instrument_defaults
+        sim_instr_params = copy.deepcopy(instrument_defaults[instr_name])
+        has_offset = False
+        if 'instrument_detector_centre_offset_x' in scipp_da.coords:
+            sim_instr_params['detector']['direct_beam_centre_offset_x_nexus'] = scipp_da.coords['instrument_detector_centre_offset_x'].value
+            has_offset = True
+        if 'instrument_detector_centre_offset_y' in scipp_da.coords:
+            sim_instr_params['detector']['direct_beam_centre_offset_y_nexus'] = scipp_da.coords['instrument_detector_centre_offset_y'].value
+            has_offset = True
+            
+        if has_offset:
+            instrument = Instrument(sim_instr_params, alpha, args.wavelength, sample_orientation)
+        else:
+            instrument = global_instrument
+        
+        scipp_da = instrument.compute_q_scipp(scipp_da)
+        
+        y_edges, z_edges = instrument.get_q_pixel_limits(args.wavelength)
+        y_min, y_max = (args.y_range[0], args.y_range[1]) if getattr(args, 'y_range', None) else (y_edges[0], y_edges[-1])
+        z_min, z_max = (args.z_range[0], args.z_range[1]) if getattr(args, 'z_range', None) else (z_edges[0], z_edges[-1])
+        bins_y, bins_z = args.bins
+        
+        import scipp as sc
+        
+        # Bin into Qy, Qz
+        if scipp_da.bins is not None:
+            # For TOF / event data
+            if getattr(args, 'wavelength_slice', None) is not None:
+                min_w = args.wavelength_slice[0]
+                max_w = args.wavelength_slice[1]
+                scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
+            
+            scipp_da = scipp_da.bins.concat()
+            
+            # The y_min/y_max/z_min/z_max limits from instrument.get_q_pixel_limits are in 1/nm.
+            # Scipp's Q coordinates are natively in 1/angstrom. We divide by 10.0 to convert 
+            # the limits to 1/angstrom to match Scipp's units before binning.
+            scipp_binned = scipp_da.bin(
+                Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
+                Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')
+            )
+            scipp_hist = scipp_binned.bins.sum()
+            scipp_hist = scipp_hist.transpose(['Qy', 'Qz'])
+            hist = scipp_hist.values
+            if scipp_hist.variances is not None:
+                hist_error = np.sqrt(scipp_hist.variances)
+            else:
+                hist_error = np.sqrt(hist)
+                
+            # Extract the edges from scipp_hist, which are in 1/angstrom.
+            # We multiply by 10.0 to convert them back to 1/nm, as expected by the plotting functions.
+            y_edges = scipp_hist.coords['Qy'].values * 10.0
+            z_edges = scipp_hist.coords['Qz'].values * 10.0
+        else:
+            # For non-TOF / flattened pixel data, preserve the exact pixel grid to match NeXus perfectly
+            raw_hist = scipp_da.values.reshape((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus))
+            if scipp_da.variances is not None:
+                raw_err = np.sqrt(scipp_da.variances.reshape((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)))
+            else:
+                raw_err = np.sqrt(raw_hist)
+                
+            hist = instrument.detector.coords.rotate_detector_image(raw_hist)
+            hist_error = instrument.detector.coords.rotate_detector_image(raw_err)
+            y_edges, z_edges = instrument.get_q_pixel_limits(args.wavelength)
+            
+            # Since args.y_range and z_range might be provided, we should probably still slice the data?
+            # But the chi2 comparison requires full shape. We'll leave it as is.
+        
+        y_data_range = [y_edges[0], y_edges[-1]]
+        z_data_range = [z_edges[0], z_edges[-1]]
+      else:
+        import sys
+        sys.exit("Unsupported file extension. Only .h5 files are supported.")
 
 
       if args.experiment_time:
@@ -149,24 +304,22 @@ def main():
       line_color = line_colors[dataset_index]
       hist, hist_error, y_edges, z_edges, label = dataset
 
-    #   print(f"X bin number: {len(y_edges)-1}, Y bin number: {len(z_edges)-1}")
-    #   print(f"X bin range: [{y_edges[0]}, {y_edges[-1]}], Y bin range: [{z_edges[0]}, {z_edges[-1]}]")
-    #   print(f"Label: {label}")
-
       common_maximum = max_value if args.individual_colorbars is False else None
+
       log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
 
       ### TODO in dev temp OFF ###
       qz_min_index = np.digitize(args.q_min, z_edges) - 1
       qz_max_index = np.digitize(args.q_max, z_edges)
+      qz_max_index_clamped = min(qz_max_index, len(z_edges) - 1)
       values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index, qz_max_index])
       all_1d_values.append(values)
       all_1d_errors.append(errors)
-      title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
+      title_text = f" Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]"
       horisontal_axis_label = 'Qy [1/nm]'
       plot_q_1d(values, errors, y_bins, horisontal_axis_label, color=line_color, title_text=title_text, label=label, ax=axes_bottom, limits=y_plot_range, savename=args.savename, output='none')
-      plot_2d_axes.axhline(z_edges[qz_min_index], color='magenta', linestyle='--', label='q_z = 0') #TODO the label seems to be unfinished but unused
-      plot_2d_axes.axhline(z_edges[qz_max_index], color='magenta', linestyle='--', label='q_z = 0') #TODO the label seems to be unfinished but unused
+      plot_2d_axes.axhline(z_edges[min(qz_min_index, len(z_edges)-1)], color='magenta', linestyle='--', label=f'q_z = {z_edges[min(qz_min_index, len(z_edges)-1)]:.3f}')
+      plot_2d_axes.axhline(z_edges[qz_max_index_clamped], color='magenta', linestyle='--', label=f'q_z = {z_edges[qz_max_index_clamped]:.3f}')
 
       ## TODO EXPEIMENTAL
       if args.plot_differences > 0 and dataset_index == 1:
@@ -242,58 +395,14 @@ def main():
         ax.set_ylabel('Qz [1/nm]')
         ax.set_title(title_text)
 
-      ### TODO in dev temp OFF ###
-      # ### TODO in dev ###
-      # qy_min_index = np.digitize(args.q_min, y_edges) - 1
-      # qy_max_index = np.digitize(args.q_max, y_edges)
-      # values, errors, z_bins, y_limits = extract_range_to_1d_vertical(hist, hist_error, y_edges, z_edges, [qy_min_index, qy_max_index])
-      # title_text = f"Qy=[{y_limits[0]:.4f}1/nm, {y_limits[1]:.4f}1/nm]"
-      # horisontal_axis_label = 'Qz [1/nm]'
-      # plotQ1D_vert(values, errors, z_bins, horisontal_axis_label, color=lineColor, title_text='', label=label, ax=axes_bottom, limits=z_plot_range, savename=args.savename, output='none')
-      # plot_2d_axes.axvline(y_edges[qy_min_index], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished but unused
-      # plot_2d_axes.axvline(y_edges[qy_max_index], color='magenta', linestyle='--', label='q_y = 0') #TODO the label seems to be unfinished but unused
-      # ### TODO in dev ###
-
-      # ### TEMP manual work
-      # y_first_peak_min = 0.04 #TODO
-      # y_first_peak_max = 0.085 #TODO
-      # q_first_peak_min_index = np.digitize(y_first_peak_min, y_bins) - 1
-      # q_first_peak_max_index = np.digitize(y_first_peak_max, y_bins)
-      # axes_bottom.axvline(y_bins[q_first_peak_min_index], color='magenta', linestyle='--')
-      # axes_bottom.axvline(y_bins[q_first_peak_max_index], color='magenta', linestyle='--')
-
-      # first_peak_sum_intensity = sum(values[q_first_peak_min_index:q_first_peak_max_index])
-      # print(f"{label} - {q_first_peak_min_index=}, {q_first_peak_max_index=}")
-      # print(f"{label} - first peak sum intensity: {first_peak_sum_intensity}")
-      # ### TEMP manual work
-
     axes_bottom.set_ylim(bottom=intensity_min)
     axes_bottom.grid()
     axes_bottom.legend(loc='upper left')
     plt.tight_layout()
-    if not args.pdf and not args.png:
-      plt.show()
-    else:
-      if(args.pdf):
-        filename = f"{args.savename}.pdf"
-      elif(args.png):
-        filename = f"{args.savename}.png"
-      plt.savefig(filename, dpi=300)
-      print(f"Created {filename}")
+    
+    show_or_save(plot_output, args.savename)
 
-#   ##EXPERIMENTAL CHI2
-#   meas = all_1d_values[0]
-#   sim  = all_1d_values[1]
-#   sigma = all_1d_errors[1]
-#   # Mask invalid points
-#   mask = (sigma > 0) & np.isfinite(meas) & np.isfinite(sim)
 
-#   chi2 = np.sum(((sim[mask] - meas[mask]) / sigma[mask])**2)
-#   ndof = np.sum(mask) - 1
-#   chi2_red = chi2 / ndof
-
-#   print(f"Reduced chi-squared (1D): {chi2_red:.2f}")
-#   ##EXPERIMENTAL CHI2
 
   if not args.overlay:
     if args.multi2d:
@@ -309,17 +418,7 @@ def main():
       if not args.individual_colorbars and mappable is not None:
         fig.colorbar(mappable, ax=axes_multi2d[:len(datasets)], orientation='vertical', label='Intensity', fraction=0.075, pad=0.03)
 
-        # plot_2d_axes.set_ylim(bottom=intensity_min)
-        # plot_2d_axes.legend(loc='upper left')
-      if not args.pdf and not args.png:
-        plt.show()
-      else:
-        if(args.pdf):
-          filename = f"{args.savename}.pdf"
-        elif(args.png):
-          filename = f"{args.savename}.png"
-        plt.savefig(filename, dpi=300)
-        print(f"Created {filename}")
+      show_or_save(plot_output, args.savename)
     else:
       for hist, hist_error, y_edges, z_edges, label in datasets:
         y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges[0], y_edges[-1]]

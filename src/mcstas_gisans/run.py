@@ -8,8 +8,9 @@ particle, and saves the result for further analysis or plotting.
 """
 
 import numpy as np
-from multiprocessing import cpu_count, Queue
+from multiprocessing import Queue
 import multiprocessing
+from .hardware import get_available_cores
 
 import bornagain as ba
 from bornagain import deg, angstrom
@@ -77,173 +78,257 @@ def get_result_intensities(res):
     return pout
 
 def process_particles(particles, params, queue=None):
-  """Carry out the BornAgain simulation and subsequent calculations of each
-  incident particle (separately) in the input array.
-  1) The BornAgain simulation for a certain sample model is set up with an array
-     out outgoing directions
-  2) The BornAgain simulation is performed, resulting in an array of outgoing
-     beams with weights (outgoing probabilities)
-  3) The Q values are calculated after a virtual propagation to the detector
-     surface.
-  4) Depending on the input options, the list of Q events (weight,qx,qy,qz) are
-     either returned (old raw format), or histogrammed and added to a cumulative
-     histogram where all other incident particle results are added.
   """
-  sample = params['sample']
-  sample_module = sample.get_module()
-  sample_model = sample_module.get_sample(**sample.kwargs)
+  Carry out the BornAgain simulation and subsequent processing for a batch of incident particles.
+  Simulates scattering using BornAgain, maps outgoing directions to physical detector pixels,
+  and compiles the resulting event coordinates (detector indices, times of flight, weights)
+  into a structured format for storage.
+  """
+  import tempfile
+  import os
+  import numpy as np
+  import multiprocessing
+  
 
-  calculate_q = params['instrument'].calculate_q
-  outgoing_directions_horizontal = params['outgoing_directions_horizontal']
-  outgoing_directions_vertical = params['outgoing_directions_vertical']
-  angle_range = params['angle_range']
-  raw_output = params['raw_output']
-  hist_ranges = params['hist_ranges']
-  bins = params['bins']
-  use_avg_materials = params['use_avg_materials']
-  specular = params['specular']
-  analyzer_direction = params['analyzer_direction']
-  analyzer_efficiency = params['analyzer_efficiency']
-  analyzer_transmission = params['analyzer_transmission']
-  bornagain_number_of_threads = params.get('bornagain_number_of_threads')
+  try:
+    sample = params['sample']
+    sample_module = sample.get_module()
+    sample_model = sample_module.get_sample(**sample.kwargs)
+    outgoing_directions_horizontal = params['outgoing_directions_horizontal']
+    outgoing_directions_vertical = params['outgoing_directions_vertical']
+    angle_range = params['angle_range']
+    use_avg_materials = params['use_avg_materials']
+    specular = params['specular']
+    analyzer_direction = params['analyzer_direction']
+    analyzer_efficiency = params['analyzer_efficiency']
+    analyzer_transmission = params['analyzer_transmission']
+    bornagain_number_of_threads = params.get('bornagain_number_of_threads')
+    instrument = params['instrument']
+    is_tof = instrument.is_tof_instrument
 
-  if raw_output:
-    q_events = [] #p, Qx, Qy, Qz, t
-  else:
-    q_hist = np.zeros(tuple(bins))
-    q_hist_weights_squared = np.zeros(bins)
-
-  ## Carry out BornAgain simulation for all incident particle one-by-one
-  for id, particle in enumerate(particles):
-    if id%200==0:
-      print(f'{id:10}/{len(particles)}') #print output to indicate progress
-    # Particle positions, velocities and corresponding calculations are expressed
-    # in the BornAgain coord system (X - forward, Y - left, Z - up)
-    p, x, y, z, vx, vy, vz, wavelength, t, *polarization = particle
-    alpha_i = np.rad2deg(np.arctan(-vz/vx)) #[deg]
-    phi_i = np.rad2deg(np.arctan(vy/vx)) #[deg], not used in sim, added to phi_f
-    v = np.sqrt(vx**2+vy**2+vz**2)
-
-    if sample.sample_missed(x, y, z, vz):
-      # Particles missed the sample so the q value is calculated after propagation
-      # to the detector surface without scattering simulation
-      q_array = calculate_q(x, y, z, t, [vx], [vy], [vz])
-      weights = np.array([p])
+    pixel_hist = None
+    pixel_hist_weights_squared = None
+    
+    event_buffer = None
+    buffer_idx = 0
+    buffer_capacity = 1_000_000
+    h5_temp_path = None
+    
+    if not is_tof:
+      pixel_hist = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
+      pixel_hist_weights_squared = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
     else:
-      # Calculate scattering probability for outgoing beams. The outgoing direction grid is evenly spaced within the
-      # sampled angle range, but random angle offset of the whole grid in both
-      # directions is applied for better sampling of the outgoing directions
-      rand_y = 2*np.random.random()-1
-      rand_z = 2*np.random.random()-1
-      sim = get_simulation(sample_model, outgoing_directions_horizontal, outgoing_directions_vertical, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization,
-                           analyzer_direction=analyzer_direction,
-                           analyzer_efficiency=analyzer_efficiency,
-                           analyzer_transmission=analyzer_transmission)
-      sim.options().setUseAvgMaterials(use_avg_materials)
-      sim.options().setIncludeSpecular(specular == 'include_specular')
-      if bornagain_number_of_threads is not None:
-          sim.options().setNumberOfThreads(bornagain_number_of_threads)
-      res = sim.simulate()
-      pout = get_result_intensities(res)
+      import h5py
+      pid = multiprocessing.current_process().pid
+      if pid is None:
+          pid = os.getpid()
+      h5_temp_path = os.path.join(tempfile.gettempdir(), f"mcstas_gisans_events_{pid}.h5")
 
-      # calculate the components of the velocity vector for all outgoing directions
-      horiz_min, horiz_max, vert_min, vert_max = angle_range
-      step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
-      step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
+      event_buffer = {
+          'detector_id': np.zeros(buffer_capacity, dtype=np.int32),
+          'tof': np.zeros(buffer_capacity, dtype=np.float32),
+          'weight': np.zeros(buffer_capacity, dtype=np.float64)
+      }
 
-      rand_deg_phi = rand_z * step_phi
-      rand_deg_alpha = rand_y * step_alpha
+      f_temp = h5py.File(h5_temp_path, 'w')
+      f_temp.create_dataset('detector_id', shape=(0,), maxshape=(None,), dtype=np.int32, chunks=(100_000,))
+      f_temp.create_dataset('tof', shape=(0,), maxshape=(None,), dtype=np.float32, chunks=(100_000,))
+      f_temp.create_dataset('weight', shape=(0,), maxshape=(None,), dtype=np.float64, chunks=(100_000,))
 
-      alpha_f = np.linspace(vert_max, vert_min, outgoing_directions_vertical) + rand_deg_alpha
-      phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_directions_horizontal) + rand_deg_phi
-      alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
-      VX_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) # X in BA coord system is forward(horizontal)
-      VY_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) # Y in BA coord system is to the left(horizontal)
-      VZ_grid = v * np.sin(alpha_grid)                    # Z in BA coord system is up (vertical)
+    ## Carry out BornAgain simulation for all incident particle one-by-one
+    for id, particle in enumerate(particles):
+      if id%200==0 and getattr(multiprocessing.current_process(), '_identity', [1])[0] == 1:
+        import sys
+        print(f'{id:10}/{len(particles)}') #print output to indicate progress
+        sys.stdout.flush()
+      # Particle positions, velocities and corresponding calculations are expressed
+      # in the BornAgain coord system (X - forward, Y - left, Z - up)
+      p, x, y, z, vx, vy, vz, wavelength, t, *polarization = particle
+      alpha_i = np.rad2deg(np.arctan(-vz/vx)) #[deg]
+      phi_i = np.rad2deg(np.arctan(vy/vx)) #[deg], not used in sim, added to phi_f
+      v = np.sqrt(vx**2+vy**2+vz**2)
 
-      q_array = calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
-      weights = pout.T.flatten()
+      if sample.sample_missed(x, y, z, vz):
+        # Particles missed the sample so the q value is calculated after propagation
+        # to the detector surface without scattering simulation
+        weights = np.array([p])
+        idx_x_nexus, idx_y_nexus, valid_mask, sd_tof = instrument.calculate_pixel_hit(x, y, z, t, np.array([vx]), np.array([vy]), np.array([vz]))
+        weights_pixel_combined = weights
+      else:
+        # Calculate scattering probability for outgoing beams. The outgoing direction grid is evenly spaced within the
+        # sampled angle range, but random angle offset of the whole grid in both
+        # directions is applied for better sampling of the outgoing directions
+        rand_y = 2*np.random.random()-1
+        rand_z = 2*np.random.random()-1
+        sim = get_simulation(sample_model, outgoing_directions_horizontal, outgoing_directions_vertical, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization,
+                             analyzer_direction=analyzer_direction,
+                             analyzer_efficiency=analyzer_efficiency,
+                             analyzer_transmission=analyzer_transmission)
+        sim.options().setUseAvgMaterials(use_avg_materials)
+        sim.options().setIncludeSpecular(specular == 'include_specular')
+        if bornagain_number_of_threads is not None:
+            sim.options().setNumberOfThreads(bornagain_number_of_threads)
+        res = sim.simulate()
+        pout = get_result_intensities(res)
 
-    if specular == 'specular_simulation':
-      q_specular_sim = []
-      weight_specular_sim = []
+        # calculate the components of the velocity vector for all outgoing directions
+        horiz_min, horiz_max, vert_min, vert_max = angle_range
+        step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
+        step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
 
-      # Calculated reflected and transmitted (1-reflected) beams
-      ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
-      res = ssim.simulate()
-      refl_fraction = np.array(res.flatVector())[0]
+        rand_deg_phi = rand_z * step_phi
+        rand_deg_alpha = rand_y * step_alpha
 
-      # Reflected beam (reverse vertical velocity in BA, which is vz)
-      q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [-vz]))
-      weight_specular_sim.append(np.array([p * refl_fraction]))
+        alpha_f = np.linspace(vert_max, vert_min, outgoing_directions_vertical) + rand_deg_alpha
+        phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_directions_horizontal) + rand_deg_phi
+        alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
+        VX_grid = v * np.cos(alpha_grid) * np.cos(phi_grid) # X in BA coord system is forward(horizontal)
+        VY_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) # Y in BA coord system is to the left(horizontal)
+        VZ_grid = v * np.sin(alpha_grid)                    # Z in BA coord system is up (vertical)
 
-      ptrans = p * (1.0 - refl_fraction)
-      if ptrans>1e-10:
-          q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [vz]))
-          weight_specular_sim.append(np.array([ptrans]))
+        weights = pout.T.flatten()
+        idx_x_nexus, idx_y_nexus, valid_mask, sd_tof = instrument.calculate_pixel_hit(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
 
-      q_array = np.vstack([q_array] + q_specular_sim)
-      weights = np.concatenate([weights] + weight_specular_sim)
+      if specular == 'specular_simulation':
+        q_specular_sim = []
+        weight_specular_sim = []
 
-    if raw_output:
-      q_events.append(np.column_stack([weights, q_array]))
-    else: #histogrammed output format
-      q_hist_of_particle, _ = np.histogramdd(q_array, weights=weights, bins=bins, range=hist_ranges)
-      q_hist_weights_squared_of_particle, _ = np.histogramdd(q_array, weights=weights**2, bins=bins, range=hist_ranges)
-      q_hist += q_hist_of_particle
-      q_hist_weights_squared += q_hist_weights_squared_of_particle
+        # Calculated reflected and transmitted (1-reflected) beams
+        ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
+        res = ssim.simulate()
+        refl_fraction = np.array(res.flatVector())[0]
 
-  if raw_output:
-    result = [item for sublist in q_events for item in sublist] #flatten sublists
-  else:
-    result = {'qHist': q_hist, 'qHistWeightsSquared': q_hist_weights_squared}
+        # Reflected beam (reverse vertical velocity in BA, which is vz)
+        weight_specular_sim.append(np.array([p * refl_fraction]))
+        idx_x_refl, idx_y_refl, valid_refl, sd_tof_refl = instrument.calculate_pixel_hit(x, y, z, t, [vx], [vy], [-vz])
+        idx_y_list = [idx_y_nexus, idx_y_refl]
+        idx_x_list = [idx_x_nexus, idx_x_refl]
+        valid_list = [valid_mask, valid_refl]
+        sd_tof_list = [sd_tof, sd_tof_refl]
+        weights_pixel = [weights, np.array([p * refl_fraction])]
 
-  if queue: #return result from multiprocessing process
-    queue.put(result)
-  else:
-    return result
+        ptrans = p * (1.0 - refl_fraction)
+        if ptrans>1e-10:
+            weight_specular_sim.append(np.array([ptrans]))
+            idx_x_trans, idx_y_trans, valid_trans, sd_tof_trans = instrument.calculate_pixel_hit(x, y, z, t, [vx], [vy], [vz])
+            idx_y_list.append(idx_y_trans)
+            idx_x_list.append(idx_x_trans)
+            valid_list.append(valid_trans)
+            sd_tof_list.append(sd_tof_trans)
+            weights_pixel.append(np.array([ptrans]))
+
+        weights = np.concatenate([weights] + weight_specular_sim)
+        idx_y_nexus = np.concatenate(idx_y_list)
+        idx_x_nexus = np.concatenate(idx_x_list)
+        valid_mask = np.concatenate(valid_list)
+        sd_tof = np.concatenate(sd_tof_list)
+        weights_pixel_combined = np.concatenate(weights_pixel)
+      else:
+        weights_pixel_combined = weights
+
+        if np.any(valid_mask):
+          valid_idx_x = idx_x_nexus[valid_mask]
+          valid_idx_y = idx_y_nexus[valid_mask]
+          valid_weights = weights_pixel_combined[valid_mask]
+          detector_id = valid_idx_x * instrument.detector.pixels_y_nexus + valid_idx_y
+
+          if not is_tof:
+            np.add.at(pixel_hist, (valid_idx_x, valid_idx_y), valid_weights)
+            np.add.at(pixel_hist_weights_squared, (valid_idx_x, valid_idx_y), valid_weights**2)
+          else:
+            # Out-of-core writing for TOF Event Mode
+            valid_sd_tof = sd_tof[valid_mask]
+            total_tof = t + valid_sd_tof
+            
+            num_hits = len(detector_id)
+            hits_processed = 0
+            
+            while hits_processed < num_hits:
+              space_left = buffer_capacity - buffer_idx
+              chunk_size = min(space_left, num_hits - hits_processed)
+              
+              end_processed = hits_processed + chunk_size
+              end_buffer = buffer_idx + chunk_size
+              
+              event_buffer['detector_id'][buffer_idx:end_buffer] = detector_id[hits_processed:end_processed]
+              event_buffer['tof'][buffer_idx:end_buffer] = total_tof[hits_processed:end_processed]
+              event_buffer['weight'][buffer_idx:end_buffer] = valid_weights[hits_processed:end_processed]
+              
+              buffer_idx += chunk_size
+              hits_processed += chunk_size
+              
+              if buffer_idx == buffer_capacity:
+                for col in ['detector_id', 'tof', 'weight']:
+                    dset = f_temp[col]
+                    old_size = dset.shape[0]
+                    dset.resize((old_size + buffer_capacity,))
+                    dset[old_size:] = event_buffer[col]
+                f_temp.flush()
+                buffer_idx = 0
+
+    if is_tof and buffer_idx > 0:
+        for col in ['detector_id', 'tof', 'weight']:
+            dset = f_temp[col]
+            old_size = dset.shape[0]
+            dset.resize((old_size + buffer_idx,))
+            dset[old_size:] = event_buffer[col][:buffer_idx]
+        buffer_idx = 0
+
+    result = {
+        'pixelHist': pixel_hist,
+        'pixelHistWeightsSquared': pixel_hist_weights_squared,
+        'temp_h5_path': h5_temp_path
+    }
+
+    if queue: #return result from multiprocessing process
+      queue.put(result)
+    else:
+      return result
+      
+  except Exception as e:
+    import traceback
+    err_log_path = os.path.join(tempfile.gettempdir(), 'mcstas_worker_err.log')
+    with open(err_log_path, 'a') as f:
+        traceback.print_exc(file=f)
+    raise e
+  finally:
+    if params['instrument'].is_tof_instrument and 'f_temp' in locals():
+        try:
+            f_temp.close()
+        except:
+            pass
 
 def process_particles_parallelly(particles, params, process_number):
   """
   Spawn parallel processes to carry out the BornAgain simulation and subsequent
   calculation of the incident particles.
   """
-  print(f"Number of parallel processes: {process_number} (number of CPU cores: {cpu_count()})")
-
-  processes = []
-  results = []
-  queue = Queue() #a queue to get results from each process
+  print(f"Number of parallel processes: {process_number} (number of physical CPU cores: {get_available_cores()})")
 
   particle_number = len(particles)
   chunk_size = particle_number // process_number
-  def get_particles_chunk(process_index):
-    """Distribute the events array among the processes as evenly as possible"""
-    start = process_index * chunk_size
-    end = (process_index + 1) * chunk_size if process_index < process_number - 1 else particle_number
-    return particles[start:end]
-
+  chunks = []
   for i in range(process_number):
-    p = multiprocessing.Process(target=process_particles, args=(get_particles_chunk(i), params, queue,))
-    processes.append(p)
-    p.start()
+      start = i * chunk_size
+      end = (i + 1) * chunk_size if i < process_number - 1 else particle_number
+      chunks.append(particles[start:end])
 
-  for p in processes: # get the results from each process
-    results.append(queue.get())
-  for p in processes: # Wait for all processes to finish
-    p.join()
+  with multiprocessing.Pool(processes=process_number) as pool:
+      results = pool.starmap(process_particles, [(chunk, params) for chunk in chunks])
 
-  if len(results) != len(processes):
-      print(f"Warning: Expected {len(processes)} results, but received {len(results)}. Some processes may not have completed.")
-
-  if params['raw_output']: #merge lists of raw Q events of the processes
-    result = [item for sublist in results for item in sublist]
-  else: #merge the histogram results of the processes
-    q_hist = np.zeros(tuple(params['bins']))
-    q_hist_weights_squared = np.zeros(tuple(params['bins']))
-    for process_result in results:
-      q_hist += process_result['qHist']
-      q_hist_weights_squared += process_result['qHistWeightsSquared']
-    result = {'qHist': q_hist, 'qHistWeightsSquared': q_hist_weights_squared}
+  is_tof = params['instrument'].is_tof_instrument
+  pixel_hist = np.zeros((params['instrument'].detector.pixels_x_nexus, params['instrument'].detector.pixels_y_nexus))
+  pixel_hist_weights_squared = np.zeros((params['instrument'].detector.pixels_x_nexus, params['instrument'].detector.pixels_y_nexus))
+  for process_result in results:
+    if process_result['pixelHist'] is not None:
+      pixel_hist += process_result['pixelHist']
+      pixel_hist_weights_squared += process_result['pixelHistWeightsSquared']
+  result = {
+      'pixelHist': pixel_hist,
+      'pixelHistWeightsSquared': pixel_hist_weights_squared
+  }
+  if is_tof:
+      result['temp_h5_paths'] = [r['temp_h5_path'] for r in results if 'temp_h5_path' in r]
   return result
 
 def main():
@@ -272,26 +357,95 @@ def main():
   if args.no_parallel: #not using parallel processing, iterating over each particle sequentially, mainly intended for profiling
     result = process_particles(particles, params)
   else:
-    process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+    process_number = args.parallel_processes if args.parallel_processes else (get_available_cores() - 1)
     result = process_particles_parallelly(particles, params, process_number)
 
   ### Create Output ###
-  if args.raw_output: #raw list of Q events (old output)
-    q_array = result
-    save_raw_q_list_file(savename, q_array)
-    return # no further processing, early return
+  is_tof = params['instrument'].is_tof_instrument
 
-  ## Create Q histogram with corresponding uncertainty array (new output format)
-  q_hist = result['qHist']
-  q_hist_weights_squared = result['qHistWeightsSquared']
-  q_hist_error = np.sqrt(q_hist_weights_squared)
+  # Save Scipp DataArray container
 
-  #Get the bin edges of the histograms
-  edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
-               for b, r in zip(params['bins'], params['hist_ranges'])]
-
-  save_q_histogram_file(savename, q_hist, q_hist_error, edges)
-  print("Sum intensity in the q-histogram: ", sum(sum(q_hist)))
+  from .input_output import save_scipp_file
+  if params['instrument'].is_tof_instrument:
+    import h5py
+    import os
+    import shutil
+    import scipp as sc
+    final_h5 = savename if savename.endswith('.h5') else f"{savename}.h5"
+    temp_files = result.get('temp_h5_paths', [result.get('temp_h5_path')])
+    temp_files = [tf for tf in temp_files if tf]
+    
+    total_events = 0
+    for tf in temp_files:
+        with h5py.File(tf, 'r') as fin:
+            if 'detector_id' in fin:
+                total_events += fin['detector_id'].shape[0]
+            
+    det_ids = np.empty(total_events, dtype=np.int32)
+    tofs = np.empty(total_events, dtype=np.float64)
+    weights = np.empty(total_events, dtype=np.float64)
+    
+    current_idx = 0
+    chunk_size = getattr(args, 'temp_read_chunk_size', 1000000)
+    for tf in temp_files:
+        try:
+            with h5py.File(tf, 'r') as fin:
+                if 'detector_id' in fin:
+                    n = fin['detector_id'].shape[0]
+                    hits_processed = 0
+                    while hits_processed < n:
+                        c = min(chunk_size, n - hits_processed)
+                        det_ids[current_idx:current_idx+c] = fin['detector_id'][hits_processed:hits_processed+c]
+                        tofs[current_idx:current_idx+c] = fin['tof'][hits_processed:hits_processed+c]
+                        weights[current_idx:current_idx+c] = fin['weight'][hits_processed:hits_processed+c]
+                        hits_processed += c
+                        current_idx += c
+        finally:
+            if os.path.exists(tf):
+                os.remove(tf)
+                
+    print("Creating native Scipp DataArray...")
+    da = sc.DataArray(
+        data=sc.array(dims=['event'], values=weights, variances=weights, unit='counts'),
+        coords={
+            'detector_id': sc.array(dims=['event'], values=det_ids, unit=None),
+            'tof': sc.array(dims=['event'], values=tofs, unit='s')
+        }
+    )
+    
+    num_pixels = params['instrument'].detector.pixels_x_nexus * params['instrument'].detector.pixels_y_nexus
+    binned = da.bin(detector_id=sc.arange('detector_id', 0, num_pixels + 1, unit=None))
+    
+    # Add geometry metadata
+    positions = params['instrument'].detector.get_pixel_positions(params['instrument'].sample_detector_distance)
+    coords = {
+        'position': sc.vectors(dims=['detector_id'], values=positions, unit='m'),
+        'sample_position': sc.vector(value=[0, 0, 0], unit='m'),
+        'source_position': sc.vector(value=[0, 0, -params['instrument'].nominal_source_sample_distance], unit='m'),
+        'is_tof_instrument': sc.scalar(params['instrument'].is_tof_instrument),
+        'wavelength_selected': sc.scalar(params['instrument'].wavelength_selected if params['instrument'].wavelength_selected is not None else 0.0, unit='angstrom'),
+        'alpha_inc_deg': sc.scalar(np.rad2deg(params['instrument'].alpha_inc), unit='deg'),
+        'instrument_name': sc.scalar(params['instrument_name']),
+        'sample_orientation': sc.scalar(params['instrument'].detector.sample_orientation),
+        'beam_angle': sc.scalar(params['instrument'].beam_angle, unit='deg'),
+        'instrument_detector_centre_offset_x': sc.scalar(params['instrument'].detector.direct_beam_centre_offset_x_nexus, unit='m'),
+        'instrument_detector_centre_offset_y': sc.scalar(params['instrument'].detector.direct_beam_centre_offset_y_nexus, unit='m'),
+    }
+    for k, v in coords.items():
+        binned.coords[k] = v
+        
+    sc.io.hdf5.save_hdf5(binned, final_h5)
+    print(f"Created {final_h5} (Native Scipp Format)")
+  else:
+    import scipp as sc
+    scipp_da = params['instrument'].create_scipp_container()
+    scipp_da.values = result['pixelHist'].flatten()
+    scipp_da.variances = result['pixelHistWeightsSquared'].flatten()
+    scipp_da.coords['instrument_name'] = sc.scalar(params['instrument_name'])
+    scipp_da.coords['instrument_detector_centre_offset_x'] = sc.scalar(params['instrument'].detector.direct_beam_centre_offset_x_nexus, unit='m')
+    scipp_da.coords['instrument_detector_centre_offset_y'] = sc.scalar(params['instrument'].detector.direct_beam_centre_offset_y_nexus, unit='m')
+    save_scipp_file(savename, scipp_da)
+    print("Sum intensity in the scipp pixel-histogram: ", np.sum(result['pixelHist']))
 
   if args.quick_plot:
     hist2D = np.sum(q_hist, axis=0)
