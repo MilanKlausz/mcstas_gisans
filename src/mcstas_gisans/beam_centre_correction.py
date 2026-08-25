@@ -47,10 +47,15 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, w
 
   try:
     alpha_inc_deg = 0.0 #for direct beam measurements, the incident angle is 0 degrees
-    hist, _, _, _ = read_nexus_data(filepath, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
 
     if initial_guess is None:
       initial_guess = instrument_defaults.get(instrument_name, {}).get('detector', {}).get('direct_beam_centre_offset', [0.0, 0.0])
+
+    dummy_params = copy.deepcopy(instrument_defaults[instrument_name])
+    dummy_params['detector']['direct_beam_centre_offset'] = list(initial_guess)
+    dummy_instrument = Instrument(dummy_params, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
+
+    hist, _, _, _ = read_nexus_data(filepath, dummy_instrument)
 
     if verbose:
       print(f"\n--- Starting Beam Centre Minimisation ---")

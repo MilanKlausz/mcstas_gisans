@@ -569,7 +569,7 @@ Output
 
 The result of the simulation and Q calculation is a list of Q events (weight, Qx, Qy, Qz) for each neutron. Depending on the input options, the list of Q events are either saved together with other neutron's Q events in a large file (old raw format with ``--raw_output``), or they are histogrammed and added to a cumulative histogram where all other neutrons result are added, and saved in the end in an `NPZ file <https://numpy.org/doc/stable/reference/generated/numpy.savez.html>`__. The range covered by the histogram along each axis (``--x_range``, ``--y_range``, ``--z_range``), and the number of bins (``--bins``) in each direction can be controlled by input values, which will in terms define how large the output file will be. In case these parameters are not provided by the user, Q limits and bin number are calculated from the selected wavelength and the detector's parameters (sample--detector distance, detector size, detector offset).
 
-With the histogrammed output, a quick Qy--Qz plot can also be created with the ``--quick_plot`` option, that is intended for peaking at the results locally, at the end of a low statistics simulation. For proper plotting, the output file containing the histograms should be used following the instructions in the :ref:`Plot simulation results <plot_simulation_results_section>` section.
+For proper plotting, the output file containing the histograms should be used following the instructions in the :ref:`Plot simulation results <plot_simulation_results_section>` section.
 
 Note that in case the Q histogramming parameters (``--x_range``, ``--y_range``, ``--z_range``, ``--bins``) are not defined, suitable values are calculated from the detector parameters using:
 
@@ -615,7 +615,6 @@ For the full and actual list, invoke: ``mg_run -h``
 - ``--x_range``: Qx range of the histogram. (In BornAgain geometry). Default calculated from detector parameters. (default: None)
 - ``--y_range``: Qy range of the histogram. (In BornAgain geometry). Default calculated from detector parameters. (default: None)
 - ``--z_range``: Qz range of the histogram. (In BornAgain geometry). Default wide enough to include everything. (default: None)
-- ``--quick_plot``: Show a quick Qy-Qz plot from the histogram result. (default: False)
 - ``--all_q``: Calculate and save multiple Q values, each with different levels of approximation (from real Q calculated from all simulation parameters to the default output value, that is Q calculated at the detector surface). This results in significantly slower simulations (especially due to the lack of parallelisation), but can shed light on the effect of e.g., divergence and TOF to lambda conversion on the derived Q value, in order to gain confidence in the results. (default: False)
 - ``--no_gravity``: Do not take into account gravity.
 - ``--use_avg_materials``: BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles". (default: False)
@@ -626,9 +625,9 @@ Example Command
 
 .. code-block:: bash
 
-   mg_run /path/to/MCPL_file.mcpl --instrument saga --model lamellas_and_spheres --outgoing_direction_number 20 --wavelength 4.5 --y_range -0.1 0.5 --parallel_processes 7 --quick_plot --use_avg_materials --include_specular
+   mg_run /path/to/MCPL_file.mcpl --instrument saga --model lamellas_and_spheres --outgoing_direction_number 20 --wavelength 4.5 --y_range -0.1 0.5 --parallel_processes 7 --use_avg_materials --include_specular
 
-This command runs a simulation using 7 parallel processes, using the SAGA instrument parameters with the `lamellas_and_spheres <https://github.com/MilanKlausz/mcstas_gisans/blob/master/models/lamellas_and_spheres.py>`__ sample model, a wavelength of 4.5 Angstroms, outputs a Q histogram, and generates a quick Qx--Qz plot of the results.
+This command runs a simulation using 7 parallel processes, using the SAGA instrument parameters with the `lamellas_and_spheres <https://github.com/MilanKlausz/mcstas_gisans/blob/master/models/lamellas_and_spheres.py>`__ sample model, a wavelength of 4.5 Angstroms, outputs a Q histogram.
 
 .. _plot_simulation_results_section:
 

@@ -11,7 +11,7 @@ from .particle_calculations import calculate_neutron_wavelength, calculate_waven
 
 class Instrument:
   def __init__(self, instr_params, alpha_inc_deg, wavelength_selected, sample_orientation, wfm=False, no_gravity=False):
-    beam_angle = instr_params.get('beam_angle', 0)
+    beam_angle = instr_params.get('beam_angle', 0.0)
     self.beam_angle = beam_angle
     sample_inclination = float(np.deg2rad(alpha_inc_deg + beam_angle))
     self.detector = Detector(instr_params['detector'], sample_inclination, sample_orientation, no_gravity)
@@ -253,8 +253,22 @@ class Instrument:
     )
 
     # 3. Combine into coordinate limit vectors in BornAgain space [X_BA, Y_BA, Z_BA].
-    q_min_coords = [q_min_x_ba, q_min_y_ba, q_min_z_ba]
-    q_max_coords = [q_max_x_ba, q_max_y_ba, q_max_z_ba]
+    q_min_coords = np.array([q_min_x_ba, q_min_y_ba, q_min_z_ba])
+    q_max_coords = np.array([q_max_x_ba, q_max_y_ba, q_max_z_ba])
+
+    # Apply outgoing gravity correction to find straight-line trajectories
+    if not self.no_gravity:
+        import scipy.constants as const
+        w = wavelength if wavelength is not None else self.wavelength_selected
+        velocity = (const.h / const.m_n) / (w * 1e-10)
+        
+        t_flight_min = np.linalg.norm(q_min_coords) / velocity
+        t_flight_max = np.linalg.norm(q_max_coords) / velocity
+        
+        g_vec = self.detector.gravity_acceleration_vector
+        
+        q_min_coords -= 0.5 * g_vec * t_flight_min**2
+        q_max_coords -= 0.5 * g_vec * t_flight_max**2
 
     # 4. Convert coordinate limits to outgoing direction unit vectors.
     outgoing_direction_q_min = q_min_coords / np.linalg.norm(q_min_coords)

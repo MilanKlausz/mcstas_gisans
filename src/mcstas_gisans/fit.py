@@ -14,7 +14,7 @@ import numpy as np
 from multiprocessing import cpu_count
 
 from .run_cli import create_argparser as create_run_parser, parse_args as parse_run_args
-from .input_output import get_particles, save_q_histogram_file
+from .input_output import get_particles
 from .preconditioning import precondition
 from .parameters import pack_parameters
 from .run import process_particles, process_particles_parallelly
@@ -34,148 +34,7 @@ def format_time(seconds):
   else:
     return f"{seconds:.2f}s"
 
-def create_fit_parser():
-  parser = create_run_parser()
-
-  # Make filename optional for the run parser, since we may only want to view masks without running a simulation
-  for action in parser._actions:
-    if action.dest == 'filename':
-      action.nargs = '?'
-      action.default = ''
-
-  scan_group = parser.add_argument_group('Parameter scan options')
-  scan_group.add_argument('--scan', action='append', nargs='+', required=False,
-                          help='Parameter name followed by values to scan, e.g., --scan radius 10 12 15')
-  scan_group.add_argument('--nxs', type=str, nargs='+', required=True, help='Path(s) to experimental NeXus file(s) to match. If multiple files are given (e.g. segmented measurements), their counts are summed; --experiment_time should then be the cumulative experiment time across all given files.')
-  scan_group.add_argument('--experiment_time', type=float, default=None, help='Virtual experiment time in seconds for upscaling the simulation. If --nxs specifies multiple files, this should be their cumulative experiment time.')
-  scan_group.add_argument('--background', type=float, default=0.0, help='Flat background level added during upscaling.')
-  scan_group.add_argument('--poisson_sampling', action='store_true', help='Enable random Poisson noise sampling on the simulated data. (Off by default during scans/fits to ensure deterministic, smooth objective function evaluation for optimizer convergence.)')
-  scan_group.add_argument('--output_dir', type=str, default='scan_results', help='Directory to save scan results.')
-
-  scan_plot_group = parser.add_argument_group('Plotting options for scan results')
-  scan_plot_group.add_argument('--png', action='store_true', help='Generate comparison PNG plot for each simulation configuration.')
-  scan_plot_group.add_argument('--y_plot_range', nargs=2, type=float, help='Plot y range.')
-  scan_plot_group.add_argument('--z_plot_range', nargs=2, type=float, help='Plot z range.')
-  scan_plot_group.add_argument('--q_min', type=float, default=0.0, help='Minimum Qz value for 1D slice comparison [1/nm].')
-  scan_plot_group.add_argument('--q_max', type=float, default=0.0, help='Maximum Qz value for 1D slice comparison [1/nm].')
-
-
-  scan_mask_group = parser.add_argument_group('Masking options to exclude data ranges for the fitness calculation')
-  scan_mask_group.add_argument('--mask_view', action='store_true', help='Only view the applied masks on the experimental NeXus data, then exit.')
-  scan_mask_group.add_argument('--mask_qy_range', nargs=2, type=float, default=None, help='Qy range to mask out from the fitness calculation (e.g., -0.05 0.05) [1/nm].')
-  scan_mask_group.add_argument('--mask_qy_min_cut', type=float, default=None, help='Lower Qy cut option. Any data below this Qy value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--mask_qy_max_cut', type=float, default=None, help='Upper Qy cut option. Any data above this Qy value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--mask_qz_min_cut', type=float, default=None, help='Lower Qz cut option. Any data below this Qz value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--mask_qz_max_cut', type=float, default=None, help='Upper Qz cut option. Any data above this Qz value is disregarded [1/nm].')
-  scan_mask_group.add_argument('--mask_exclude_q_box', action='append', nargs=4, type=float, default=None,
-                               help='Exclude rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. (Can be specified multiple times).')
-  scan_mask_group.add_argument('--mask_include_q_box', action='append', nargs=4, type=float, default=None,
-                               help='Include rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. Applied after exclusions. (Can be specified multiple times).')
-  scan_mask_group.add_argument('--simulate_mask_angle_range', action='store_true',
-                               help='Calculate minimum simulation angle range enclosing the unmasked detector pixels to optimize performance.')
-  scan_mask_group.add_argument('--simulate_mask_angle_range_factor', type=float, default=1.0,
-                               help='Expansion factor for --simulate_mask_angle_range (default: 1.0). Use e.g. 1.05 for a 5%% safety margin around the ROI.')
-  fit_group = parser.add_argument_group('Automated optimization / fitting options')
-  fit_group.add_argument('--fit', action='append', nargs='+', required=False,
-                         help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')
-  fit_group.add_argument('--fit_integer', action='append', nargs='+', required=False, default=None,
-                         help='Specify parameter names to fit as integers (e.g. --fit_integer layerNumber). These parameters will be constrained to integer values during optimization (rounded for Nelder-Mead and Powell, and natively handled for Differential Evolution).')
-  fit_group.add_argument('--optimizer', type=str, default='nelder-mead', choices=['nelder-mead', 'powell', 'differential-evolution'],
-                         help='Optimization algorithm to use (default: nelder-mead).')
-  fit_group.add_argument('--popsize', type=int, default=15,
-                         help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
-  fit_group.add_argument('--max_evals', type=int, default=10,
-                         help='Maximum number of objective function evaluations for the optimizer (default: 10).')
-  fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
-                         help='Metric to minimize during optimization (default: reduced_chi2).')
-  fit_group.add_argument('--xatol', type=float, default=0.01,
-                         help='Absolute parameter convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
-  fit_group.add_argument('--fatol', type=float, default=0.05,
-                         help='Absolute loss function convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.05 matching MC Poisson noise floor).')
-  fit_group.add_argument('--gif', action='store_true',
-                         help='Generate animated GIF showing the evolution of the fitting process.')
-
-  joint_fit_group = parser.add_argument_group('Joint / Dual-sample fitting options (Secondary Sample)')
-  joint_fit_group.add_argument('--nxs2', type=str, default=None,
-                               help='Path to secondary experimental NeXus file to match for joint sample fitting.')
-  joint_fit_group.add_argument('--fit2', action='append', nargs='+', required=False, default=None,
-                               help='Parameter to fit specifically for secondary sample (sample 2), e.g., --fit2 latticeParameter 120 100 130')
-  joint_fit_group.add_argument('--fit_common', action='append', nargs='+', required=False, default=None,
-                               help='Parameter to fit in common across both samples (sample 1 and 2), e.g., --fit_common radius 51 40 60')
-  joint_fit_group.add_argument('--sample_arguments2', type=str, default=None,
-                               help='Non-fitted sample arguments specifically for secondary sample (sample 2), e.g., --sample_arguments2 "radius=51;interferenceRange=5"')
-  joint_fit_group.add_argument('--filename2', type=str, default=None,
-                               help='Optional secondary particle file for sample 2. Defaults to main --filename if omitted.')
-  joint_fit_group.add_argument('--intensity_factor2', type=float, default=None,
-                               help='Optional secondary intensity factor for sample 2. Defaults to main --intensity_factor if omitted.')
-  joint_fit_group.add_argument('--alpha2', type=float, default=None,
-                               help='Optional incident angle alpha for sample 2 [deg]. Defaults to main --alpha if omitted.')
-  joint_fit_group.add_argument('--experiment_time2', type=float, default=None,
-                               help='Optional virtual experiment time for sample 2 [s]. Defaults to main --experiment_time if omitted.')
-  joint_fit_group.add_argument('--background2', type=float, default=None,
-                               help='Optional flat background level for sample 2. Defaults to main --background if omitted.')
-
-  return parser
-
-def parse_scan_arguments(scan_args):
-  scanned_params = {}
-  for item in scan_args:
-    if len(item) < 2:
-      raise ValueError(f"Scan parameter must have at least one value: {item}")
-    name = item[0]
-    values = []
-    for val_str in item[1:]:
-      try:
-        val = int(val_str)
-      except ValueError:
-        try:
-          val = float(val_str)
-        except ValueError:
-          val = val_str
-      values.append(val)
-    scanned_params[name] = values
-  return scanned_params
-
-def parse_fit_arguments(fit_args):
-  """
-  Parses --fit arguments.
-  Supported formats per parameter:
-    --fit name x0
-    --fit name min max
-    --fit name x0 min max
-  Returns:
-    param_names: list of parameter names
-    x0_list: list of initial values (float)
-    bounds_list: list of (min_val, max_val) tuples or None
-  """
-  param_names = []
-  x0_list = []
-  bounds_list = []
-
-  for item in fit_args:
-    if len(item) < 2:
-      raise ValueError(f"Fit parameter must specify at least name and initial value: {item}")
-    name = item[0]
-    param_names.append(name)
-
-    if len(item) == 2:
-      x0 = float(item[1])
-      bounds = (None, None)
-    elif len(item) == 3:
-      b_min = float(item[1])
-      b_max = float(item[2])
-      x0 = (b_min + b_max) / 2.0
-      bounds = (b_min, b_max)
-    else:
-      x0 = float(item[1])
-      b_min = float(item[2])
-      b_max = float(item[3])
-      bounds = (b_min, b_max)
-
-    x0_list.append(x0)
-    bounds_list.append(bounds)
-
-  return param_names, x0_list, bounds_list
+from .fit_cli import create_fit_parser, parse_scan_arguments, parse_fit_arguments
 
 def convert_val(value_str):
   try:
@@ -218,11 +77,14 @@ def calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error):
 def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
                          hist_sim, hist_sim_error, y_edges_sim, z_edges_sim,
                          q_min, q_max, y_plot_range, z_plot_range,
-                         savename, label_sim):
+                         savename, label_sim, intensity_min=None):
   import matplotlib.pyplot as plt
   from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
 
-  intensity_min = 1.0
+  if intensity_min is not None:
+    intensity_min = float(intensity_min)
+  else:
+    intensity_min = 1.0
 
   fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
@@ -459,15 +321,19 @@ def validate_fit_args(args, parser):
 
 def prepare_experimental_data(args):
   wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
+
+  from .instrument import Instrument
+  from .instrument_defaults import instrument_defaults
+  instr_params = instrument_defaults[args.instrument] #note: the instrument defaults are already updated by parse_run_args
+  instrument = Instrument(instr_params, args.alpha, wavelength_val, args.sample_orientation, args.wfm, args.no_gravity)
+
   nxs_paths = args.nxs if isinstance(args.nxs, list) else [args.nxs]
 
   print(f"Loading experimental NeXus data from {len(nxs_paths)} file(s):")
   hist_list = []
   y_edges_nxs, z_edges_nxs = None, None
   for path in nxs_paths:
-    hist, _, y_edges_nxs, z_edges_nxs = read_nexus_data(
-        path, args.alpha, wavelength_val, args.sample_orientation
-    )
+    hist, _, y_edges_nxs, z_edges_nxs = read_nexus_data(path, instrument)
     print(f"  {path}: shape={hist.shape}, counts={np.sum(hist):.0f}")
     hist_list.append(hist)
 
@@ -494,12 +360,6 @@ def prepare_experimental_data(args):
   hist_nxs_error = apply_mask(hist_nxs_error_raw, mask, 0.0)
 
   if getattr(args, 'simulate_mask_angle_range', False):
-    from .instrument import Instrument
-    from .instrument_defaults import instrument_defaults
-    instr_params = instrument_defaults[args.instrument] #note: the instrument defaults are already updated by parse_run_args
-    instrument = Instrument(instr_params, args.alpha, wavelength_val, args.sample_orientation, args.wfm, args.no_gravity)
-
-    len_y_centres = len(y_edges_nxs) - 1
     factor = getattr(args, 'simulate_mask_angle_range_factor', 1.0)
     mask_angle_range = list(instrument.get_masked_angle_range(mask, factor=factor))
     args.angle_range = mask_angle_range
@@ -517,7 +377,7 @@ def load_and_precondition_particles(args):
   print(f"Loaded and preconditioned {len(particles)} particles.")
   return particles, particle_type
 
-def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, save_npz=True, label_prefix="sim"):
+def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, label_prefix="sim", save_simulation_output=False):
   sample_args_dict = {}
   if args.sample_arguments:
     for pair in args.sample_arguments.split(';'):
@@ -537,19 +397,26 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
     result = process_particles_parallelly(particles, params, process_number)
 
-  q_hist = result['qHist']
-  q_hist_weights_squared = result['qHistWeightsSquared']
-  q_hist_error = np.sqrt(q_hist_weights_squared)
-  edges = [np.array(np.histogram_bin_edges(None, bins=b, range=r), dtype=np.float64)
-           for b, r in zip(params['bins'], params['hist_ranges'])]
+  instrument = params['instrument']
+
+  if getattr(instrument, 'is_tof_instrument', False):
+      raise NotImplementedError("TOF fitting is not yet implemented in fit.py after the Scipp refactoring.")
+
+  raw_hist = result['pixelHist']
+  raw_err = np.sqrt(result['pixelHistWeightsSquared'])
+
+  hist_sim = instrument.detector.coords.rotate_detector_image(raw_hist)
+  hist_sim_error = instrument.detector.coords.rotate_detector_image(raw_err)
+
+  y_edges, z_edges = instrument.get_q_pixel_limits(wavelength=instrument.wavelength_selected)
+  edges = [None, y_edges, z_edges] # match the expected edges list format
 
   param_str = '_'.join(f"{k}_{v}" for k, v in grid_point.items())
-  if save_npz:
+  if save_simulation_output:
     savename = os.path.join(args.output_dir, f"{label_prefix}_{param_str}")
-    save_q_histogram_file(savename, q_hist, q_hist_error, edges)
-
-  hist_sim = np.sum(q_hist, axis=0)
-  hist_sim_error = np.sqrt(np.sum(q_hist_weights_squared, axis=0))
+    from .input_output import save_simulation_results_as_scipp
+    temp_read_chunk_size = getattr(args, 'temp_read_chunk_size', 1000000) #this will be used for TOF instruments
+    save_simulation_results_as_scipp(savename, params, result, temp_read_chunk_size)
 
   if hist_nxs.shape != hist_sim.shape:
     if hist_nxs.shape == hist_sim.T.shape:
@@ -579,11 +446,17 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     plot_path = os.path.join(args.output_dir, f"{label_prefix}_{param_str}.png")
     y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
     z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
+    # Determine default intensity_min if not provided
+    if args.intensity_min is not None:
+        intensity_min = float(args.intensity_min)
+    else:
+        intensity_min = 1.0 if args.experiment_time else 1e-9
+
     save_comparison_plot(
         hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
         hist_sim_masked, hist_sim_error_masked, edges[1], edges[2],
         args.q_min, args.q_max, y_plot_range, z_plot_range,
-        plot_path, f"Sim ({param_str})"
+        plot_path, f"Sim ({param_str})", intensity_min
     )
 
   sim_data = {
@@ -778,7 +651,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     if not is_joint_fit:
       res = run_simulation_evaluation(
           grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-          save_npz=False, label_prefix=f"fit_eval_{eval_counter[0]}"
+          label_prefix=f"fit_eval_{eval_counter[0]}"
       )
       reduced_chi2, log_residual = res[0], res[1]
       rec = copy.deepcopy(display_point)
@@ -798,11 +671,10 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       args.png = False
       res1 = run_simulation_evaluation(
           grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-          save_npz=False, label_prefix=f"fit_eval_s1_{eval_counter[0]}"
+          label_prefix=f"fit_eval_s1_{eval_counter[0]}"
       )
       res2 = run_simulation_evaluation(
-          grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2,
-          save_npz=False, label_prefix=f"fit_eval_s2_{eval_counter[0]}"
+          grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, label_prefix=f"fit_eval_s2_{eval_counter[0]}"
       )
       args.png = png_backup
 
@@ -936,7 +808,7 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
     print(f"\n[{current_count}/{total_evals}] Running simulation with: {grid_point}")
     reduced_chi2, log_residual, record, _ = run_simulation_evaluation(
         grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-        save_npz=True, label_prefix="sim"
+        label_prefix="sim", save_simulation_output=True
     )
 
     iter_duration = time.time() - iter_start_time
@@ -975,12 +847,18 @@ def main():
     plot_path = os.path.join(args.output_dir, "masked_view.png")
     y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
     z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
+    # Determine default intensity_min if not provided
+    if args.intensity_min is not None:
+        intensity_min = float(args.intensity_min)
+    else:
+        intensity_min = 1.0 if args.experiment_time else 1e-9
+
     save_view_masks_plot(
         hist_nxs_raw, hist_nxs_error_raw,
         hist_nxs, hist_nxs_error,
         y_edges_nxs, z_edges_nxs,
         args.q_min, args.q_max, y_plot_range, z_plot_range,
-        plot_path
+        plot_path, intensity_min
     )
     return
 

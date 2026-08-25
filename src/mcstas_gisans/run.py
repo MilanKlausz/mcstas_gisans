@@ -15,7 +15,7 @@ from .hardware import get_available_cores
 import bornagain as ba
 from bornagain import deg, angstrom
 
-from .input_output import get_particles, save_q_histogram_file, save_raw_q_list_file
+from .input_output import get_particles
 from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
@@ -88,7 +88,7 @@ def process_particles(particles, params, queue=None):
   import os
   import numpy as np
   import multiprocessing
-  
+
 
   try:
     sample = params['sample']
@@ -108,12 +108,12 @@ def process_particles(particles, params, queue=None):
 
     pixel_hist = None
     pixel_hist_weights_squared = None
-    
+
     event_buffer = None
     buffer_idx = 0
     buffer_capacity = 1_000_000
     h5_temp_path = None
-    
+
     if not is_tof:
       pixel_hist = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
       pixel_hist_weights_squared = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
@@ -239,24 +239,24 @@ def process_particles(particles, params, queue=None):
             # Out-of-core writing for TOF Event Mode
             valid_sd_tof = sd_tof[valid_mask]
             total_tof = t + valid_sd_tof
-            
+
             num_hits = len(detector_id)
             hits_processed = 0
-            
+
             while hits_processed < num_hits:
               space_left = buffer_capacity - buffer_idx
               chunk_size = min(space_left, num_hits - hits_processed)
-              
+
               end_processed = hits_processed + chunk_size
               end_buffer = buffer_idx + chunk_size
-              
+
               event_buffer['detector_id'][buffer_idx:end_buffer] = detector_id[hits_processed:end_processed]
               event_buffer['tof'][buffer_idx:end_buffer] = total_tof[hits_processed:end_processed]
               event_buffer['weight'][buffer_idx:end_buffer] = valid_weights[hits_processed:end_processed]
-              
+
               buffer_idx += chunk_size
               hits_processed += chunk_size
-              
+
               if buffer_idx == buffer_capacity:
                 for col in ['detector_id', 'tof', 'weight']:
                     dset = f_temp[col]
@@ -284,7 +284,7 @@ def process_particles(particles, params, queue=None):
       queue.put(result)
     else:
       return result
-      
+
   except Exception as e:
     import traceback
     err_log_path = os.path.join(tempfile.gettempdir(), 'mcstas_worker_err.log')
@@ -361,96 +361,9 @@ def main():
     result = process_particles_parallelly(particles, params, process_number)
 
   ### Create Output ###
-  is_tof = params['instrument'].is_tof_instrument
-
   # Save Scipp DataArray container
-
-  from .input_output import save_scipp_file
-  if params['instrument'].is_tof_instrument:
-    import h5py
-    import os
-    import shutil
-    import scipp as sc
-    final_h5 = savename if savename.endswith('.h5') else f"{savename}.h5"
-    temp_files = result.get('temp_h5_paths', [result.get('temp_h5_path')])
-    temp_files = [tf for tf in temp_files if tf]
-    
-    total_events = 0
-    for tf in temp_files:
-        with h5py.File(tf, 'r') as fin:
-            if 'detector_id' in fin:
-                total_events += fin['detector_id'].shape[0]
-            
-    det_ids = np.empty(total_events, dtype=np.int32)
-    tofs = np.empty(total_events, dtype=np.float64)
-    weights = np.empty(total_events, dtype=np.float64)
-    
-    current_idx = 0
-    chunk_size = getattr(args, 'temp_read_chunk_size', 1000000)
-    for tf in temp_files:
-        try:
-            with h5py.File(tf, 'r') as fin:
-                if 'detector_id' in fin:
-                    n = fin['detector_id'].shape[0]
-                    hits_processed = 0
-                    while hits_processed < n:
-                        c = min(chunk_size, n - hits_processed)
-                        det_ids[current_idx:current_idx+c] = fin['detector_id'][hits_processed:hits_processed+c]
-                        tofs[current_idx:current_idx+c] = fin['tof'][hits_processed:hits_processed+c]
-                        weights[current_idx:current_idx+c] = fin['weight'][hits_processed:hits_processed+c]
-                        hits_processed += c
-                        current_idx += c
-        finally:
-            if os.path.exists(tf):
-                os.remove(tf)
-                
-    print("Creating native Scipp DataArray...")
-    da = sc.DataArray(
-        data=sc.array(dims=['event'], values=weights, variances=weights, unit='counts'),
-        coords={
-            'detector_id': sc.array(dims=['event'], values=det_ids, unit=None),
-            'tof': sc.array(dims=['event'], values=tofs, unit='s')
-        }
-    )
-    
-    num_pixels = params['instrument'].detector.pixels_x_nexus * params['instrument'].detector.pixels_y_nexus
-    binned = da.bin(detector_id=sc.arange('detector_id', 0, num_pixels + 1, unit=None))
-    
-    # Add geometry metadata
-    positions = params['instrument'].detector.get_pixel_positions(params['instrument'].sample_detector_distance)
-    coords = {
-        'position': sc.vectors(dims=['detector_id'], values=positions, unit='m'),
-        'sample_position': sc.vector(value=[0, 0, 0], unit='m'),
-        'source_position': sc.vector(value=[0, 0, -params['instrument'].nominal_source_sample_distance], unit='m'),
-        'is_tof_instrument': sc.scalar(params['instrument'].is_tof_instrument),
-        'wavelength_selected': sc.scalar(params['instrument'].wavelength_selected if params['instrument'].wavelength_selected is not None else 0.0, unit='angstrom'),
-        'alpha_inc_deg': sc.scalar(np.rad2deg(params['instrument'].alpha_inc), unit='deg'),
-        'instrument_name': sc.scalar(params['instrument_name']),
-        'sample_orientation': sc.scalar(params['instrument'].detector.sample_orientation),
-        'beam_angle': sc.scalar(params['instrument'].beam_angle, unit='deg'),
-        'instrument_detector_centre_offset_x': sc.scalar(params['instrument'].detector.direct_beam_centre_offset_x_nexus, unit='m'),
-        'instrument_detector_centre_offset_y': sc.scalar(params['instrument'].detector.direct_beam_centre_offset_y_nexus, unit='m'),
-    }
-    for k, v in coords.items():
-        binned.coords[k] = v
-        
-    sc.io.hdf5.save_hdf5(binned, final_h5)
-    print(f"Created {final_h5} (Native Scipp Format)")
-  else:
-    import scipp as sc
-    scipp_da = params['instrument'].create_scipp_container()
-    scipp_da.values = result['pixelHist'].flatten()
-    scipp_da.variances = result['pixelHistWeightsSquared'].flatten()
-    scipp_da.coords['instrument_name'] = sc.scalar(params['instrument_name'])
-    scipp_da.coords['instrument_detector_centre_offset_x'] = sc.scalar(params['instrument'].detector.direct_beam_centre_offset_x_nexus, unit='m')
-    scipp_da.coords['instrument_detector_centre_offset_y'] = sc.scalar(params['instrument'].detector.direct_beam_centre_offset_y_nexus, unit='m')
-    save_scipp_file(savename, scipp_da)
-    print("Sum intensity in the scipp pixel-histogram: ", np.sum(result['pixelHist']))
-
-  if args.quick_plot:
-    hist2D = np.sum(q_hist, axis=0)
-    from .plotting_utils import log_plot_2d
-    log_plot_2d(hist2D, edges[1], edges[2], y_range=params['hist_ranges'][1], z_range=params['hist_ranges'][2], output='show')
+  from .input_output import save_simulation_results_as_scipp
+  save_simulation_results_as_scipp(savename, params, result, getattr(args, 'temp_read_chunk_size', 1000000))
 
 if __name__=='__main__':
   main()

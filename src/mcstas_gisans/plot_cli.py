@@ -37,13 +37,6 @@ def create_argparser():
   plotParamGroup.add_argument('--z_plot_range', nargs=2, type=float, help = 'Plot z range.')
   plotParamGroup.add_argument('--plot_differences', default=0, type=int, help = 'Plot some measure of difference: 0 - none, 1 - relative absolute difference, 2 - relative difference, 3 - normalised residuals')
 
-
-
-  rawFormat = parser.add_argument_group('Raw Q events data', 'Use (old) raw data format with Q event list in the file instead of an already histogrammed data.')
-  rawFormat.add_argument('--bins', nargs=2, type=int, default=[256, 128], help='Number of histogram bins in y,z directions.')
-  rawFormat.add_argument('--y_range', nargs=2, type=float, default=[-0.55, 0.55], help='Qy range of the histogram.')
-  rawFormat.add_argument('--z_range', nargs=2, type=float, default=[-0.5, 0.6], help='Qx range of the histogram.')
-
   storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
   storedDataParamGroup.add_argument('--nxs', nargs = '*', help = 'Full path to the D22 Nexus file.')
   storedDataParamGroup.add_argument('--nxs_label', nargs = '*', help = 'Label for Nexus input[s]. Must be used together with --nxs if a label is desired. If not provided, the label will be generated from the Nexus file name.')
@@ -54,7 +47,7 @@ def create_argparser():
   storedDataParamGroup.add_argument('--wavelength', type=float, default=6.0, help = 'Wavelength in Angstroms.')
 
   instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
-  instrumentGroup.add_argument('-i', '--instrument_name', default='d22', type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
+  instrumentGroup.add_argument('-i', '--instrument', default='d22', type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
   instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
   instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
   instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
@@ -107,5 +100,5 @@ def parse_args(parser):
 
   if args.normalise_to_nxs and not args.nxs:
     parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')
-  
+
   return args

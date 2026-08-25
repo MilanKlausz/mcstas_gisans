@@ -35,7 +35,6 @@ def create_argparser():
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
   outputGroup.add_argument('--temp_read_chunk_size', type=int, default=1000000, help='Chunk size for reading temporary intermediate files at the end of the simulation (default: 1000000)')
-  outputGroup.add_argument('--quick_plot', default=False, action='store_true', help='Show a quick Qy-Qz plot from the histogram result.')
 
   sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
   sampleGroup.add_argument( '--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
@@ -159,7 +158,7 @@ def parse_args(parser):
     parser.error(f"analyzer_transmission must be between 0.0 and 0.5 (got {args.analyzer_transmission}).")
   if not (0.0 <= args.analyzer_efficiency <= 1.0):
     parser.error(f"analyzer_efficiency must be between 0.0 and 1.0 (got {args.analyzer_efficiency}).")
-  
+
   direction_norm = (args.analyzer_direction[0]**2 + args.analyzer_direction[1]**2 + args.analyzer_direction[2]**2) ** 0.5
   bloch_vector_len = abs(args.analyzer_efficiency) * direction_norm
   if bloch_vector_len > 1.0:

@@ -45,7 +45,7 @@ def setup_global_instrument(args):
   import sys
   from .instrument import Instrument
   from .instrument_defaults import instrument_defaults
-  
+
   if getattr(args, 'filename', None):
     for filename in args.filename:
       if filename.endswith('.h5'):
@@ -68,52 +68,49 @@ def setup_global_instrument(args):
                 if isinstance(name, bytes):
                     name = name.decode('utf-8')
                 metadata['instrument_name'] = name
-                
+
         cli_instrument = getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22'))
         instr_name = metadata.get('instrument_name', cli_instrument)
         if instr_name == 'unknown':
             instr_name = cli_instrument
-            
-        if '--instrument_name' in sys.argv or '--instrument' in sys.argv or '-i' in sys.argv:
+
+        if '--instrument' in sys.argv or '-i' in sys.argv:
             instr_name = cli_instrument
-            
+
         alpha = metadata.get('alpha', args.alpha)
         if '--alpha' in sys.argv or '-a' in sys.argv:
             alpha = args.alpha
-            
+
         sample_orientation = metadata.get('sample_orientation', args.sample_orientation)
         if '--sample_orientation' in sys.argv:
             sample_orientation = args.sample_orientation
-            
+
         beam_angle = metadata.get('beam_angle', 0.0)
         if getattr(args, 'instrument_beam_angle', None) is not None:
             beam_angle = args.instrument_beam_angle
-            
+
         centre_offset = metadata.get('instrument_detector_centre_offset', None)
         if getattr(args, 'instrument_detector_centre_offset', None) is not None:
             centre_offset = args.instrument_detector_centre_offset
-            
+
         instr_params = instrument_defaults[instr_name]
         instr_params['beam_angle'] = beam_angle
         if centre_offset is not None:
             instr_params['detector']['direct_beam_centre_offset'] = centre_offset
-            
+
         return Instrument(instr_params, alpha, args.wavelength, sample_orientation), instr_name, alpha, sample_orientation
   return None, getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22')), args.alpha, args.sample_orientation
 
 def get_datasets(args):
   """
   Prepare the datasets to be plotted.
-  Loads data from NeXus measurement files (.nxs) or McStas/BornAgain simulation 
+  Loads data from NeXus measurement files (.nxs) or McStas/BornAgain simulation
   results (.h5). For TOF simulations, data is loaded as Scipp event data arrays,
-  Q-values are calculated per event using the instrument geometry, and binned 
-  into 2D histograms. 
+  Q-values are calculated per event using the instrument geometry, and binned
+  into 2D histograms.
   Scales intensities to experiment time if required.
   """
   datasets = []
-  y_data_range = args.y_range
-  z_data_range = args.z_range
-
   global_instrument, instr_name, alpha, sample_orientation = setup_global_instrument(args)
 
   if global_instrument is None:
@@ -134,13 +131,10 @@ def get_datasets(args):
         from .instrument_defaults import get_nxs_instrument_parameters
         from .instrument import Instrument
         nxs_instr_params = get_nxs_instrument_parameters(args, default_instr_name=instr_name)
-        if nxs_instr_params is not None:
-            nxs_sample_orient = getattr(args, 'nxs_sample_orientation', None)
-            if nxs_sample_orient is None:
-                nxs_sample_orient = sample_orientation
-            nxs_instrument = Instrument(nxs_instr_params, alpha, args.wavelength, nxs_sample_orient)
-        else:
-            nxs_instrument = global_instrument
+        nxs_sample_orient = sample_orientation
+        if getattr(args, 'nxs_sample_orientation', None) is not None:
+            nxs_sample_orient = args.nxs_sample_orientation
+        nxs_instrument = Instrument(nxs_instr_params, alpha, args.wavelength, nxs_sample_orient)
 
         from .nexus_reader import read_nexus_data
         hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument)
@@ -148,15 +142,13 @@ def get_datasets(args):
         if args.verbose:
           print(f"{nxs_filename} sum: {nxs_sum}")
         datasets.append((hist, hist_error, y_edges, z_edges, nxs_label))
-        y_data_range = [y_edges[0], y_edges[-1]]
-        z_data_range = [z_edges[0], z_edges[-1]]
 
   if args.filename:
     labels = args.label if args.label else args.filename #default to filename if no label is provided
     for filename, label in zip(args.filename, labels):
       if filename.endswith('.h5'):
         scipp_da = load_scipp_file(filename)
-        
+
         import copy
         from .instrument_defaults import instrument_defaults
         sim_instr_params = copy.deepcopy(instrument_defaults[instr_name])
@@ -167,21 +159,21 @@ def get_datasets(args):
         if 'instrument_detector_centre_offset_y' in scipp_da.coords:
             sim_instr_params['detector']['direct_beam_centre_offset_y_nexus'] = scipp_da.coords['instrument_detector_centre_offset_y'].value
             has_offset = True
-            
+
         if has_offset:
             instrument = Instrument(sim_instr_params, alpha, args.wavelength, sample_orientation)
         else:
             instrument = global_instrument
-        
+
         scipp_da = instrument.compute_q_scipp(scipp_da)
-        
+
         y_edges, z_edges = instrument.get_q_pixel_limits(args.wavelength)
         y_min, y_max = (args.y_range[0], args.y_range[1]) if getattr(args, 'y_range', None) else (y_edges[0], y_edges[-1])
         z_min, z_max = (args.z_range[0], args.z_range[1]) if getattr(args, 'z_range', None) else (z_edges[0], z_edges[-1])
-        bins_y, bins_z = args.bins
-        
+        bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
+
         import scipp as sc
-        
+
         # Bin into Qy, Qz
         if scipp_da.bins is not None:
             # For TOF / event data
@@ -189,11 +181,11 @@ def get_datasets(args):
                 min_w = args.wavelength_slice[0]
                 max_w = args.wavelength_slice[1]
                 scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
-            
+
             scipp_da = scipp_da.bins.concat()
-            
+
             # The y_min/y_max/z_min/z_max limits from instrument.get_q_pixel_limits are in 1/nm.
-            # Scipp's Q coordinates are natively in 1/angstrom. We divide by 10.0 to convert 
+            # Scipp's Q coordinates are natively in 1/angstrom. We divide by 10.0 to convert
             # the limits to 1/angstrom to match Scipp's units before binning.
             scipp_binned = scipp_da.bin(
                 Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
@@ -206,7 +198,7 @@ def get_datasets(args):
                 hist_error = np.sqrt(scipp_hist.variances)
             else:
                 hist_error = np.sqrt(hist)
-                
+
             # Extract the edges from scipp_hist, which are in 1/angstrom.
             # We multiply by 10.0 to convert them back to 1/nm, as expected by the plotting functions.
             y_edges = scipp_hist.coords['Qy'].values * 10.0
@@ -218,21 +210,32 @@ def get_datasets(args):
                 raw_err = np.sqrt(scipp_da.variances.reshape((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)))
             else:
                 raw_err = np.sqrt(raw_hist)
-                
+
             hist = instrument.detector.coords.rotate_detector_image(raw_hist)
             hist_error = instrument.detector.coords.rotate_detector_image(raw_err)
             y_edges, z_edges = instrument.get_q_pixel_limits(args.wavelength)
-            
+
             # Since args.y_range and z_range might be provided, we should probably still slice the data?
             # But the chi2 comparison requires full shape. We'll leave it as is.
-        
-        y_data_range = [y_edges[0], y_edges[-1]]
-        z_data_range = [z_edges[0], z_edges[-1]]
+
+      elif filename.endswith('.npz'):
+        # Legacy NPZ support
+        data = np.load(filename)
+        hist = data['hist']
+        if 'error' in data:
+            hist_error = data['error']
+        else:
+            hist_error = np.sqrt(hist)
+
+        if len(hist.shape) == 3:
+            hist = np.sum(hist, axis=0)
+            hist_error = np.sqrt(np.sum(hist_error**2, axis=0))
+
+        y_edges = data['yEdges']
+        z_edges = data['zEdges']
       else:
         import sys
-        sys.exit("Unsupported file extension. Only .h5 files are supported.")
-
-
+        sys.exit("Unsupported file extension. Only .h5 and .npz files are supported.")
       if args.experiment_time:
         hist, hist_error = upscale_simple(hist, hist_error, args.experiment_time, args.background)
 
@@ -306,7 +309,8 @@ def main():
 
       common_maximum = max_value if args.individual_colorbars is False else None
 
-      log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
+      if plot_2d_axes is not None:
+          log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
 
       ### TODO in dev temp OFF ###
       qz_min_index = np.digitize(args.q_min, z_edges) - 1
@@ -399,7 +403,7 @@ def main():
     axes_bottom.grid()
     axes_bottom.legend(loc='upper left')
     plt.tight_layout()
-    
+
     show_or_save(plot_output, args.savename)
 
 

@@ -162,17 +162,7 @@ def get_nxs_instrument_parameters(args, default_instr_name='d22'):
   or None if no NeXus specific overrides were provided.
   """
   if not args:
-    return None
-
-  has_nxs_overrides = any(
-    getattr(args, key) is not None
-    for key in vars(args)
-    if key.startswith('nxs_instrument_') or key == 'nxs_sample_orientation'
-  )
-
-  if not has_nxs_overrides:
-    return None
-
+    return copy.deepcopy(instrument_defaults.get(default_instr_name, {}))
   instr_name = getattr(args, 'nxs_instrument_name', None)
   if instr_name is None:
     instr_name = default_instr_name
