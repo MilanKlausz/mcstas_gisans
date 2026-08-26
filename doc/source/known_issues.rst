@@ -2,7 +2,7 @@
 Known Issues
 ============
 
-- With a low outgoing direction number (``--outgoing_direction_number``, ``-n`` < 20–30) the specular peak can create a huge artefact. This is an inherent BornAgain issue, not a mcstas_gisans issue.
+- With a low outgoing direction number (``--outgoing_directions``, ``-n`` < 20–30) the specular peak can create a huge artefact. This is an inherent BornAgain issue, not a mcstas_gisans issue.
 
 - Detection process is not simulated:
 

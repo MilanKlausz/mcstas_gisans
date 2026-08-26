@@ -106,14 +106,18 @@ def parse_scan_arguments(scan_args):
 def parse_fit_arguments(fit_args):
   """
   Parses --fit arguments.
+
   Supported formats per parameter:
-    --fit name x0
-    --fit name min max
-    --fit name x0 min max
-  Returns:
-    param_names: list of parameter names
-    x0_list: list of initial values (float)
-    bounds_list: list of (min_val, max_val) tuples or None
+    * ``--fit name x0``
+    * ``--fit name min max``
+    * ``--fit name x0 min max``
+
+  Returns
+  -------
+  tuple
+      param_names: list of parameter names
+      x0_list: list of initial values (float)
+      bounds_list: list of (min_val, max_val) tuples or None
   """
   param_names = []
   x0_list = []

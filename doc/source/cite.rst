@@ -1,3 +1,7 @@
+===========================
+How to cite this software
+===========================
+
 .. admonition:: Recommended publication for citing
   :class: tip
 

@@ -9,8 +9,8 @@ This directory contains example scripts to demonstrate the intended workflow of 
 The complete workflow consists of the following main steps:
 
 1. McStas simulation of the instrument  
-2. BornAgain simulation of the interaction with the sample and q-calculation  
-3. Data processing and plotting
+2. BornAgain simulation of the sample interaction (outputting Scipp HDF5 dataset)
+3. Data processing, parameter fitting, Q-space calculation, and plotting
 
 ---
 
@@ -27,7 +27,7 @@ The first two steps can be computationally intensive, so intermediate results ar
 
 ## Skip McStas (use existing results) with *run_d22_sim.sh*
 
-Using an existing McStas simulation result enables doing only the BornAgain simulation/q calculation step and the data processing/plotting step. For this approach use the `run_d22_sim.sh` script. By default, this script uses lower-statistics McStas output for faster runs, but the option to use the McStas output used in the paper is also included (commented out).
+Using an existing McStas simulation result enables doing only the BornAgain simulation step and the data processing/plotting step. For this approach use the `run_d22_sim.sh` script. By default, this script uses lower-statistics McStas output for faster runs, but the option to use the McStas output used in the paper is also included (commented out).
 
 ### Available Data
 - **McStas simulation results in:** `data/paper/mcstas_output`
@@ -99,7 +99,7 @@ Then, to continue the workflow using the `run_d22_sim.sh` script, the output
 directory and intensity factor can be added to the third **MCSTAS INPUT** option.
 
 ---
-#### Doing the q-calculation for the direct beam simulation
+#### Direct beam simulation
 
 As explained above, doing only the McStas part of the direct beam simulation
 is enough to calculate the intensity factor necessary for any sample simulation
@@ -115,7 +115,7 @@ Then the plotting script can be used compare the simulation result to the
 measured data. The following command will do that, and also output the sum
 intensities due to the *--verbose* input option:
 ```bash
- mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose --sample_orientation 2
+  mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.h5" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose --sample_orientation 2
 ```
 
 ---
@@ -127,8 +127,8 @@ that will result in correct simulated intensity (still normalised to 1 sec).
 Then the plotting comparison can be done using the *--experiment_time* option
 to upscale the simulated result to the 60 second direct beam experiment time:
 ```bash
-  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_1e9" --intensity_factor 0.2107 --sample_orientation 2
-  mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.npz" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60 --sample_orientation 2
+   mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --savename "examples/paper/output/direct_beam_d22_1e9" --intensity_factor 0.2107 --sample_orientation 2
+   mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.h5" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60 --sample_orientation 2
 ```
 
 Note that running the BornAgain simulation script (`mg_run`) using the high statistics McStas simulation output (`data/paper/mcstas_output/d22_1e9`) in a matter of few seconds is only possible due to the

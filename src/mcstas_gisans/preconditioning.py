@@ -57,14 +57,14 @@ def transform_to_bornagain_coordinate_system(particles, alpha_inc_deg, sample_or
 
   transform = CoordinateTransform(alpha_inc, sample_orientation)
 
-  x_ba, y_ba, z_ba = transform.nexus_to_bornagain(x_nexus, y_nexus, z_nexus)
-  vx_ba, vy_ba, vz_ba = transform.nexus_to_bornagain(vx_nexus, vy_nexus, vz_nexus)
+  x_bornagain, y_bornagain, z_bornagain = transform.nexus_to_bornagain(x_nexus, y_nexus, z_nexus)
+  vx_bornagain, vy_bornagain, vz_bornagain = transform.nexus_to_bornagain(vx_nexus, vy_nexus, vz_nexus)
 
   if polarization:
-    polx_ba, poly_ba, polz_ba = transform.nexus_to_bornagain(polarization[0], polarization[1], polarization[2])
-    return np.vstack([p, x_ba, y_ba, z_ba, vx_ba, vy_ba, vz_ba, w, t, polx_ba, poly_ba, polz_ba]).T, actual_beam_angle
+    polx_bornagain, poly_bornagain, polz_bornagain = transform.nexus_to_bornagain(polarization[0], polarization[1], polarization[2])
+    return np.vstack([p, x_bornagain, y_bornagain, z_bornagain, vx_bornagain, vy_bornagain, vz_bornagain, w, t, polx_bornagain, poly_bornagain, polz_bornagain]).T, actual_beam_angle
   else:
-    return np.vstack([p, x_ba, y_ba, z_ba, vx_ba, vy_ba, vz_ba, w, t]).T, actual_beam_angle
+    return np.vstack([p, x_bornagain, y_bornagain, z_bornagain, vx_bornagain, vy_bornagain, vz_bornagain, w, t]).T, actual_beam_angle
 
 def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_sample_miss):
   """Propagate particles to z=0, the sample surface (in BornAgain coordinates, z is up).
@@ -72,7 +72,7 @@ def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_s
   Particles not moving toward the sample surface are not propagated here.
   """
   p, x, y, z, vx, vy, vz, w, t, *polarization = particles.T
-  z_original = z
+  z_original = z.copy()
 
   # Initialize t_propagate with zeros.
   # This handles cases where vz is zero (particle moves parallel to z=0 or is already on it)

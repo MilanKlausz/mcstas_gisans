@@ -8,15 +8,23 @@ from bornagain import deg, nm, nm2
 
 def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVariance=20, defectAbundance=0.0):
     """
-    radius - radius of the silica particles
-    latticeParameter - When the lattice parameter = diameter, the spheres are
-      packed to the max. The sample is not perfect so the average nearest
-      neighbour distance will be a bit larger than the sphere diameter.
-    interferenceRange - the dimension of 2D the sphere array with hexagonal
-      packing.
-    positionVariance - how much each sphere is displaced, in a random direction
-      in x,y around its nominal position in the 2D lattice.
-    defectAbundance - proportion of the lattice places replaced with D2O
+    Get the BornAgain sample for Silica nanoparticles in D2O.
+
+    Parameters
+    ----------
+    radius : float
+        Radius of the silica particles.
+    latticeParameter : float
+        When the lattice parameter = diameter, the spheres are packed to the max. 
+        The sample is not perfect so the average nearest neighbour distance will 
+        be a bit larger than the sphere diameter.
+    interferenceRange : float
+        The dimension of the 2D sphere array with hexagonal packing.
+    positionVariance : float
+        How much each sphere is displaced, in a random direction in x,y around 
+        its nominal position in the 2D lattice.
+    defectAbundance : float
+        Proportion of the lattice places replaced with D2O.
     """
     # Define materials
     material_D2O = ba.MaterialBySLD("D2O", 6.35e-06, 0.0) #6.35e-06 / 6.35-06 ?

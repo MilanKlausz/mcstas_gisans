@@ -23,6 +23,21 @@ def test_fit_integer_parsing():
     finally:
         sys.argv = sys_argv_backup
 
+def test_fit_integer_empty(monkeypatch):
+    parser = create_fit_parser()
+    argv = [
+        "dummy.mcpl.gz",
+        "-i", "d22",
+        "--wavelength_selected", "6.0",
+        "--nxs", "data/paper/d22_measurement/073174.nxs",
+        "--fit", "layerNumber", "3", "1", "10",
+    ]
+    monkeypatch.setattr(sys, "argv", ["scan"] + argv)
+    from mcstas_gisans.run_cli import parse_args
+    args = parse_args(parser)
+    assert args.fit_integer is None
+
+
 def test_fit_integer_rounding(monkeypatch):
     # Mock run_simulation_evaluation to check if parameter was rounded
     called_points = []

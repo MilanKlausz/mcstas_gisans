@@ -62,6 +62,8 @@ class Sample:
   def list_builtin_samples():
       """List available built-in sample models (without .py)."""
       models_dir = Sample.get_models_dir()
+      if not os.path.isdir(models_dir):
+          return []
       return sorted([
           Path(f).stem
           for f in os.listdir(models_dir)
@@ -69,13 +71,16 @@ class Sample:
       ])
 
   def parse_sample_arguments(self, sample_arguments):
-    """Parse the ample_arguments string into keyword arguments."""
-    kwargs = {}
-    pairs = [p for p in sample_arguments.split(';') if p.strip()]
-    for pair in pairs:
-      key, value = pair.split('=')
-      kwargs[key.strip()] = self.convert_numbers(value.strip())
-    return kwargs
+      """Parse the sample_arguments string into keyword arguments."""
+      kwargs = {}
+      pairs = [p for p in sample_arguments.split(';') if p.strip()]
+      for pair in pairs:
+          if '=' in pair:
+              key, value = pair.split('=', 1)
+              kwargs[key.strip()] = self.convert_numbers(value.strip())
+          else:
+              print(f"WARNING: Invalid sample argument format '{pair}'. Expected 'key=value'.")
+      return kwargs
 
   def convert_numbers(self, value):
     """Attempt to convert strings to integers or floats"""

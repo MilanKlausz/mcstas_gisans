@@ -6,20 +6,50 @@ Welcome to the documentation for **mcstas_gisans**!
 
 This framework facilitates the modelling and analysis of GISANS (Grazing Incidence Small Angle Neutron Scattering) samples with BornAgain after the McStas simulation of a neutron instrument up until the sample position.
 
-.. include:: cite.rst
-
 .. toctree::
    :maxdepth: 2
-   :caption: User Manual
+   :caption: Getting Started
 
    overview
    installation_and_usage
+   quickstart
+
+.. toctree::
+   :maxdepth: 2
+   :caption: User Guide
+
    mcstas_preparation
-   main_modules_and_processes
-   gisaxs_experimental
-   supplementary_modules
-   known_issues
+   main_workflow
+   custom_sample
    dmsc_cluster
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Experimental Features
+
+   gisaxs_experimental
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
+   cli_reference
+   api_reference
+
+.. toctree::
+   :maxdepth: 2
+   :caption: How to cite this software
+
+   cite
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Architecture & Internals
+
+   technical_details
+   scipp_output_format
+   troubleshooting
+   known_issues
    about
 
 .. toctree::
@@ -34,3 +64,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+

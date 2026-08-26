@@ -155,7 +155,7 @@ Of course, running anything that is not supposed to finish in seconds should be 
    singularity run --bind $COMMON_BASE \
      ~/bornagain_v21.1_apptainer_new.sif python ~/mcstas_gisans/mg_run \
      $MCPL_FILE_PATH --instrument=$INSTRUMENT \
-     --outgoing_direction_number=100 -s $OUTPUT_FILE_PATH \
+     -n 100 -s $OUTPUT_FILE_PATH \
      --alpha=$INCIDENT_ANGLE --parallel_processes=32 \
      --input_tof_range_factor=1 --wavelength=$WAVELENGTH \
      --model="lamellas_and_spheres"
@@ -178,11 +178,11 @@ Creating plots would also be more convenient with a batch file (e.g., *submitPlo
    #SBATCH --ntasks-per-node=1
    #SBATCH --exclusive
 
-   NPZ_BASE="sagawfm_srcl7p4to7p6_1e12_lamellas_and_speheres_alpha0p35"
+   HDF5_BASE="sagawfm_srcl7p4to7p6_1e12_lamellas_and_speheres_alpha0p35"
 
    singularity run --bind /mnt/groupdata/somewhere/gisans/bornagain_output \
-     ~/bornagain_v21.1_apptainer_new.sif python ~/mcstas_gisans/plotQ.py \
-     -f "${NPZ_BASE}.npz" --label "sagawfm 7p5" --q_min=0.15 \
-     --q_max=0.15 -m1e-8 -d -s "${NPZ_BASE}" --png
+     ~/bornagain_v21.1_apptainer_new.sif mg_plot \
+     -f "${HDF5_BASE}.h5" --label "sagawfm 7p5" --q_min=0.15 \
+     --q_max=0.15 -m1e-8 -d -s "${HDF5_BASE}" --png
 
 Of course one could create multiple plots in a single batch file.

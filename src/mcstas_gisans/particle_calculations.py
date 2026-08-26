@@ -90,5 +90,5 @@ def get_particle_converter(particle_pdg_code):
     convert_particle_properties = convert_photon_properties
   else:
     import sys
-    sys.exit(f"Unexpeted particle type. PDG code: {particle_pdg_code}")
+    sys.exit(f"Unexpected particle type. PDG code: {particle_pdg_code}")
   return convert_particle_properties, particle_type

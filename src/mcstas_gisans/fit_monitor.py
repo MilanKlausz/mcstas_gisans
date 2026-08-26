@@ -105,7 +105,7 @@ def create_monitor_and_slice_figure(data, limits, tof_bins, selected_wavelength_
 
   return ax1, ax2
 
-def find_mcstas_monitor_tof_centre(dirname, monitor, wavelength, method='com', tof_limits=[None,None], wavelength_rebin=None, figure_output=None):
+def find_mcstas_monitor_tof_centre(dirname, monitor, wavelength, method='com', tof_limits=None, wavelength_rebin=None, figure_output=None):
   """
   Find TOF centre value of a 2D TOFLambda_monitor result by centre of mass (com)
   or gaussian function fitting.
@@ -118,6 +118,8 @@ def find_mcstas_monitor_tof_centre(dirname, monitor, wavelength, method='com', t
   data, labels, limits, tof_bins, selected_wavelength_tof = get_mcstas_monitor_data(dirname, monitor, wavelength_rebin, wavelength)
   tof_min, tof_max, lambda_min, lambda_max = limits
 
+  if tof_limits is None:
+    tof_limits = [None, None]
   # Create an index mask to allow fitting on a limited range (that defaults to the full range)
   tof_limits = [tof_min if tof_limits[0] is None else tof_limits[0],
                 tof_max if tof_limits[1] is None else tof_limits[1]]
@@ -142,7 +144,7 @@ def find_mcstas_monitor_tof_centre(dirname, monitor, wavelength, method='com', t
 
   return tof_centre_value
 
-def fit_gaussian_to_mcstas_monitor(dirname, monitor, wavelength, tof_limits=[None,None], wavelength_rebin=None, figure_output=None, tof_range_factor=1):
+def fit_gaussian_to_mcstas_monitor(dirname, monitor, wavelength, tof_limits=None, wavelength_rebin=None, figure_output=None, tof_range_factor=1):
   """
   Fit Gaussian function to a 1D TOF spectrum from 2D TOFLambda_monitor result.
   The TOF spectrum of the wavelength bin that includes the 'wavelength' input
@@ -154,6 +156,8 @@ def fit_gaussian_to_mcstas_monitor(dirname, monitor, wavelength, tof_limits=[Non
   data, labels, limits,  tof_bins, selected_wavelength_tof = get_mcstas_monitor_data(dirname, monitor, wavelength_rebin, wavelength)
   tof_min, tof_max, lambda_min, lambda_max = limits
 
+  if tof_limits is None:
+    tof_limits = [None, None]
   # Create an index mask to allow fitting on a limited range (that defaults to the full range)
   tof_limits = [tof_min if tof_limits[0] is None else tof_limits[0],
                 tof_max if tof_limits[1] is None else tof_limits[1]]
@@ -220,7 +224,7 @@ def main():
   else:
     figure_output = 'show'
 
-  fit = fit_mcstas_monitor(args.dirname, args.monitor, args.wavelength, tof_limits=tof_limits, wavelength_rebin=args.wavelength_rebin, figure_output=figure_output, tof_range_factor=args.tof_range_factor)
+  fit = fit_gaussian_to_mcstas_monitor(args.dirname, args.monitor, args.wavelength, tof_limits=tof_limits, wavelength_rebin=args.wavelength_rebin, figure_output=figure_output, tof_range_factor=args.tof_range_factor)
 
   print(f"Mean={fit['mean']:.3f}")
   print(f"FWHM={fit['fwhm']:.3f}")

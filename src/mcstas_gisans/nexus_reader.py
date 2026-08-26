@@ -16,10 +16,12 @@ def read_nexus_data(filepath, instrument, scale_factor=None):
 
   # Open the NeXus file
   with h5py.File(filepath, 'r') as file:
-    try:
+    if 'entry0/D22/Detector 1/data1' in file:
         detector_data = file['entry0/D22/Detector 1/data1'][:]
-    except:
+    elif 'entry0/data1/MultiDetector1_data' in file:
         detector_data = file['entry0/data1/MultiDetector1_data'][:]
+    else:
+        raise KeyError(f"Could not find detector data in NeXus file {filepath}")
   hist = detector_data[:,:,0]
   if scale_factor is not None:
     hist = hist * scale_factor

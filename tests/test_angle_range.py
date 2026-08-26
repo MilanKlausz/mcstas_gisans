@@ -1,4 +1,4 @@
-import pytest
+
 import numpy as np
 from mcstas_gisans.instrument import Instrument
 from mcstas_gisans.instrument_defaults import instrument_defaults
@@ -39,7 +39,7 @@ def test_get_masked_angle_range():
     mask = np.ones((256, 128), dtype=bool)
     mask[:128, :] = False  # exclude left half
     
-    mask_angles = d22.get_masked_angle_range(mask, len_y_centres=256)
+    mask_angles = d22.get_masked_angle_range(mask)
     assert len(mask_angles) == 4
     # Horizontal min should be tighter than full detector min
     assert mask_angles[0] > full_angles[0]

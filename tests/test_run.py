@@ -1,146 +1,121 @@
-
 """
 Tests for the run script
 """
+import pytest
 import subprocess
 import sys
 import os
 import tempfile
-import numpy as np
+import h5py
 
-def test_run():
-  """
-  Call the run script 
-  """
-  result = subprocess.run([sys.executable, "-m", "mcstas_gisans.run", "-h"], capture_output=True, text=True)
-  assert result.stdout.startswith("usage:"), "Unexpected beginning of help text for run"
+def test_run_help():
+    """
+    Call the run script 
+    """
+    result = subprocess.run([sys.executable, "-m", "mcstas_gisans.run", "-h"], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert result.stdout.startswith("usage:"), "Unexpected beginning of help text for run"
 
-def test_run_without_polarization():
-  """
-  Test running simulation without polarization
-  """
-  with tempfile.TemporaryDirectory() as tmpdir:
-    savename = os.path.join(tmpdir, "test_out_no_pol")
+@pytest.fixture
+def temp_savename():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield os.path.join(tmpdir, "test_out")
+
+@pytest.mark.parametrize("run_args", [
+    ["--no_parallel"],
+    ["--use_polarization", "--no_parallel"],
+])
+def test_run_simulations(temp_savename, run_args):
+    """
+    Test running simulation with and without polarization
+    """
     argv = [
-      sys.executable, "-m", "mcstas_gisans.run",
-      "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
-      "-i", "d22",
-      "--wavelength_selected", "6.0",
-      "--no_parallel",
-      "--savename", savename
-    ]
+        sys.executable, "-m", "mcstas_gisans.run",
+        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "-i", "d22",
+        "--wavelength_selected", "6.0",
+        "--savename", temp_savename
+    ] + run_args
+    
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, f"Run failed with stderr: {result.stderr}"
     
-    # Verify h5 file was created and is valid
-    h5_path = savename + "_scipp.h5"
+    h5_path = temp_savename + ".h5"
     assert os.path.exists(h5_path), f"Output file {h5_path} not created"
     
-    # We can use h5py to do a simple check
-    import h5py
-    with h5py.File(h5_path, 'r') as f:
-      assert "data" in f.keys()
-      assert "coords" in f.keys()
+    import scipp as sc
+    dataset = sc.io.hdf5.load_hdf5(h5_path)
+    
+    # Assert main blocks exist
+    assert "data" in dataset, "Core DataArray is missing"
+    assert "instrument" in dataset, "Instrument metadata block is missing"
+    assert "sample" in dataset, "Sample metadata block is missing"
+    assert "provenance" in dataset, "Provenance metadata block is missing"
+    assert "mcpl" in dataset, "MCPL metadata block is missing (MCPL input was used)"
 
-def test_run_with_polarization_default_analyzer():
-  """
-  Test running simulation with polarization enabled and default analyzer parameters
-  """
-  with tempfile.TemporaryDirectory() as tmpdir:
-    savename = os.path.join(tmpdir, "test_out_pol_default")
+    # Assert specific fields inside the blocks
+    assert "name" in dataset["instrument"]
+    assert "detector_centre_offset_x" in dataset["instrument"]
+    
+    assert "script_content" in dataset["sample"]
+    assert "arguments_json" in dataset["sample"]
+    
+    assert "cli_command" in dataset["provenance"]
+    assert "mcstas_gisans_version" in dataset["provenance"]
+    
+    assert "nparticles" in dataset["mcpl"]
+
+@pytest.mark.parametrize("overrides, expected", [
+    (
+        ["--analyzer_direction", "0.0", "1.0", "0.0", "--analyzer_efficiency", "0.95", "--analyzer_transmission", "0.4"],
+        {"analyzer_direction": [0.0, 1.0, 0.0], "analyzer_efficiency": 0.95, "analyzer_transmission": 0.4}
+    ),
+    (
+        ["--analyzer_direction", "1.0", "0.0", "0.0"],
+        {"analyzer_direction": [1.0, 0.0, 0.0], "analyzer_efficiency": 1.0, "analyzer_transmission": 0.5}
+    ),
+])
+def test_analyzer_arguments_parsing(monkeypatch, overrides, expected):
+    """
+    Verify that custom analyzer arguments are parsed and packaged correctly.
+    """
+    from mcstas_gisans.run_cli import create_argparser, parse_args
+    from mcstas_gisans.parameters import pack_parameters
+
+    parser = create_argparser()
     argv = [
-      sys.executable, "-m", "mcstas_gisans.run",
-      "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
-      "-i", "d22",
-      "--wavelength_selected", "6.0",
-      "--use_polarization",
-      "--no_parallel",
-      "--savename", savename
-    ]
-    result = subprocess.run(argv, capture_output=True, text=True)
-    assert result.returncode == 0, f"Run failed with stderr: {result.stderr}"
+        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "-i", "d22",
+        "--wavelength_selected", "6.0",
+        "--use_polarization",
+    ] + overrides
     
-    # Verify h5 file was created and is valid
-    h5_path = savename + "_scipp.h5"
-    assert os.path.exists(h5_path), f"Output file {h5_path} not created"
-    
-    import h5py
-    with h5py.File(h5_path, 'r') as f:
-      assert "data" in f.keys()
-      assert "coords" in f.keys()
-
-def test_analyzer_arguments_parsing():
-  """
-  Verify that custom analyzer arguments are parsed and packaged correctly.
-  """
-  from mcstas_gisans.run_cli import create_argparser, parse_args
-  from mcstas_gisans.parameters import pack_parameters
-
-  parser = create_argparser()
-  argv = [
-    "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
-    "-i", "d22",
-    "--wavelength_selected", "6.0",
-    "--use_polarization",
-    "--analyzer_direction", "0.0", "1.0", "0.0",
-    "--analyzer_efficiency", "0.95",
-    "--analyzer_transmission", "0.4",
-  ]
-  sys_argv_backup = sys.argv
-  sys.argv = ["run"] + argv
-  try:
+    monkeypatch.setattr("sys.argv", ["run"] + argv)
     args = parse_args(parser)
     params = pack_parameters(args, "neutron")
     
-    assert params["analyzer_direction"] == [0.0, 1.0, 0.0]
-    assert params["analyzer_efficiency"] == 0.95
-    assert params["analyzer_transmission"] == 0.4
-  finally:
-    sys.argv = sys_argv_backup
+    assert params["analyzer_direction"] == expected["analyzer_direction"]
+    assert params["analyzer_efficiency"] == expected["analyzer_efficiency"]
+    assert params["analyzer_transmission"] == expected["analyzer_transmission"]
 
-def test_analyzer_input_validation():
-  """
-  Verify that parser.error is raised on invalid analyzer parameters
-  """
-  from mcstas_gisans.run_cli import create_argparser, parse_args
-  import pytest
+@pytest.mark.parametrize("bad_args", [
+    ["--analyzer_transmission", "0.6"], # Invalid transmission (> 0.5)
+    ["--analyzer_efficiency", "1.1"], # Invalid efficiency (> 1.0)
+    ["--analyzer_direction", "2.0", "0.0", "0.0"], # Invalid Bloch vector length (> 1.0)
+    ["--analyzer_direction", "0.0", "0.0"], # Invalid direction vector dimensions
+])
+def test_analyzer_input_validation(monkeypatch, bad_args):
+    """
+    Verify that parser.error is raised on invalid analyzer parameters
+    """
+    from mcstas_gisans.run_cli import create_argparser, parse_args
 
-  parser = create_argparser()
-
-  # 1. Invalid transmission (> 0.5)
-  argv = ["dummy.mcpl", "-i", "d22", "--analyzer_transmission", "0.6", "--wavelength_selected", "6.0"]
-  sys_argv_backup = sys.argv
-  sys.argv = ["run"] + argv
-  try:
+    parser = create_argparser()
+    argv = ["dummy.mcpl", "-i", "d22", "--wavelength_selected", "6.0"] + bad_args
+    monkeypatch.setattr("sys.argv", ["run"] + argv)
+    
     with pytest.raises(SystemExit):
-      parse_args(parser)
-  finally:
-    sys.argv = sys_argv_backup
-
-  # 2. Invalid efficiency (> 1.0)
-  argv = ["dummy.mcpl", "-i", "d22", "--analyzer_efficiency", "1.1", "--wavelength_selected", "6.0"]
-  sys_argv_backup = sys.argv
-  sys.argv = ["run"] + argv
-  try:
-    with pytest.raises(SystemExit):
-      parse_args(parser)
-  finally:
-    sys.argv = sys_argv_backup
-
-  # 3. Invalid Bloch vector length (> 1.0)
-  argv = ["dummy.mcpl", "-i", "d22", "--analyzer_direction", "2.0", "0.0", "0.0", "--analyzer_efficiency", "0.6", "--wavelength_selected", "6.0"]
-  sys_argv_backup = sys.argv
-  sys.argv = ["run"] + argv
-  try:
-    with pytest.raises(SystemExit):
-      parse_args(parser)
-  finally:
-    sys.argv = sys_argv_backup
+        parse_args(parser)
 
 if __name__ == "__main__":
-    test_run()
-    test_run_without_polarization()
-    test_run_with_polarization_default_analyzer()
-    test_analyzer_arguments_parsing()
-    test_analyzer_input_validation()
-    print("All test_run tests passed!")
+    pytest.main([__file__])

@@ -10,7 +10,9 @@ import copy
 import csv
 import itertools
 import time
+import argparse
 import numpy as np
+from typing import Any, Dict, List, Tuple, Optional, Union
 from multiprocessing import cpu_count
 
 from .run_cli import create_argparser as create_run_parser, parse_args as parse_run_args
@@ -22,7 +24,20 @@ from .nexus_reader import read_nexus_data
 from .experiment_time import upscale_simple
 from .masking import get_mask, apply_mask, save_view_masks_plot
 
-def format_time(seconds):
+def format_time(seconds: Optional[float]) -> str:
+  """
+  Format time in seconds to a human-readable string (hours, minutes, seconds).
+
+  Parameters
+  ----------
+  seconds : float or None
+      Time in seconds.
+
+  Returns
+  -------
+  str
+      Formatted time string.
+  """
   if seconds is None or seconds < 0:
     return "N/A"
   m, s = divmod(int(seconds), 60)
@@ -36,7 +51,20 @@ def format_time(seconds):
 
 from .fit_cli import create_fit_parser, parse_scan_arguments, parse_fit_arguments
 
-def convert_val(value_str):
+def convert_val(value_str: str) -> Union[int, float, str]:
+  """
+  Convert a string value to integer or float if possible.
+
+  Parameters
+  ----------
+  value_str : str
+      The string to convert.
+
+  Returns
+  -------
+  int, float, or str
+      The converted value, or the original string if conversion fails.
+  """
   try:
     return int(value_str)
   except ValueError:
@@ -45,9 +73,33 @@ def convert_val(value_str):
     except ValueError:
       return value_str
 
-def calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error):
-  """Evaluates fitness directly on the pre-masked histograms.
-  Masked regions are represented by NaN in the histograms."""
+def calculate_fitness(
+    hist_nxs: np.ndarray,
+    hist_nxs_error: np.ndarray,
+    hist_sim: np.ndarray,
+    hist_sim_error: np.ndarray
+) -> Tuple[float, float]:
+  """
+  Evaluate fitness directly on the pre-masked histograms.
+
+  Masked regions are represented by NaN in the histograms.
+
+  Parameters
+  ----------
+  hist_nxs : np.ndarray
+      Experimental NeXus histogram.
+  hist_nxs_error : np.ndarray
+      Experimental NeXus histogram errors.
+  hist_sim : np.ndarray
+      Simulated histogram.
+  hist_sim_error : np.ndarray
+      Simulated histogram errors.
+
+  Returns
+  -------
+  tuple
+      A tuple containing (reduced_chi2, log_residual).
+  """
   valid_mask = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
 
   I_exp = hist_nxs[valid_mask]
@@ -74,10 +126,59 @@ def calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error):
 
   return reduced_chi2, log_residual
 
-def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
-                         hist_sim, hist_sim_error, y_edges_sim, z_edges_sim,
-                         q_min, q_max, y_plot_range, z_plot_range,
-                         savename, label_sim, intensity_min=None):
+def save_comparison_plot(
+    hist_nxs: np.ndarray,
+    hist_nxs_error: np.ndarray,
+    y_edges_nxs: np.ndarray,
+    z_edges_nxs: np.ndarray,
+    hist_sim: np.ndarray,
+    hist_sim_error: np.ndarray,
+    y_edges_sim: np.ndarray,
+    z_edges_sim: np.ndarray,
+    q_min: float,
+    q_max: float,
+    y_plot_range: List[float],
+    z_plot_range: List[float],
+    savename: str,
+    label_sim: str,
+    intensity_min: Optional[float] = None
+) -> None:
+  """
+  Save a 2x2 comparison plot of experimental and simulated data.
+
+  Parameters
+  ----------
+  hist_nxs : np.ndarray
+      NeXus data histogram.
+  hist_nxs_error : np.ndarray
+      NeXus data errors.
+  y_edges_nxs : np.ndarray
+      NeXus y edges.
+  z_edges_nxs : np.ndarray
+      NeXus z edges.
+  hist_sim : np.ndarray
+      Simulated data histogram.
+  hist_sim_error : np.ndarray
+      Simulated data errors.
+  y_edges_sim : np.ndarray
+      Simulation y edges.
+  z_edges_sim : np.ndarray
+      Simulation z edges.
+  q_min : float
+      Minimum Qz for 1D slice extraction.
+  q_max : float
+      Maximum Qz for 1D slice extraction.
+  y_plot_range : list of float
+      Plotting range for y axis.
+  z_plot_range : list of float
+      Plotting range for z axis.
+  savename : str
+      Path to save the generated plot.
+  label_sim : str
+      Label for the simulated data plot.
+  intensity_min : float, optional
+      Minimum intensity for color scaling.
+  """
   import matplotlib.pyplot as plt
   from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
 
@@ -136,16 +237,30 @@ def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
   plt.close(fig)
   print(f"Created comparison plot: {savename}")
 
-def parse_joint_fit_arguments(args):
+def parse_joint_fit_arguments(args: Any) -> Tuple[List[str], List[float], List[Tuple[Optional[float], Optional[float]]], Dict[str, int], Dict[str, int]]:
   """
-  Parses parameter fit definitions for single or joint fitting.
+  Parse parameter fit definitions for single or joint fitting.
+
   Combines --fit_common (common to both samples), --fit (sample 1), and --fit2 (sample 2).
-  Returns:
-    param_names: list of parameter display names in optimization vector x
-    x0_list: list of initial values
-    bounds_list: list of (min, max) bounds
-    s1_map: dict mapping internal sample 1 parameter name -> index in x
-    s2_map: dict mapping internal sample 2 parameter name -> index in x
+
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Parsed command-line arguments.
+
+  Returns
+  -------
+  tuple
+      param_names : list of str
+          List of parameter display names in optimization vector x.
+      x0_list : list of float
+          List of initial values.
+      bounds_list : list of tuple
+          List of (min, max) bounds.
+      s1_map : dict
+          Mapping of internal sample 1 parameter name to index in x.
+      s2_map : dict
+          Mapping of internal sample 2 parameter name to index in x.
   """
   common_names, common_x0, common_bounds = parse_fit_arguments(args.fit_common) if args.fit_common else ([], [], [])
   s1_names, s1_x0, s1_bounds = parse_fit_arguments(args.fit) if args.fit else ([], [], [])
@@ -187,8 +302,20 @@ def parse_joint_fit_arguments(args):
 
   return param_names, x0_list, bounds_list, s1_map, s2_map
 
-def make_secondary_args(args):
-  """Create secondary arguments object for Sample 2 evaluation."""
+def make_secondary_args(args: Any) -> Any:
+  """
+  Create secondary arguments object for Sample 2 evaluation.
+
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Original parsed arguments.
+
+  Returns
+  -------
+  argparse.Namespace
+      A deep copy of args, modified for sample 2.
+  """
   args2 = copy.deepcopy(args)
   if getattr(args, 'nxs2', None):
     args2.nxs = args.nxs2
@@ -207,13 +334,82 @@ def make_secondary_args(args):
   return args2
 
 def save_joint_comparison_plot(
-    hist_nxs1, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1,
-    hist_sim_masked1, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1,
-    hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2,
-    hist_sim_masked2, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1,
-    q_min, q_max, y_plot_range, z_plot_range,
-    savename, label_sim1="Sample 1 Sim", label_sim2="Sample 2 Sim"
-):
+    hist_nxs1: np.ndarray,
+    hist_nxs_error1: np.ndarray,
+    y_edges_nxs1: np.ndarray,
+    z_edges_nxs1: np.ndarray,
+    hist_sim_masked1: np.ndarray,
+    hist_sim_error_masked1: np.ndarray,
+    edges_sim1_0: np.ndarray,
+    edges_sim1_1: np.ndarray,
+    hist_nxs2: np.ndarray,
+    hist_nxs_error2: np.ndarray,
+    y_edges_nxs2: np.ndarray,
+    z_edges_nxs2: np.ndarray,
+    hist_sim_masked2: np.ndarray,
+    hist_sim_error_masked2: np.ndarray,
+    edges_sim2_0: np.ndarray,
+    edges_sim2_1: np.ndarray,
+    q_min: float,
+    q_max: float,
+    y_plot_range: List[float],
+    z_plot_range: List[float],
+    savename: str,
+    label_sim1: str = "Sample 1 Sim",
+    label_sim2: str = "Sample 2 Sim"
+) -> None:
+  """
+  Save a 3x2 joint comparison plot of experimental and simulated data for two samples.
+
+  Parameters
+  ----------
+  hist_nxs1 : np.ndarray
+      NeXus data histogram for sample 1.
+  hist_nxs_error1 : np.ndarray
+      NeXus data errors for sample 1.
+  y_edges_nxs1 : np.ndarray
+      NeXus y edges for sample 1.
+  z_edges_nxs1 : np.ndarray
+      NeXus z edges for sample 1.
+  hist_sim_masked1 : np.ndarray
+      Simulated data histogram for sample 1.
+  hist_sim_error_masked1 : np.ndarray
+      Simulated data errors for sample 1.
+  edges_sim1_0 : np.ndarray
+      Simulation y edges for sample 1.
+  edges_sim1_1 : np.ndarray
+      Simulation z edges for sample 1.
+  hist_nxs2 : np.ndarray
+      NeXus data histogram for sample 2.
+  hist_nxs_error2 : np.ndarray
+      NeXus data errors for sample 2.
+  y_edges_nxs2 : np.ndarray
+      NeXus y edges for sample 2.
+  z_edges_nxs2 : np.ndarray
+      NeXus z edges for sample 2.
+  hist_sim_masked2 : np.ndarray
+      Simulated data histogram for sample 2.
+  hist_sim_error_masked2 : np.ndarray
+      Simulated data errors for sample 2.
+  edges_sim2_0 : np.ndarray
+      Simulation y edges for sample 2.
+  edges_sim2_1 : np.ndarray
+      Simulation z edges for sample 2.
+  q_min : float
+      Minimum Qz for 1D slice extraction.
+  q_max : float
+      Maximum Qz for 1D slice extraction.
+  y_plot_range : list of float
+      Plotting range for y axis.
+  z_plot_range : list of float
+      Plotting range for z axis.
+  savename : str
+      Path to save the generated plot.
+  label_sim1 : str, optional
+      Label for the sample 1 simulated data plot.
+  label_sim2 : str, optional
+      Label for the sample 2 simulated data plot.
+  """
   import matplotlib.pyplot as plt
   from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
 
@@ -301,7 +497,17 @@ def save_joint_comparison_plot(
   plt.close(fig)
   print(f"Created joint comparison plot: {savename}")
 
-def validate_fit_args(args, parser):
+def validate_fit_args(args: Any, parser: argparse.ArgumentParser) -> None:
+  """
+  Validate command-line arguments specific to fitting.
+
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Parsed command-line arguments.
+  parser : argparse.ArgumentParser
+      The argument parser instance for raising errors.
+  """
   if not args.mask_view:
     if not args.filename:
       parser.error("the following arguments are required: filename")
@@ -319,7 +525,20 @@ def validate_fit_args(args, parser):
       if low is None or high is None:
         parser.error(f"Differential Evolution optimizer requires finite bounds for all fitted parameters. Please specify bounds in --fit/--fit2/--fit_common for '{name}' (e.g. --fit {name} <initial_guess> <min_bound> <max_bound>).")
 
-def prepare_experimental_data(args):
+def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+  """
+  Prepare and load experimental NeXus data and apply masks.
+
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Parsed command-line arguments.
+
+  Returns
+  -------
+  tuple
+      (hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw)
+  """
   wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
 
   from .instrument import Instrument
@@ -367,17 +586,75 @@ def prepare_experimental_data(args):
 
   return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
 
-def load_and_precondition_particles(args):
+def load_and_precondition_particles(args: Any) -> Tuple[Any, str]:
+  """
+  Load particle data and precondition it.
+
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Parsed command-line arguments.
+
+  Returns
+  -------
+  tuple
+      (particles, particle_type)
+  """
   from .tof_filtering import get_tof_filtering_limits
   tof_limits = get_tof_filtering_limits(args)
-  particles, particle_type = get_particles(
+  particles, particle_type, mcpl_metadata = get_particles(
       args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization
   )
   particles = precondition(particles, args)
   print(f"Loaded and preconditioned {len(particles)} particles.")
   return particles, particle_type
 
-def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, label_prefix="sim", save_simulation_output=False):
+def run_simulation_evaluation(
+    grid_point: Dict[str, Any],
+    args: Any,
+    particles: Any,
+    particle_type: str,
+    hist_nxs: np.ndarray,
+    hist_nxs_error: np.ndarray,
+    y_edges_nxs: np.ndarray,
+    z_edges_nxs: np.ndarray,
+    mask: np.ndarray,
+    label_prefix: str = "sim",
+    save_simulation_output: bool = False
+) -> Tuple[float, float, Dict[str, Any], Dict[str, Any]]:
+  """
+  Run a single simulation point evaluation and return fitness metrics.
+
+  Parameters
+  ----------
+  grid_point : dict
+      Parameters to evaluate.
+  args : argparse.Namespace
+      Command-line arguments.
+  particles : Any
+      Preconditioned simulation particles.
+  particle_type : str
+      Particle type identifier.
+  hist_nxs : np.ndarray
+      NeXus data histogram.
+  hist_nxs_error : np.ndarray
+      NeXus data errors.
+  y_edges_nxs : np.ndarray
+      NeXus y edges.
+  z_edges_nxs : np.ndarray
+      NeXus z edges.
+  mask : np.ndarray
+      Mask array.
+  label_prefix : str, optional
+      Prefix for saved outputs.
+  save_simulation_output : bool, optional
+      Whether to save scipp results.
+
+  Returns
+  -------
+  tuple
+      (reduced_chi2, log_residual, record, sim_data)
+  """
   sample_args_dict = {}
   if args.sample_arguments:
     for pair in args.sample_arguments.split(';'):
@@ -416,7 +693,7 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     savename = os.path.join(args.output_dir, f"{label_prefix}_{param_str}")
     from .input_output import save_simulation_results_as_scipp
     temp_read_chunk_size = getattr(args, 'temp_read_chunk_size', 1000000) #this will be used for TOF instruments
-    save_simulation_results_as_scipp(savename, params, result, temp_read_chunk_size)
+    save_simulation_results_as_scipp(savename, params, result, args, mcpl_metadata, temp_read_chunk_size)
 
   if hist_nxs.shape != hist_sim.shape:
     if hist_nxs.shape == hist_sim.T.shape:
@@ -467,7 +744,19 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
 
   return reduced_chi2, log_residual, record, sim_data
 
-def save_summary_csv(records, output_dir, filename):
+def save_summary_csv(records: List[Dict[str, Any]], output_dir: str, filename: str) -> None:
+  """
+  Save evaluation records to a CSV file.
+
+  Parameters
+  ----------
+  records : list of dict
+      List of evaluation records.
+  output_dir : str
+      Output directory.
+  filename : str
+      Output CSV file name.
+  """
   if not records:
     return
   os.makedirs(output_dir, exist_ok=True)
@@ -479,7 +768,29 @@ def save_summary_csv(records, output_dir, filename):
     for r in records:
       writer.writerow(r)
 
-def save_and_print_summary(records, output_dir, filename, title_header, extra_summary_text=None):
+def save_and_print_summary(
+    records: List[Dict[str, Any]],
+    output_dir: str,
+    filename: str,
+    title_header: str,
+    extra_summary_text: Optional[str] = None
+) -> None:
+  """
+  Save evaluation records to CSV and print a nicely formatted summary to standard output.
+
+  Parameters
+  ----------
+  records : list of dict
+      Evaluation records.
+  output_dir : str
+      Output directory path.
+  filename : str
+      CSV filename.
+  title_header : str
+      Header text for the summary section.
+  extra_summary_text : str, optional
+      Additional text to append to the summary output.
+  """
   if records and 'reduced_chi2' in records[0]:
     records.sort(key=lambda r: (np.isnan(r['reduced_chi2']), r['reduced_chi2']))
 
@@ -524,10 +835,26 @@ def save_and_print_summary(records, output_dir, filename, title_header, extra_su
     with open(summary_path, mode='a') as f:
       f.write("\n\n" + summary_text_block + "\n")
 
-def create_fit_evolution_gif(output_dir, gif_name="fit_evolution.gif", duration=500, is_joint=False):
+def create_fit_evolution_gif(
+    output_dir: str,
+    gif_name: str = "fit_evolution.gif",
+    duration: int = 500,
+    is_joint: bool = False
+) -> None:
   """
-  Finds all fit_eval_*.png files in output_dir, sorts them by evaluation index,
-  and compiles them into an animated GIF.
+  Find all fit_eval_*.png files in output_dir, sort them by evaluation index,
+  and compile them into an animated GIF.
+
+  Parameters
+  ----------
+  output_dir : str
+      Directory containing the PNG files.
+  gif_name : str, optional
+      Filename of the output GIF. Default is 'fit_evolution.gif'.
+  duration : int, optional
+      Duration of each frame in milliseconds. Default is 500.
+  is_joint : bool, optional
+      Whether the fitting process was joint (dual-sample).
   """
   import glob
   import re
@@ -568,7 +895,40 @@ def create_fit_evolution_gif(output_dir, gif_name="fit_evolution.gif", duration=
   )
   print(f"Created animated fit evolution GIF: {gif_path}")
 
-def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
+def run_automated_fit(
+    args: Any,
+    particles: Any,
+    particle_type: str,
+    hist_nxs: np.ndarray,
+    hist_nxs_error: np.ndarray,
+    y_edges_nxs: np.ndarray,
+    z_edges_nxs: np.ndarray,
+    mask: np.ndarray
+) -> None:
+  """
+  Execute an automated parameter fit using scipy.optimize.
+
+  Supports both single-sample fitting and joint dual-sample fitting.
+  
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Command-line arguments.
+  particles : Any
+      Preconditioned simulation particles.
+  particle_type : str
+      Particle type identifier.
+  hist_nxs : np.ndarray
+      NeXus data histogram.
+  hist_nxs_error : np.ndarray
+      NeXus data errors.
+  y_edges_nxs : np.ndarray
+      NeXus y edges.
+  z_edges_nxs : np.ndarray
+      NeXus z edges.
+  mask : np.ndarray
+      Mask array.
+  """
   import scipy.optimize
   if args.gif:
     args.png = True
@@ -787,7 +1147,38 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   if args.gif:
     create_fit_evolution_gif(args.output_dir, is_joint=is_joint_fit)
 
-def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask):
+def run_parameter_scan(
+    args: Any,
+    particles: Any,
+    particle_type: str,
+    hist_nxs: np.ndarray,
+    hist_nxs_error: np.ndarray,
+    y_edges_nxs: np.ndarray,
+    z_edges_nxs: np.ndarray,
+    mask: np.ndarray
+) -> None:
+  """
+  Execute a parameter scan (grid sweep) over specified variables.
+
+  Parameters
+  ----------
+  args : argparse.Namespace
+      Command-line arguments.
+  particles : Any
+      Preconditioned simulation particles.
+  particle_type : str
+      Particle type identifier.
+  hist_nxs : np.ndarray
+      NeXus data histogram.
+  hist_nxs_error : np.ndarray
+      NeXus data errors.
+  y_edges_nxs : np.ndarray
+      NeXus y edges.
+  z_edges_nxs : np.ndarray
+      NeXus z edges.
+  mask : np.ndarray
+      Mask array.
+  """
   scanned_params = parse_scan_arguments(args.scan)
   keys = list(scanned_params.keys())
   value_lists = [scanned_params[k] for k in keys]
@@ -834,7 +1225,10 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
 
   save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text)
 
-def main():
+def main() -> None:
+  """
+  Main entry point for fit.py. Parses arguments and delegates to run_automated_fit or run_parameter_scan.
+  """
   parser = create_fit_parser()
   args = parse_run_args(parser)
   os.makedirs(args.output_dir, exist_ok=True)

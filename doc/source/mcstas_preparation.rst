@@ -41,31 +41,31 @@ Note that in the current codebase, a slightly modified *MCPL_output* component i
 Monitors
 --------
 
-Adding `TOFLambda_monitor <https://www.mcstas.org/download/components/3.7.9/monitors/TOFLambda_monitor.html>`__ components to certain parts of the instrument is not strictly necessary, but they can enable simulation options that are based on the output of these monitors. The names of the McStas monitors don’t tend to change often, so instead of providing these monitors as input for all simulations, the names of the monitors have to be defined in the :ref:`instrument_defaults.py <instrument_defaults_module>` module (for each instrument separately), so that they can be loaded using the :ref:`mcstas_reader.py <mcstas_reader_module>` module by finding the *mccode.sim* file in the same directory as the provided MCPL input file.
+Adding `TOFLambda_monitor <https://www.mcstas.org/download/components/3.7.9/monitors/TOFLambda_monitor.html>`__ components to certain parts of the instrument is not strictly necessary, but they can enable simulation options that are based on the output of these monitors. The names of the McStas monitors don’t tend to change often, so instead of providing these monitors as input for all simulations, the names of the monitors have to be defined in the ``instrument_defaults.py`` module (for each instrument separately), so that they can be loaded using the ``mcstas_reader.py`` module by finding the *mccode.sim* file in the same directory as the provided MCPL input file.
 
 .. _sample_position_monitors:
 
 Sample position
 ~~~~~~~~~~~~~~~
 
-Add a *TOFLambda_monitor* component to the sample position to describe the TOF–wavelength distribution of neutrons in the input MCPL file necessary for TOF filtering in the :ref:`Loading neutrons from an MCPL file <loading_neutrons_from_mcpl>` step.
+Add a *TOFLambda_monitor* component to the sample position to describe the TOF–wavelength distribution of neutrons in the input MCPL file necessary for TOF filtering in the loading neutrons step.
 
-Provide its name with an **mcpl_monitor_name** field in the :ref:`instrument_defaults.py <instrument_defaults_module>` module for the instrument.
+Provide its name with an **mcpl_monitor_name** field in the ``instrument_defaults.py`` module for the instrument.
 
 .. _source_position_monitors:
 
 Source position
 ~~~~~~~~~~~~~~~
 
-Add a *TOFLambda_monitor* component to the source position to describe the TOF–wavelength distribution of neutrons for :ref:`T0 correction <t0_correction_section>`.
+Add a *TOFLambda_monitor* component to the source position to describe the TOF–wavelength distribution of neutrons for T0 correction.
 
-Provide its name with a **t0_monitor_name** field in the :ref:`instrument_defaults.py <instrument_defaults_module>` module for the instrument.
+Provide its name with a **t0_monitor_name** field in the ``instrument_defaults.py`` module for the instrument.
 
 .. _virtual_source_position_monitors:
 
 Virtual source position
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Add a *TOFLambda_monitor* component to the virtual source position (between the two relevant choppers) to describe the TOF–wavelength distribution of neutrons for :ref:`T0 correction <t0_correction_section>` when using :ref:`Wavelength Frame Multiplication (WFM) mode <wfm_mode_section>`.
+Add a *TOFLambda_monitor* component to the virtual source position (between the two relevant choppers) to describe the TOF–wavelength distribution of neutrons for T0 correction when using Wavelength Frame Multiplication (WFM) mode.
 
-Provide its name with a **wfm_t0_monitor_name** field in the :ref:`instrument_defaults.py <instrument_defaults_module>` module for the instrument, and also add a **wfm_virtual_source_distance** field to provide the real source to virtual source distance.
+Provide its name with a **wfm_t0_monitor_name** field in the ``instrument_defaults.py`` module for the instrument, and also add a **wfm_virtual_source_distance** field to provide the real source to virtual source distance.

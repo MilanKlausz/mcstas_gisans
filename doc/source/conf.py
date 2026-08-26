@@ -16,8 +16,13 @@ author = 'Milan Klausz'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
+    'sphinxarg.ext',
     'sphinx.ext.viewcode',
+    'sphinx.ext.autosummary',
+    'sphinx.ext.mathjax',
 ]
+
+autosummary_generate = True
 
 templates_path = ['_templates']
 exclude_patterns = []

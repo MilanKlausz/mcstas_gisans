@@ -24,3 +24,4 @@ __pycache__/
 *_local*
 *.local
 **/local/
+tests/output/

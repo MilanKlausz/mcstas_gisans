@@ -13,7 +13,7 @@ def zero_to_one(x):
   return x
 
 def create_argparser():
-  parser = argparse.ArgumentParser(description = 'Create Q plots from an .npz file containing the derived Q values for each outgoing neutron from the BornAgain simulation.')
+  parser = argparse.ArgumentParser(description = 'Create Q plots from an .h5 file containing the derived Q values for each outgoing neutron from the BornAgain simulation.')
   parser.add_argument('-f', '--filename', nargs = '*', help = 'Input filename[s].')
   parser.add_argument('-l', '--label', nargs = '*', help = 'Label for input[s].')
   parser.add_argument('-s', '--savename', default='qPlot', required=False, help = 'Output image filename.')
@@ -91,7 +91,7 @@ def parse_args(parser):
     parser.error('No input file provided! This is only allowed when the --nxs option is used.')
 
   if args.label and len(args.label) != len(args.filename):
-    parser.error(f"The number of labels(${len(args.label)}) doesn't agree with the number of files(${len(args.filename)})")
+    parser.error(f"The number of labels ({len(args.label)}) doesn't agree with the number of files ({len(args.filename)})")
 
   if (args.experiment_time is not None) and args.experiment_time <= 0:
     parser.error('The --experiment_time must be a positive integer.')

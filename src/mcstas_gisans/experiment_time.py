@@ -78,8 +78,11 @@ def scale_to_experiment(hist, hist_error, time, background=0):
 
 def find_experiment_time_maximum(hist, hist_error):
   """Find the maximum experiment time that the results can be correctly upscaled to"""
-  t_max_array = np.divide(hist, np.square(hist_error))
-  tMax = min(t_max_array) #the maximum time for ALL bins is the minimum of the tMaxArray
+  with np.errstate(divide='ignore', invalid='ignore'):
+    t_max_array = np.divide(hist, np.square(hist_error))
+    # Replace nans and infs with infinity to avoid it being chosen as min
+    t_max_array = np.where(np.isfinite(t_max_array), t_max_array, np.inf)
+  tMax = np.min(t_max_array) #the maximum time for ALL bins is the minimum of the tMaxArray
   return tMax
 
 def scale_to_experiment_with_iterated_time(hist, hist_error, qz_index, min_count_number, min_count_fraction, iterative_experiment_time, max_iteration_number, verbose=False):
@@ -116,14 +119,20 @@ def find_experiment_time_minimum(hist, min_count_nr, min_count_fraction):
   """Find the minimum virtual experiment time needed for minCountNr counts
   to be reached in at least minCountFraction fraction of the bins.
   """
-  t_min_array =  np.divide(min_count_nr, hist)
+  with np.errstate(divide='ignore', invalid='ignore'):
+    t_min_array =  np.divide(min_count_nr, hist)
+    t_min_array = np.where(np.isfinite(t_min_array), t_min_array, np.inf)
+    
   sorted_index_array = np.argsort(t_min_array)
   allowed_to_fail = (1 - min_count_fraction) * hist.size
   N = m.floor(allowed_to_fail)
-  nth_largest = t_min_array[sorted_index_array[-N:]]
-  t_min_nth = nth_largest[0]
+  if N > 0:
+    nth_largest = t_min_array[sorted_index_array[-N]]
+  else:
+    nth_largest = t_min_array[sorted_index_array[-1]]
+  t_min_nth = nth_largest
 
-  return m.ceil(t_min_nth)
+  return m.ceil(t_min_nth) if np.isfinite(t_min_nth) else float('inf')
 
 def handle_experiment_time(hist, hist_error, qz_index, experiment_time, find_experiment_time, min_count_nr, min_count_fraction, iterate, max_iter_nr, verbose, background=0):
   if find_experiment_time:

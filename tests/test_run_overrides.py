@@ -1,64 +1,76 @@
 """
 Tests for command line overrides of instrument parameters
 """
-import os
-import sys
+import pytest
 import copy
 from mcstas_gisans.run_cli import create_argparser, parse_args
-from mcstas_gisans.instrument_defaults import instrument_defaults
+from mcstas_gisans.instrument_defaults import instrument_defaults, set_instrument_parameters, reset_instrument_defaults
 from mcstas_gisans.parameters import pack_parameters
 
-def test_instrument_overrides():
-  # We need to pass required args: filename and -i/--instrument
-  argv = [
-    "data/paper/d22_measurement/073174.nxs",
-    "-i", "d22",
-    "--instrument_sample_detector_distance", "15.5",
-    "--instrument_detector_pixels", "512", "256",
-    "--instrument_detector_size", "2.048", "2.048",
-    "--instrument_detector_centre_offset", "0.1", "-0.2",
-    "--wavelength_selected", "6.0"  # required for non-TOF
-  ]
+@pytest.fixture
+def clean_defaults():
+    original_defaults = copy.deepcopy(instrument_defaults)
+    yield
+    instrument_defaults.clear()
+    instrument_defaults.update(original_defaults)
 
-  # Save clean copy of defaults
-  original_defaults = copy.deepcopy(instrument_defaults['d22'])
+@pytest.mark.parametrize("overrides, expected_params", [
+    (
+        ["--instrument_sample_detector_distance", "15.5"],
+        {"sample_detector_distance": 15.5}
+    ),
+    (
+        ["--instrument_detector_pixels", "512", "256"],
+        {"pixels_y_bornagain": 512, "pixels_z_bornagain": 256}
+    ),
+    (
+        ["--instrument_detector_size", "2.048", "2.048"],
+        {"size_y_bornagain": 2.048, "size_z_bornagain": 2.048}
+    ),
+    (
+        ["--instrument_detector_centre_offset", "0.1", "-0.2"],
+        {"direct_beam_centre_offset_y_bornagain": 0.1, "direct_beam_centre_offset_z_bornagain": -0.2}
+    ),
+    (
+        [
+            "--instrument_sample_detector_distance", "10.0",
+            "--instrument_detector_pixels", "100", "200",
+            "--instrument_detector_size", "1.0", "2.0",
+            "--instrument_detector_centre_offset", "0.5", "0.5"
+        ],
+        {
+            "sample_detector_distance": 10.0,
+            "pixels_y_bornagain": 100, "pixels_z_bornagain": 200,
+            "size_y_bornagain": 1.0, "size_z_bornagain": 2.0,
+            "direct_beam_centre_offset_y_bornagain": 0.5, "direct_beam_centre_offset_z_bornagain": 0.5
+        }
+    )
+])
+def test_instrument_overrides(clean_defaults, monkeypatch, overrides, expected_params):
+    argv = [
+        "data/paper/d22_measurement/073174.nxs",
+        "-i", "d22",
+        "--wavelength_selected", "6.0"
+    ] + overrides
 
-  try:
     parser = create_argparser()
-    # Note: parse_args inside run_cli calls parser.parse_args() internally (without args argument),
-    # which reads sys.argv. To make it read our custom argv, we temporarily patch sys.argv.
-    sys_argv_backup = sys.argv
-    sys.argv = [sys_argv_backup[0]] + argv
-    try:
-      parsed_args = parse_args(parser)
-    finally:
-      sys.argv = sys_argv_backup
+    monkeypatch.setattr("sys.argv", ["run"] + argv)
+    parsed_args = parse_args(parser)
 
-    # Check if the overrides mutated the dictionary in instrument_defaults
-    current_d22 = instrument_defaults['d22']
-    assert current_d22['sample_detector_distance'] == 15.5
-    assert current_d22['detector']['pixels'] == [512, 256]
-    assert current_d22['detector']['size'] == [2.048, 2.048]
-    assert current_d22['detector']['direct_beam_centre_offset'] == [0.1, -0.2]
-
-    # Check if they propagate to pack_parameters and the Instrument object
     params = pack_parameters(parsed_args, 'neutron')
     inst = params['instrument']
 
-    assert inst.sample_detector_distance == 15.5
-    assert inst.detector.pixels_y_bornagain == 512
-    assert inst.detector.pixels_z_bornagain == 256
-    assert inst.detector.size_y_bornagain == 2.048
-    assert inst.detector.size_z_bornagain == 2.048
-    assert inst.detector.direct_beam_centre_offset_y_bornagain == 0.1
-    assert inst.detector.direct_beam_centre_offset_z_bornagain == -0.2
+    for attr, val in expected_params.items():
+        if attr == "sample_detector_distance":
+            assert inst.sample_detector_distance == val
+        elif attr.startswith("pixels"):
+            assert getattr(inst.detector, attr) == val
+        elif attr.startswith("size"):
+            assert getattr(inst.detector, attr) == val
+        elif attr.startswith("direct_beam_centre_offset"):
+            assert getattr(inst.detector, attr) == val
 
-  finally:
-    # Restore original defaults
-    instrument_defaults['d22'] = original_defaults
-
-def test_set_and_reset_instrument_parameters():
-    from mcstas_gisans.instrument_defaults import set_instrument_parameters, reset_instrument_defaults, instrument_defaults
+def test_set_and_reset_instrument_parameters(clean_defaults, monkeypatch):
     parser = create_argparser()
     args = parser.parse_args(["dummy.mcpl.gz", "-i", "d22", "--instrument_sample_detector_distance", "18.2"])
     
@@ -69,5 +81,4 @@ def test_set_and_reset_instrument_parameters():
     assert instrument_defaults['d22']['sample_detector_distance'] == 17.6
 
 if __name__ == "__main__":
-  test_instrument_overrides()
-  print("All instrument overrides tests passed!")
+    pytest.main([__file__])

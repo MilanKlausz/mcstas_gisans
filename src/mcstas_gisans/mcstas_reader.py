@@ -85,7 +85,7 @@ class McSim(object):
         graphs[xy]=[data]
     for xy, datasets in sorted(graphs.items()):
       cols=min(len(datasets), 3)
-      rows=len(datasets)/3+1
+      rows=len(datasets)//3+1
 
       fig=Figure(figsize=(12, 5*rows), dpi=300, facecolor='#FFFFFF')
       FigureCanvasAgg(fig)
@@ -215,7 +215,7 @@ class DataLoaderHDF(object):
       cols=item_info['variables'].split()
       evds=node['events']
       if len(evds)<=MAX_EVTS_BATCH:
-        data=evds.value.astype(float32).view(
+        data=evds[()].astype(float32).view(
             dtype={'names': cols, 'formats': ['f4']*len(cols)}).flatten()
       else:
         ds=[]
@@ -229,14 +229,14 @@ class DataLoaderHDF(object):
             dtype={'names': cols, 'formats': ['f4']*len(cols)}).flatten()
       return TofData(data, item_info)
     else:
-      data=node['data'].value.T
+      data=node['data'][()].T
       return Dataset(data, item_info)
   
   def load_item_1d(self, item):
     item_info=self.info['data'][item]
     node=self.hdf[item_info['datapath']]
-    data=node['data'].value
-    errors=node['errors'].value
+    data=node['data'][()]
+    errors=node['errors'][()]
     return Dataset1D(data, errors, item_info)
 
 class Dataset1D(object):

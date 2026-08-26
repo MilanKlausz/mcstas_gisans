@@ -102,7 +102,7 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, w
       instrument_defaults[instrument_name]['beam_angle'] = original_beam_angle
 
 
-def main():
+def create_argparser():
   import argparse
   parser = argparse.ArgumentParser(description="Find required detector centre_offset for a given NeXus data file.")
   parser.add_argument('filepath', type=str, help="Path to the NeXus data file.")
@@ -111,7 +111,10 @@ def main():
   parser.add_argument('--instrument', type=str, default='d22', help="Instrument name in instrument_defaults (default: 'd22').")
   parser.add_argument('--beam_angle', type=float, default=None, help="Override beam declination angle in degrees (default: loaded from instrument defaults).")
   parser.add_argument('--verbose', action='store_true', help="Print detailed optimization progress.")
-  
+  return parser
+
+def main():
+  parser = create_argparser()
   args = parser.parse_args()
 
   try:

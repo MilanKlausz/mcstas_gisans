@@ -30,6 +30,41 @@ def test_get_mask_exclude_and_include_box():
     outside = ~( (YY >= -0.1) & (YY <= 0.1) & (ZZ >= 0.2) & (ZZ <= 0.8) )
     assert np.all(mask[outside])
 
+@pytest.mark.parametrize("y_range, z_range, exclude_box, include_box, qy_min, qy_max, qz_min, qz_max", [
+    (101, 101, None, None, None, None, None, None), # Default no mask
+    (101, 101, [[-0.1, 0.1, 0.2, 0.8]], None, None, None, None, None), # Only exclude
+    (101, 101, None, [[-0.02, 0.02, 0.4, 0.6]], None, None, None, None), # Only include
+    (101, 101, None, None, -0.2, 0.2, 0.1, 0.9), # Simple limits
+])
+def test_get_mask_variations(y_range, z_range, exclude_box, include_box, qy_min, qy_max, qz_min, qz_max):
+    y_edges = np.linspace(-0.5, 0.5, y_range)
+    z_edges = np.linspace(0.0, 1.0, z_range)
+    
+    mask = get_mask(
+        y_edges, z_edges,
+        exclude_q_box=exclude_box,
+        include_q_box=include_box,
+        qy_min_cut=qy_min,
+        qy_max_cut=qy_max,
+        qz_min_cut=qz_min,
+        qz_max_cut=qz_max
+    )
+    
+    assert mask.shape == (y_range - 1, z_range - 1)
+    
+    y_centres = (y_edges[:-1] + y_edges[1:]) / 2.0
+    z_centres = (z_edges[:-1] + z_edges[1:]) / 2.0
+    YY, ZZ = np.meshgrid(y_centres, z_centres, indexing='ij')
+    
+    if qy_min is not None:
+        assert not np.any(mask[YY < qy_min])
+    if qy_max is not None:
+        assert not np.any(mask[YY > qy_max])
+    if qz_min is not None:
+        assert not np.any(mask[ZZ < qz_min])
+    if qz_max is not None:
+        assert not np.any(mask[ZZ > qz_max])
+
 def test_simulate_mask_angle_range_q_box_matching():
     import os
     from mcstas_gisans.nexus_reader import read_nexus_data
@@ -37,7 +72,8 @@ def test_simulate_mask_angle_range_q_box_matching():
     from mcstas_gisans.instrument_defaults import instrument_defaults
 
     nxs_path = os.path.join("data", "paper", "d22_measurement", "073174.nxs")
-    _, _, y_edges_nxs, z_edges_nxs = read_nexus_data(nxs_path, alpha=0.24, wavelength=6.0, sample_orientation=2)
+    instrument = Instrument(instrument_defaults['d22'], alpha_inc_deg=0.24, wavelength_selected=6.0, sample_orientation=2)
+    _, _, y_edges_nxs, z_edges_nxs = read_nexus_data(nxs_path, instrument=instrument)
 
     # Exclude all data via qy_min_cut, then include a specific Q-box: Qy in [-0.05, 0.05], Qz in [0.15, 0.25]
     mask = get_mask(
@@ -48,7 +84,7 @@ def test_simulate_mask_angle_range_q_box_matching():
     assert np.any(mask)  # Ensure some pixels were included
 
     instrument = Instrument(instrument_defaults['d22'], alpha_inc_deg=0.24, wavelength_selected=6.0, sample_orientation=2)
-    h_min, h_max, v_min, v_max = instrument.get_masked_angle_range(mask, len_y_centres=len(y_edges_nxs) - 1)
+    h_min, h_max, v_min, v_max = instrument.get_masked_angle_range(mask)
 
     # Calculate expected Q bounds for the calculated angle boundaries
     k = 2.0 * np.pi / (6.0 * 0.1)  # wavenumber in 1/nm

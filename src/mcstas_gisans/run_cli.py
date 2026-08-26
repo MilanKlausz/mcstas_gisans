@@ -1,170 +1,191 @@
-
 """
 Create and run argparse command line interface for the run script
 """
 import argparse
+from typing import List
+
 from .instrument_defaults import instrument_defaults, required_keys_for_wfm, set_instrument_parameters
 from .sample import Sample
-builtin_samples = Sample.list_builtin_samples()
-builtin_str = ', '.join(builtin_samples)
-DEFAULT_OUTGOING_DIRECTIONS = 20
 
-def create_argparser():
-  parser = argparse.ArgumentParser(description = 'Execute BornAgain simulation of a GISANS sample with incident neutrons taken from an input file. The output of the script is a .npz file (or files) containing the derived Q values for each outgoing neutron. The default Q value calculated is aiming to be as close as possible to the Q value from a measurement.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('filename',  help = 'Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
-  parser.add_argument('--intensity_factor', default=1.0, type=float, help = 'A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
-  parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
-  parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
-  parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
-  parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
-  parser.add_argument('--no_gravity', default=False, action='store_true', help = 'Do not take into account gravity.')
-  parser.add_argument('-v', '--verbose', default=False, action='store_true', help = 'Enable verbose logging.')
+builtin_samples: List[str] = Sample.list_builtin_samples()
+builtin_str: str = ', '.join(builtin_samples)
+DEFAULT_OUTGOING_DIRECTIONS: int = 20
 
-  bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
-  bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-  bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. (default: {DEFAULT_OUTGOING_DIRECTIONS})') #default value is not handled by the argparser to allow checking if outgoing_directions is used together with outgoing_directions_horizontal/outgoing_directions_vertical
-  bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction.')
-  bornagainGroup.add_argument('--outgoing_directions_vertical', type=int, help='Number of outgoing directions in the vertical direction.')
-  bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help = 'Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
-  bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help = 'BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
-  bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation' ], type=str.lower, help="Control specular reflection in the simulation. "
-               "NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). "
-               "INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)). "
-               "SPECULAR_SIMULATION: Uses a separate SpecularSimulation for the specular reflection.")
-  bornagainGroup.add_argument('--bornagain_number_of_threads', type=int, default=None, help='Number of internal threads BornAgain should use. If None, uses BornAgain default.')
-  outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
-  outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
-  outputGroup.add_argument('--temp_read_chunk_size', type=int, default=1000000, help='Chunk size for reading temporary intermediate files at the end of the simulation (default: 1000000)')
-
-  sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
-  sampleGroup.add_argument( '--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
-  sampleGroup.add_argument('--sample_arguments', help = 'Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
-  sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
-  sampleGroup.add_argument('--sample_size_y', default=0.06, type=float, help = 'Size of sample perpendicular to beam (along y-axis in BornAgain geometry). [m]')
-  sampleGroup.add_argument('--sample_size_x', default=0.08, type=float, help = 'Size of sample along the beam (along x-axis in BornAgain geometry). [m]')
-  sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help = 'Allow incident neutrons to miss the sample, and be directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
-
-  polarizationGroup = parser.add_argument_group('Polarization', 'Control polarization and analyzer settings.')
-  polarizationGroup.add_argument('--use_polarization', default=False, action='store_true', help = 'Simulate polarized scattering.')
-  polarizationGroup.add_argument('--analyzer_direction', nargs=3, type=float, default=[0.0, 0.0, 0.0], help = 'The polarization analysis direction (typically a unit vector).')
-  polarizationGroup.add_argument('--analyzer_efficiency', type=float, default=1.0, help = 'The polarization efficiency of the analyzer, representing the polarizing power or the ability to select a specific spin state (0 <= eta <= 1).')
-  polarizationGroup.add_argument('--analyzer_transmission', type=float, default=0.5, help = 'The total transmission factor of the analyzer (fraction of beam intensity that passes through, 0 <= T <= 0.5).')
-
-
-  mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instrument_defaults.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
-  mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help = 'Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
-  mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help = 'Modify the accepted TOF range of neutrons by this multiplication factor.')
-  mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help = 'Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
-  mcplFilteringGroup.add_argument('--input_tof_limits', nargs=2, type=float, help = 'TOF limits for selecting neutrons from the MCPL file [millisecond]. When provided, fitting to the McStas monitor is not attempted.')
-  mcplFilteringGroup.add_argument('--input_weight_limit', type=float, default=0.0, help = 'Monte Carlo particle weight limit to exclude particles of low importance.')
-  mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help = 'Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
-  mcplFilteringGroup.add_argument('--tof_filtering_figure', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the selected input TOF range and exit without doing the simulation. Only works with McStas monitor fitting.')
-
-  t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the wavelength parameter in the MCPL filtering is provided.')
-  t0correctionGroup.add_argument('--t0_fixed', default=None, type=float, help = 'Fix t0 correction value that is subtracted from the neutron TOFs. [s]')
-  t0correctionGroup.add_argument('--t0_wavelength_rebin', default=None, type=int, help = 'Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
-  t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help = 'Wavelength Frame Multiplication (WFM) mode.')
-  t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help = 'Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
-  t0correctionGroup.add_argument('--t0_correction_figure', default=None, choices=['show', 'png', 'pdf'], help = 'Show or save the figure of the t0 correction and exit without doing the simulation. Only works with McStas monitor fitting.')
-
-
-  instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
-  instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
-  instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
-  instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
-  instrumentGroup.add_argument('--instrument_detector_centre_offset', nargs=2, type=float, help='Override detector centre offset [offset_x, offset_y] in meters.')
-  instrumentGroup.add_argument('--instrument_detector_pixels', nargs=2, type=int, help='Override detector pixel counts [pixels_x, pixels_y].')
-  instrumentGroup.add_argument('--instrument_detector_resolution', nargs=2, type=float, help='Override detector resolution FWHM [res_x, res_y] in meters.')
-  instrumentGroup.add_argument('--instrument_tof_instrument', type=str.lower, choices=['true', 'false'], help='Override whether the instrument is a Time-of-Flight (TOF) instrument.')
-  instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
-  instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
-  instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
-  instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, it is automatically calculated from the simulation events using arcsin(mean(v_transverse) / mean(v_total)).')
-  instrumentGroup.add_argument('--nexus_y_shift', type=float, default=0.0, help='Shift the beam slightly upwards (in NeXus frame) to ensure it hits the sample surface. E.g. 0.0065')
-
-  return parser
-
-def parse_args(parser):
-  args = parser.parse_args()
-  # Validate outgoing directions options
-  has_outgoing_directions = hasattr(args, 'outgoing_directions')
-  if has_outgoing_directions and (args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None):
-    parser.error("Cannot specify --outgoing_directions together with --outgoing_directions_horizontal or --outgoing_directions_vertical")
-  if (args.outgoing_directions_horizontal is not None) != (args.outgoing_directions_vertical is not None):
-    parser.error("Both --outgoing_directions_horizontal and --outgoing_directions_vertical must be specified together")
-  if not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
-    args.outgoing_directions = DEFAULT_OUTGOING_DIRECTIONS
-  elif not has_outgoing_directions:
-    args.outgoing_directions = None #needed because of default=argparse.SUPPRESS
-
-  # Apply instrument parameter overrides in instrument_defaults
-  set_instrument_parameters(args)
-
-  if args.wfm and any(key not in instrument_defaults[args.instrument] for key in required_keys_for_wfm):
-    parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
-
-  if args.tof_filtering_figure:
-    if not args.wavelength:
-      parser.error(f"The --tof_filtering_figure option can only be used if a central wavelength (--wavelength) for fitting is provided.")
-    if args.input_tof_limits:
-      parser.error(f"The --tof_filtering_figure option can not be used when the TOF range is provided with --input_tof_limits.")
-    if args.no_mcpl_filtering:
-      parser.error(f"The --tof_filtering_figure option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
-
-  if instrument_defaults[args.instrument]['tof_instrument']: #tof instrument
-    if args.wavelength_selected:
-      parser.error(f"The --wavelength_selected parameter should not be used for TOF instruments. Use the --wavelength parameter instead.")
-  else:
-    if args.wavelength:
-      parser.error(f"The --wavelength parameter should not be used for non-TOF instruments. Use the --wavelength_selected parameter instead.")
-    if not args.wavelength_selected:
-      parser.error(f"For non-TOF instruments the --wavelength_selected parameter is required.")
-
-  if args.no_t0_correction:
-    if args.t0_fixed:
-      parser.error(f"The --no_t0_correction option can not be used together with --t0_fixed.")
-    if args.t0_wavelength_rebin:
-      parser.error(f"The --no_t0_correction option can not be used together with --t0_wavelength_rebin.")
-    if args.wfm:
-      parser.error(f"The --no_t0_correction option can not be used together with --wfm.")
-  elif instrument_defaults[args.instrument]['tof_instrument']:
-    if not args.wavelength:
-      parser.error(f"The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
-
-  if not args.no_mcpl_filtering and instrument_defaults[args.instrument]['tof_instrument']:
-    if not args.wavelength:
-      parser.error(f"The --wavelength must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
-
-  if args.t0_fixed:
-    if args.t0_wavelength_rebin:
-      parser.error(f"The --t0_fixed option can not be used together with --t0_wavelength_rebin.")
-
-  if (args.sample_size_y == 0 or args.sample_size_x == 0) and not args.allow_sample_miss:
-    parser.error(f"One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")
-  if (args.sample_size_y < 0 or args.sample_size_x < 0):
-    parser.error(f"The sample sizes can not be negative. (For direct beam simulation, set either of the sample sizes to zero.)")
-
-  if args.sample_arguments:
-    pairs = [p for p in args.sample_arguments.split(';') if p.strip()]
-    for pair in pairs:
-        if '=' not in pair:
-            parser.error(f"Invalid argument format for --sample_arguments: {pair}. Should be arg=value.")
-
-  if args.intensity_factor <= 0.0:
-    parser.error(f"The intensity multiplication factor (--intensity_factor) must have a positive value.")
-
-  # Validate analyzer parameters
-  if not (0.0 <= args.analyzer_transmission <= 0.5):
-    parser.error(f"analyzer_transmission must be between 0.0 and 0.5 (got {args.analyzer_transmission}).")
-  if not (0.0 <= args.analyzer_efficiency <= 1.0):
-    parser.error(f"analyzer_efficiency must be between 0.0 and 1.0 (got {args.analyzer_efficiency}).")
-
-  direction_norm = (args.analyzer_direction[0]**2 + args.analyzer_direction[1]**2 + args.analyzer_direction[2]**2) ** 0.5
-  bloch_vector_len = abs(args.analyzer_efficiency) * direction_norm
-  if bloch_vector_len > 1.0:
-    parser.error(
-        f"The analyzer Bloch vector (efficiency * direction) must have a length <= 1.0. "
-        f"Current length: {bloch_vector_len:.4f} (efficiency: {args.analyzer_efficiency}, direction norm: {direction_norm:.4f})."
+def create_argparser() -> argparse.ArgumentParser:
+    """
+    Parse command line arguments for the run script.
+    """
+    parser = argparse.ArgumentParser(
+        description="Calculate DWBA GISANS scattering from a McStas MCPL output. "
+                    "The output of the script is a .h5 Scipp file (or files) containing the "
+                    "derived Q values (or spatial grid/TOF events for plotting). "
+                    "Use the mg_plot script to visualize the results.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    parser.add_argument('filename', help='Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
+    parser.add_argument('--intensity_factor', default=1.0, type=float, help='A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
+    parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help='Instrument (from instruments.py).')
+    parser.add_argument('-p','--parallel_processes', required=False, type=int, help='Number of processes to be used for parallel processing.')
+    parser.add_argument('--no_parallel', default=False, action='store_true', help='Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
+    parser.add_argument('--wavelength_selected', type=float, help='Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
+    parser.add_argument('--no_gravity', default=False, action='store_true', help='Do not take into account gravity.')
+    parser.add_argument('-v', '--verbose', default=False, action='store_true', help='Enable verbose logging.')
 
-  return args
+    bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
+    bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help='Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
+    bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. (default: {DEFAULT_OUTGOING_DIRECTIONS})')
+    bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction.')
+    bornagainGroup.add_argument('--outgoing_directions_vertical', type=int, help='Number of outgoing directions in the vertical direction.')
+    bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help='Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
+    bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help='BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
+    bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation'], type=str.lower, help="Control specular reflection in the simulation. NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)). SPECULAR_SIMULATION: Uses a separate SpecularSimulation for the specular reflection.")
+    bornagainGroup.add_argument('--bornagain_number_of_threads', type=int, default=None, help='Number of internal threads BornAgain should use. If None, uses BornAgain default.')
+    
+    outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
+    outputGroup.add_argument('-s', '--savename', default='', required=False, help='Output filename (can be full path).')
+    outputGroup.add_argument('--temp_read_chunk_size', type=int, default=1000000, help='Chunk size for reading temporary intermediate files at the end of the simulation (default: 1000000)')
+
+    sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
+    sampleGroup.add_argument('--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
+    sampleGroup.add_argument('--sample_arguments', help='Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
+    sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help='Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')
+    sampleGroup.add_argument('--sample_size_y', default=0.06, type=float, help='Size of sample perpendicular to beam (along y-axis in BornAgain geometry). [m]')
+    sampleGroup.add_argument('--sample_size_x', default=0.08, type=float, help='Size of sample along the beam (along x-axis in BornAgain geometry). [m]')
+    sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help='Allow incident neutrons to miss the sample, and be directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
+
+    polarizationGroup = parser.add_argument_group('Polarization', 'Control polarization and analyzer settings.')
+    polarizationGroup.add_argument('--use_polarization', default=False, action='store_true', help='Simulate polarized scattering.')
+    polarizationGroup.add_argument('--analyzer_direction', nargs=3, type=float, default=[0.0, 0.0, 0.0], help='The polarization analysis direction (typically a unit vector).')
+    polarizationGroup.add_argument('--analyzer_efficiency', type=float, default=1.0, help='The polarization efficiency of the analyzer, representing the polarizing power or the ability to select a specific spin state (0 <= eta <= 1).')
+    polarizationGroup.add_argument('--analyzer_transmission', type=float, default=0.5, help='The total transmission factor of the analyzer (fraction of beam intensity that passes through, 0 <= T <= 0.5).')
+
+    mcplFilteringGroup = parser.add_argument_group('MCPL filtering', 'Parameters and options to control which neutrons are used from the MCPL input file. By default no filtering is applied, but if a (central) wavelength is provided, an accepted TOF range is defined based on a McStas TOFLambda monitor (defined as mcpl_monitor_name for each instrument in instrument_defaults.py) that is assumed to correspond to the input MCPL file. The McStas monitor is looked for in the directory of the MCPL input file, and after fitting a Gaussian function, neutrons within a single FWHM range centred around the selected wavelength are used for the BornAgain simulation.')
+    mcplFilteringGroup.add_argument('-w', '--wavelength', type=float, default=None, help='Central wavelength used for filtering based on the McStas TOFLambda monitor. (Also used for t0 correction.)')
+    mcplFilteringGroup.add_argument('--input_tof_range_factor', default=1.0, type=float, help='Modify the accepted TOF range of neutrons by this multiplication factor.')
+    mcplFilteringGroup.add_argument('--input_wavelength_rebin', default=1, type=int, help='Rebin the TOFLambda monitor along the wavelength axis by the provided factor (only if no extrapolation is needed).')
+    mcplFilteringGroup.add_argument('--input_tof_limits', nargs=2, type=float, help='TOF limits for selecting neutrons from the MCPL file [millisecond]. When provided, fitting to the McStas monitor is not attempted.')
+    mcplFilteringGroup.add_argument('--input_weight_limit', type=float, default=0.0, help='Monte Carlo particle weight limit to exclude particles of low importance.')
+    mcplFilteringGroup.add_argument('--no_mcpl_filtering', action='store_true', help='Disable MCPL TOF filtering. Use all neutrons from the MCPL input file.')
+    mcplFilteringGroup.add_argument('--tof_filtering_figure', default=None, choices=['show', 'png', 'pdf'], help='Show or save the figure of the selected input TOF range and exit without doing the simulation. Only works with McStas monitor fitting.')
+
+    t0correctionGroup = parser.add_argument_group('T0 correction', 'Parameters and options to control t0 TOF correction. Currently only works if the wavelength parameter in the MCPL filtering is provided.')
+    t0correctionGroup.add_argument('--t0_fixed', default=None, type=float, help='Fix t0 correction value that is subtracted from the neutron TOFs. [s]')
+    t0correctionGroup.add_argument('--t0_wavelength_rebin', default=None, type=int, help='Rebinning factor for the McStas TOFLambda monitor based t0 correction. Rebinning is applied along the wavelength axis. Only integer divisors are allowed.')
+    t0correctionGroup.add_argument('--wfm', default=False, action='store_true', help='Wavelength Frame Multiplication (WFM) mode.')
+    t0correctionGroup.add_argument('--no_t0_correction', action='store_true', help='Disable t0 correction. (Allows using McStas simulations which lack the supported monitors.)')
+    t0correctionGroup.add_argument('--t0_correction_figure', default=None, choices=['show', 'png', 'pdf'], help='Show or save the figure of the t0 correction and exit without doing the simulation. Only works with McStas monitor fitting.')
+
+    instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
+    instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
+    instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
+    instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
+    instrumentGroup.add_argument('--instrument_detector_centre_offset', nargs=2, type=float, help='Override detector centre offset [offset_x, offset_y] in meters.')
+    instrumentGroup.add_argument('--instrument_detector_pixels', nargs=2, type=int, help='Override detector pixel counts [pixels_x, pixels_y].')
+    instrumentGroup.add_argument('--instrument_detector_resolution', nargs=2, type=float, help='Override detector resolution FWHM [res_x, res_y] in meters.')
+    instrumentGroup.add_argument('--instrument_tof_instrument', type=str.lower, choices=['true', 'false'], help='Override whether the instrument is a Time-of-Flight (TOF) instrument.')
+    instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
+    instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
+    instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
+    instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, it is automatically calculated from the simulation events using arcsin(mean(v_transverse) / mean(v_total)).')
+    instrumentGroup.add_argument('--nexus_y_shift', type=float, default=0.0, help='Shift the beam slightly upwards (in NeXus frame) to ensure it hits the sample surface. E.g. 0.0065')
+
+    return parser
+
+def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    """
+    Parse arguments from the command line and validate their combinations.
+
+    Parameters
+    ----------
+    parser : argparse.ArgumentParser
+        The configured argument parser.
+
+    Returns
+    -------
+    argparse.Namespace
+        The parsed and validated arguments.
+    """
+    args: argparse.Namespace = parser.parse_args()
+    
+    # Validate outgoing directions options
+    has_outgoing_directions: bool = hasattr(args, 'outgoing_directions')
+    if has_outgoing_directions and (args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None):
+        parser.error("Cannot specify --outgoing_directions together with --outgoing_directions_horizontal or --outgoing_directions_vertical")
+    if (args.outgoing_directions_horizontal is not None) != (args.outgoing_directions_vertical is not None):
+        parser.error("Both --outgoing_directions_horizontal and --outgoing_directions_vertical must be specified together")
+    if not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
+        args.outgoing_directions = DEFAULT_OUTGOING_DIRECTIONS
+    elif not has_outgoing_directions:
+        args.outgoing_directions = None
+
+    # Apply instrument parameter overrides in instrument_defaults
+    set_instrument_parameters(args)
+
+    if args.wfm and any(key not in instrument_defaults[args.instrument] for key in required_keys_for_wfm):
+        parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
+
+    if args.tof_filtering_figure:
+        if not args.wavelength:
+            parser.error("The --tof_filtering_figure option can only be used if a central wavelength (--wavelength) for fitting is provided.")
+        if args.input_tof_limits:
+            parser.error("The --tof_filtering_figure option can not be used when the TOF range is provided with --input_tof_limits.")
+        if args.no_mcpl_filtering:
+            parser.error("The --tof_filtering_figure option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
+
+    if instrument_defaults[args.instrument]['tof_instrument']: # tof instrument
+        if args.wavelength_selected:
+            parser.error("The --wavelength_selected parameter should not be used for TOF instruments. Use the --wavelength parameter instead.")
+    else:
+        if args.wavelength:
+            parser.error("The --wavelength parameter should not be used for non-TOF instruments. Use the --wavelength_selected parameter instead.")
+        if not args.wavelength_selected:
+            parser.error("For non-TOF instruments the --wavelength_selected parameter is required.")
+
+    if args.no_t0_correction:
+        if args.t0_fixed is not None:
+            parser.error("The --no_t0_correction option can not be used together with --t0_fixed.")
+        if args.t0_wavelength_rebin is not None:
+            parser.error("The --no_t0_correction option can not be used together with --t0_wavelength_rebin.")
+        if args.wfm:
+            parser.error("The --no_t0_correction option can not be used together with --wfm.")
+    elif instrument_defaults[args.instrument]['tof_instrument']:
+        if not args.wavelength:
+            parser.error("The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
+
+    if not args.no_mcpl_filtering and instrument_defaults[args.instrument]['tof_instrument']:
+        if not args.wavelength and not args.input_tof_limits:
+            parser.error("The --wavelength or --input_tof_limits must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
+
+    if args.t0_fixed is not None:
+        if args.t0_wavelength_rebin is not None:
+            parser.error("The --t0_fixed option can not be used together with --t0_wavelength_rebin.")
+
+    if (args.sample_size_y == 0 or args.sample_size_x == 0) and not args.allow_sample_miss:
+        parser.error("One of the sample sizes is zero. Direct beam simulation also requires the --allow_sample_miss option to be set True.")
+    if (args.sample_size_y < 0 or args.sample_size_x < 0):
+        parser.error("The sample sizes can not be negative. (For direct beam simulation, set either of the sample sizes to zero.)")
+
+    if args.sample_arguments:
+        pairs = [p for p in args.sample_arguments.split(';') if p.strip()]
+        for pair in pairs:
+            if '=' not in pair:
+                parser.error(f"Invalid argument format for --sample_arguments: {pair}. Should be arg=value.")
+
+    if args.intensity_factor <= 0.0:
+        parser.error("The intensity multiplication factor (--intensity_factor) must have a positive value.")
+
+    # Validate analyzer parameters
+    if not (0.0 <= args.analyzer_transmission <= 0.5):
+        parser.error(f"analyzer_transmission must be between 0.0 and 0.5 (got {args.analyzer_transmission}).")
+    if not (0.0 <= args.analyzer_efficiency <= 1.0):
+        parser.error(f"analyzer_efficiency must be between 0.0 and 1.0 (got {args.analyzer_efficiency}).")
+
+    direction_norm = (args.analyzer_direction[0]**2 + args.analyzer_direction[1]**2 + args.analyzer_direction[2]**2) ** 0.5
+    bloch_vector_len = abs(args.analyzer_efficiency) * direction_norm
+    if bloch_vector_len > 1.0:
+        parser.error(
+            f"The analyzer Bloch vector (efficiency * direction) must have a length <= 1.0. "
+            f"Current length: {bloch_vector_len:.4f} (efficiency: {args.analyzer_efficiency}, direction norm: {direction_norm:.4f})."
+        )
+
+    return args
