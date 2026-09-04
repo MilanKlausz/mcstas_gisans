@@ -102,8 +102,9 @@ To run an automated fit, you must specify your starting parameters, step bounds,
 
    mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 \
      --model my_custom_sample --wavelength_selected 6.0 \
-     --fit_parameters "radius=50:10:100;height=20:5:50" \
-     --mask_rect "ymin=-0.05 ymax=0.05 zmin=-0.02 zmax=0.02"
+     --fit radius 50 100 \
+     --fit height 20 50 \
+     --mask_exclude_q_box -0.05 0.05 -0.02 0.02
 
 **Custom Sample Models:**
-The ``--model`` argument dynamically imports a python script from the ``bornagain_samples/`` directory. To create a custom parameterized sample for fitting, simply add a Python file there containing a ``get_sample(**kwargs)`` function that builds and returns a ``ba.MultiLayer``. The framework will automatically parse the ``--fit_parameters`` or ``--sample_arguments`` CLI flags and pass them as kwargs into your function.
+The ``--model`` argument dynamically imports a python script from the ``bornagain_samples/`` directory. To create a custom parameterized sample for fitting, simply add a Python file there containing a ``get_sample(**kwargs)`` function that builds and returns a ``ba.MultiLayer``. The framework will automatically parse the ``--fit`` or ``--sample_arguments`` CLI flags and pass them as kwargs into your function.

@@ -1,6 +1,6 @@
 import numpy as np
 import subprocess
-import sys
+import pytest
 
 from mcstas_gisans.plot import setup_global_instrument
 
@@ -94,8 +94,7 @@ def test_d22_microgel_reduced_chi2(tmp_path):
 
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
-        print(f"Simulation failed:\n{res.stderr}\n{res.stdout}")
-        sys.exit(1)
+        pytest.fail(f"Simulation failed:\n{res.stderr}\n{res.stdout}")
 
     print("Simulation finished. Processing datasets for chi2...")
 
@@ -106,8 +105,7 @@ def test_d22_microgel_reduced_chi2(tmp_path):
     datasets = plot_module.get_datasets(args)
 
     if len(datasets) != 2:
-        print(f"Expected 2 datasets (nxs, sim), got {len(datasets)}")
-        sys.exit(1)
+        pytest.fail(f"Expected 2 datasets (nxs, sim), got {len(datasets)}")
 
     nxs_data = datasets[0]
     sim_data = datasets[1]

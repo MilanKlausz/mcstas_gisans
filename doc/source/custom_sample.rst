@@ -20,7 +20,7 @@ Here is a minimal, fully-commented template for a custom sample model.
         Dynamically constructs a BornAgain sample based on fitting parameters.
         
         Any keyword arguments passed here match the names given in the CLI
-        `--fit_parameters` or `--sample_arguments` flags.
+        `--fit` or `--sample_arguments` flags.
         """
         # 1. Extract parameters with default fallbacks
         radius = kwargs.get('radius', 5.0)     # Default 5.0 nm
@@ -71,10 +71,15 @@ To run a grid fit over the ``radius`` and ``height`` parameters, execute:
       --instrument d22 \
       --model my_custom_sample \
       --wavelength_selected 6.0 \
-      --fit_parameters "radius=5:1:20;height=10:5:50" \
-      --mask_rect "ymin=-0.05 ymax=0.05 zmin=-0.02 zmax=0.02"
+      --fit radius 5 20 \
+      --fit height 10 50 \
+      --mask_exclude_q_box -0.05 0.05 -0.02 0.02
 
-The ``--fit_parameters`` flag uses a specific syntax: ``parameter=start:step:max``. 
-In this case, ``radius=5:1:20`` tells the optimizer to search for radii starting at 5 nm, stepping by 1 nm, up to a maximum of 20 nm. The framework automatically maps these values to the ``**kwargs`` dictionary passed into your ``get_sample`` function.
+The ``--fit`` flag can be repeated once per parameter, and accepts either ``name x0`` (fixed
+initial guess, unbounded), ``name min max`` (bounds, with the initial guess set to their
+midpoint), or ``name x0 min max`` (explicit initial guess and bounds). In this case,
+``--fit radius 5 20`` tells the optimizer to search for radii between 5 nm and 20 nm. The
+framework automatically maps the fitted values to the ``**kwargs`` dictionary passed into your
+``get_sample`` function.
 
 Under the hood, ``mg_fit`` uses `scipy.optimize.differential_evolution` (or Nelder-Mead, depending on the configuration) to minimize a Poisson-weighted cost function between the simulated scattering pattern and the experimental NeXus data over the masked regions.

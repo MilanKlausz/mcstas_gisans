@@ -264,8 +264,7 @@ class Detector:
                 idx_x_nexus = idx_z_bornagain
                 idx_y_nexus = self.pixels_y_nexus - 1 - idx_y_bornagain
             case _:
-                idx_x_nexus = idx_y_bornagain
-                idx_y_nexus = idx_z_bornagain
+                raise ValueError(f"Unknown sample orientation: {self.sample_orientation}")
 
         return idx_x_nexus, idx_y_nexus, valid_mask
 

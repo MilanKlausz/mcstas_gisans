@@ -20,14 +20,14 @@ NeXus Alignment Fails (``mg_beam_centre_correction``)
 If the optimization fails to find a center for the NeXus direct beam:
 
 - **Saturated Detectors:** The NeXus file might have saturated pixels at the direct beam center. Check the NeXus data visually.
-- **Initial Guess:** The default center of mass calculation might be thrown off by background noise. Provide an explicit initial guess using ``--initial_guess X Y``.
+- **Initial Guess:** The default center of mass calculation might be thrown off by background noise. ``mg_beam_centre_correction`` does not currently expose an ``--initial_guess`` CLI option; if the optimizer converges to the wrong feature, inspect and, if needed, pre-mask the NeXus data before running the correction.
 
 Fit Does Not Converge (``mg_fit``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If the automated fitting stops early or returns an unphysical result:
 
-- **Masking:** Ensure that the specular reflection and the direct beam are correctly masked using ``--mask_rect`` or ``--mask_radius``. The optimizer will often fail if it tries to fit the overwhelmingly bright specular peak instead of the GISANS scattering features.
-- **Step Bounds:** Check your ``--fit_parameters`` step sizes. If the bounds are too tight, the optimizer cannot explore the space. (e.g. ``radius=5:1:20`` allows radius to vary between 5 and 20).
+- **Masking:** Ensure that the specular reflection and the direct beam are correctly masked using ``--mask_exclude_q_box`` (or ``--mask_qy_min_cut``/``--mask_qy_max_cut``/``--mask_qz_min_cut``/``--mask_qz_max_cut``). The optimizer will often fail if it tries to fit the overwhelmingly bright specular peak instead of the GISANS scattering features.
+- **Fit Bounds:** Check your ``--fit`` bounds. If they are too tight, the optimizer cannot explore the space (e.g. ``--fit radius 5 20`` allows radius to vary between 5 and 20).
 - **Poisson Sampling:** Do NOT use ``--poisson_sampling`` during ``mg_fit``. Random noise prevents the objective function from converging smoothly.
 
 Wavelength Parse Errors

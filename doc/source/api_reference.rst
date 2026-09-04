@@ -24,6 +24,7 @@ Utilities
    :toctree: api/
    :recursive:
 
+   mcstas_gisans.input_output
    mcstas_gisans.nexus_reader
    mcstas_gisans.mcstas_reader
    mcstas_gisans.beam_centre_correction

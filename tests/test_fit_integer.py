@@ -133,7 +133,7 @@ def test_joint_fit_execution(monkeypatch):
     monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
     monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
     monkeypatch.setattr(fit, "prepare_experimental_data", lambda args: (np.zeros((5, 5)), np.zeros((5, 5)), np.linspace(-1, 1, 6), np.linspace(0, 1, 6), np.ones((5, 5), dtype=bool), np.zeros((5, 5)), np.zeros((5, 5))))
-    monkeypatch.setattr(fit, "load_and_precondition_particles", lambda args: ([], "neutron"))
+    monkeypatch.setattr(fit, "load_and_precondition_particles", lambda args: ([], "neutron", None))
 
     class DummyJointArgs:
         filename = "dummy.mcpl.gz"

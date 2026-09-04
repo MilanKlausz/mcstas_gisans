@@ -586,7 +586,7 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
 
   return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
 
-def load_and_precondition_particles(args: Any) -> Tuple[Any, str]:
+def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
   """
   Load particle data and precondition it.
 
@@ -598,7 +598,7 @@ def load_and_precondition_particles(args: Any) -> Tuple[Any, str]:
   Returns
   -------
   tuple
-      (particles, particle_type)
+      (particles, particle_type, mcpl_metadata)
   """
   from .tof_filtering import get_tof_filtering_limits
   tof_limits = get_tof_filtering_limits(args)
@@ -607,7 +607,7 @@ def load_and_precondition_particles(args: Any) -> Tuple[Any, str]:
   )
   particles = precondition(particles, args)
   print(f"Loaded and preconditioned {len(particles)} particles.")
-  return particles, particle_type
+  return particles, particle_type, mcpl_metadata
 
 def run_simulation_evaluation(
     grid_point: Dict[str, Any],
@@ -620,7 +620,8 @@ def run_simulation_evaluation(
     z_edges_nxs: np.ndarray,
     mask: np.ndarray,
     label_prefix: str = "sim",
-    save_simulation_output: bool = False
+    save_simulation_output: bool = False,
+    mcpl_metadata: Optional[Dict[str, Any]] = None
 ) -> Tuple[float, float, Dict[str, Any], Dict[str, Any]]:
   """
   Run a single simulation point evaluation and return fitness metrics.
@@ -649,6 +650,8 @@ def run_simulation_evaluation(
       Prefix for saved outputs.
   save_simulation_output : bool, optional
       Whether to save scipp results.
+  mcpl_metadata : dict, optional
+      MCPL source metadata (from `get_particles`) to embed when saving scipp results.
 
   Returns
   -------
@@ -903,7 +906,8 @@ def run_automated_fit(
     hist_nxs_error: np.ndarray,
     y_edges_nxs: np.ndarray,
     z_edges_nxs: np.ndarray,
-    mask: np.ndarray
+    mask: np.ndarray,
+    mcpl_metadata: Optional[Dict[str, Any]] = None
 ) -> None:
   """
   Execute an automated parameter fit using scipy.optimize.
@@ -941,9 +945,9 @@ def run_automated_fit(
     hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, _, _ = prepare_experimental_data(args2)
 
     if getattr(args, 'filename2', None) or (getattr(args, 'alpha2', None) is not None and args.alpha2 != args.alpha):
-      particles2, particle_type2 = load_and_precondition_particles(args2)
+      particles2, particle_type2, mcpl_metadata2 = load_and_precondition_particles(args2)
     else:
-      particles2, particle_type2 = particles, particle_type
+      particles2, particle_type2, mcpl_metadata2 = particles, particle_type, mcpl_metadata
 
     param_names, x0, bounds, s1_map, s2_map = parse_joint_fit_arguments(args)
   else:
@@ -1011,7 +1015,7 @@ def run_automated_fit(
     if not is_joint_fit:
       res = run_simulation_evaluation(
           grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-          label_prefix=f"fit_eval_{eval_counter[0]}"
+          label_prefix=f"fit_eval_{eval_counter[0]}", mcpl_metadata=mcpl_metadata
       )
       reduced_chi2, log_residual = res[0], res[1]
       rec = copy.deepcopy(display_point)
@@ -1031,10 +1035,10 @@ def run_automated_fit(
       args.png = False
       res1 = run_simulation_evaluation(
           grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-          label_prefix=f"fit_eval_s1_{eval_counter[0]}"
+          label_prefix=f"fit_eval_s1_{eval_counter[0]}", mcpl_metadata=mcpl_metadata
       )
       res2 = run_simulation_evaluation(
-          grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, label_prefix=f"fit_eval_s2_{eval_counter[0]}"
+          grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, label_prefix=f"fit_eval_s2_{eval_counter[0]}", mcpl_metadata=mcpl_metadata2
       )
       args.png = png_backup
 
@@ -1155,7 +1159,8 @@ def run_parameter_scan(
     hist_nxs_error: np.ndarray,
     y_edges_nxs: np.ndarray,
     z_edges_nxs: np.ndarray,
-    mask: np.ndarray
+    mask: np.ndarray,
+    mcpl_metadata: Optional[Dict[str, Any]] = None
 ) -> None:
   """
   Execute a parameter scan (grid sweep) over specified variables.
@@ -1178,6 +1183,8 @@ def run_parameter_scan(
       NeXus z edges.
   mask : np.ndarray
       Mask array.
+  mcpl_metadata : dict, optional
+      MCPL source metadata (from `get_particles`) to embed in saved scipp results.
   """
   scanned_params = parse_scan_arguments(args.scan)
   keys = list(scanned_params.keys())
@@ -1199,7 +1206,7 @@ def run_parameter_scan(
     print(f"\n[{current_count}/{total_evals}] Running simulation with: {grid_point}")
     reduced_chi2, log_residual, record, _ = run_simulation_evaluation(
         grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-        label_prefix="sim", save_simulation_output=True
+        label_prefix="sim", save_simulation_output=True, mcpl_metadata=mcpl_metadata
     )
 
     iter_duration = time.time() - iter_start_time
@@ -1256,12 +1263,12 @@ def main() -> None:
     )
     return
 
-  particles, particle_type = load_and_precondition_particles(args)
+  particles, particle_type, mcpl_metadata = load_and_precondition_particles(args)
 
   if args.fit:
-    run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask)
+    run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)
   else:
-    run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask)
+    run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)
 
 if __name__ == '__main__':
   main()

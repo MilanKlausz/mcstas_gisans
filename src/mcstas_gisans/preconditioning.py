@@ -124,7 +124,7 @@ def apply_t0_correction(particles, args):
   applied beforehand to improve the reliability of the fitting.
   WARNING: the TOF axis of the monitor is assumed to have microsecond units!
   """
-  if args.t0_fixed: #T0 correction with fixed input value
+  if args.t0_fixed is not None: #T0 correction with fixed input value
     t0_correction = args.t0_fixed
   else: #T0 correction based on McStas (TOFLambda) monitor
     if not args.wfm:

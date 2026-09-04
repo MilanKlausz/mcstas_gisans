@@ -52,4 +52,7 @@ def test_plot_instrument_overrides(patch_instrument_defaults, monkeypatch, instr
         instrument = Instrument(current_inst, alpha_inc_deg=0.24, wavelength_selected=6.0, sample_orientation=2)
         _, _, q_y, q_z = read_nexus_data("data/paper/d22_measurement/073174.nxs", instrument=instrument)
         
-        assert {len(q_y), len(q_z)} == {int(pixels[0]) + 1, int(pixels[1]) + 1}
+        # sample_orientation=2 rotates the detector 90 degrees, so the NeXus x/y pixel
+        # counts (pixels[0]/pixels[1]) map to the BornAgain frame's z/y (not y/z) axes.
+        assert len(q_y) == int(pixels[1]) + 1
+        assert len(q_z) == int(pixels[0]) + 1

@@ -133,9 +133,14 @@ class Instrument:
         """
         if wavelength is None:
             wavelength = self.wavelength_selected
-        
+
         if wavelength is None:
-            return self.wavenumber_fixed if not self.is_tof_instrument else 0.0
+            if not self.is_tof_instrument:
+                return self.wavenumber_fixed
+            raise ValueError(
+                "get_wavenumber() requires a wavelength for a TOF instrument, but none was "
+                "provided and self.wavelength_selected is also None."
+            )
 
         return calculate_wavenumber(wavelength) if self.is_tof_instrument else self.wavenumber_fixed
 

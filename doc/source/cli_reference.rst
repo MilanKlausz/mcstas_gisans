@@ -44,7 +44,7 @@ mg_fit
 
 .. code-block:: bash
 
-   mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 --model my_custom_sample --wavelength_selected 6.0 --fit_parameters "radius=5:1:20;height=10:5:50"
+   mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 --model my_custom_sample --wavelength_selected 6.0 --fit radius 5 1 20 --fit height 10 5 50
 
 .. note::
    For more details on the ``--model`` argument and how to construct it, see the :doc:`custom_sample` tutorial.

@@ -9,6 +9,8 @@ dependencies:
   - matplotlib
   - h5py
   - scipy
+  - scipp
+  - scippneutron
   - pip
   - pip:
     # Default BornAgain version (PyPI release for all operating systems):

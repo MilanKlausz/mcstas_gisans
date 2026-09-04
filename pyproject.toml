@@ -18,11 +18,14 @@ dependencies = [
   "numpy>=1.0,<2.0",
   "mcpl",
   "bornagain>=21.1",
+  "scipp",
+  "scippneutron",
+  "h5py",
 ]
 [project.optional-dependencies]
 plot = ['matplotlib']
 fit = ['matplotlib', 'scipy']
-all = ['matplotlib', 'scipy', 'h5py']
+all = ['matplotlib', 'scipy']
 
 [project.urls]
 Documentation = "https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/edit?usp=sharing"
