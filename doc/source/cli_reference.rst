@@ -47,7 +47,7 @@ mg_fit
    mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 --model my_custom_sample --wavelength_selected 6.0 --fit radius 5 1 20 --fit height 10 5 50
 
 .. note::
-   For more details on the ``--model`` argument and how to construct it, see the :doc:`custom_sample` tutorial.
+   For more details on the ``--model`` argument and how to construct it, see the :doc:`custom_sample` tutorial. For ``--scan``, ``--nxs`` (including passing multiple files for segmented measurements), masking, joint/dual-sample fitting, and everything else about how ``mg_fit`` works, see :doc:`main_workflow`.
 
 mg_fit_monitor
 --------------

@@ -30,6 +30,10 @@ If the automated fitting stops early or returns an unphysical result:
 - **Fit Bounds:** Check your ``--fit`` bounds. If they are too tight, the optimizer cannot explore the space (e.g. ``--fit radius 5 20`` allows radius to vary between 5 and 20).
 - **Poisson Sampling:** Do NOT use ``--poisson_sampling`` during ``mg_fit``. Random noise prevents the objective function from converging smoothly.
 
+Multiple ``--nxs`` Files Don't Match (``mg_fit``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``mg_fit --nxs`` accepts more than one NeXus file (e.g. for a measurement recorded across several segments); their counts are summed before fitting. If you see ``Incompatible NeXus data shapes across files``, the given files were read out into detector histograms of different shapes (for example, because they were recorded with a different ``--instrument``/``--nxs_instrument_name`` or detector configuration than the others) and cannot be summed. Also remember to set ``--experiment_time`` to the *cumulative* time across all given files, not the time of a single one.
+
 Wavelength Parse Errors
 ~~~~~~~~~~~~~~~~~~~~~~~
 

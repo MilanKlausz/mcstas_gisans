@@ -27,7 +27,7 @@ The BornAgain simulation script can handle both horizontal and vertical sample o
 
 Note that McStas does not simulate individual physical neutrons. Instead, it simulates statistical representatives of them. This is reflected in the statistical weight assigned to each simulated neutron, which can be greater or less than one. For this reason, these simulated particles are often referred to as neutron rays or neutron events. Therefore, the neutrons stored in an MCPL file can represent either many physical neutrons sharing the same properties, or just a fractional contribution of a single neutron.
 
-Note that in the current codebase, a slightly modified *MCPL_output* component is present with the name *MCPL_output_noacc_russian_roulette.instr*. Its additional – but currently unused – feature is the possibility to normalise the neutron weights to a certain number (e.g, have “real” neutrons with unit-weight) by the Splitting and the Russian Roulette Monte Carlo techniques:
+Note that the repository also includes a slightly modified *MCPL_output* component definition, ``resources/mcstas_models/MCPL_output_noacc_russian_roulette.comp``. Its additional – but currently unused – feature is the possibility to normalise the neutron weights to a certain number (e.g, have “real” neutrons with unit-weight) by the Splitting and the Russian Roulette Monte Carlo techniques:
 
 .. code-block:: c
 

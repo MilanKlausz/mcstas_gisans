@@ -29,3 +29,11 @@ Utilities
    mcstas_gisans.mcstas_reader
    mcstas_gisans.beam_centre_correction
    mcstas_gisans.tof_filtering
+   mcstas_gisans.coordinates
+   mcstas_gisans.preconditioning
+   mcstas_gisans.masking
+   mcstas_gisans.detector
+   mcstas_gisans.particle_calculations
+   mcstas_gisans.parameters
+   mcstas_gisans.experiment_time
+   mcstas_gisans.hardware

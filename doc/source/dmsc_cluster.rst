@@ -153,14 +153,14 @@ Of course, running anything that is not supposed to finish in seconds should be 
    OUTPUT_FILE_PATH="${OUTPUT_BASE}/${OUTPUT_FILENAME}"
 
    singularity run --bind $COMMON_BASE \
-     ~/bornagain_v21.1_apptainer_new.sif python ~/mcstas_gisans/mg_run \
+     ~/bornagain_v21.1_apptainer_new.sif mg_run \
      $MCPL_FILE_PATH --instrument=$INSTRUMENT \
      -n 100 -s $OUTPUT_FILE_PATH \
-     --alpha=$INCIDENT_ANGLE --parallel_processes=32 \
+     --alpha=$INCIDENT_ANGLE --parallel_processes=32 --bornagain_number_of_threads=1 \
      --input_tof_range_factor=1 --wavelength=$WAVELENGTH \
      --model="lamellas_and_spheres"
 
-Assuming that one's home directory (*~*) contains a clone of the *mcstas_gisans* repository and a *bornagain_v21.1_apptainer_new.sif* singularity container file as well.
+Assuming that a *bornagain_v21.1_apptainer_new.sif* singularity container file is available (e.g. in one's home directory, *~*) with ``mcstas_gisans`` (and its ``mg_run``/``mg_plot``/... console scripts) installed inside it. Note ``--bornagain_number_of_threads=1`` above: since ``--parallel_processes=32`` already parallelises across MCPL particles, disabling BornAgain's own internal threading avoids oversubscribing the node's CPU cores (see also the note on partition core counts below).
 
 Creating plots would also be more convenient with a batch file (e.g., *submitPlot.batch*) with content like the following:
 

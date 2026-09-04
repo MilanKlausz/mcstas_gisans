@@ -26,19 +26,18 @@ You must also have an active installation of McStas (version 3.4 or higher) to r
 2. Running the McStas Simulation
 --------------------------------
 
-We will use the predefined D22 instrument model provided in the repository under the ``resources/mcstas_models/`` directory. This model is pre-configured with the required ``MCPL_output`` component at the sample position.
+We will use the predefined D22 instrument model provided in the repository at ``resources/mcstas_models/ILL_D22.instr``. This model is pre-configured with the required ``MCPL_output_noacc`` component at the sample position (see :doc:`mcstas_preparation` for what this component does and why its placement matters).
 
-To generate the incident neutron states, run the McStas simulation using the ``mcrun`` command (this assumes you have the ``mcstas-3.4-environment`` activated, or your system's equivalent McStas path):
+To generate the incident neutron states, run the McStas simulation using the ``mcrun`` command (this assumes you have a McStas 3.4+ environment activated, e.g. via ``mcstas-3.4-environment``, or your system's equivalent McStas setup):
 
 .. code-block:: bash
 
-   mcrun -c resources/mcstas_models/d22_lss_mcstas_3_4_MCPL.instr -n 1e6 -d resources/mcstas_models/output_dir \
-     lambda=6.0 dlambda=0.6 coll_len=14.4 sample_size_x=0.01 sample_size_y=0.05 \
-     sample_size_z=0.01 sx=0.04 sy=0.04
+   mcrun resources/mcstas_models/ILL_D22.instr -c -n 1e6 -d resources/mcstas_models/output_dir \
+     lambda=6.0 D22_collimation=17.6
 
-*(Note: In McStas, the ``-n 1e6`` flag specifies the total number of initial neutron rays to simulate from the source.)*
+*(Note: In McStas, the ``-n 1e6`` flag specifies the total number of initial neutron rays to simulate from the source, ``-c`` forces a recompile, and ``lambda``/``D22_collimation`` are instrument-specific parameters defined in the ``.instr`` file itself.)*
 
-This will generate an ``resources/mcstas_models/output_dir/test_events.mcpl.gz`` file containing the incident neutrons arriving at the sample position.
+This will generate a ``resources/mcstas_models/output_dir/test_events.mcpl.gz`` file containing the incident neutrons arriving at the sample position.
 
 3. Running the BornAgain DWBA Simulation
 ----------------------------------------

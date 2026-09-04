@@ -21,9 +21,14 @@ Below is an overview of the output hierarchy and the purpose of each data block.
 ---------------------
 The core physics arrays—the binned intensity counts and automatically tracked statistical variances—are stored in a standard ``sc.DataArray``. Coordinates required natively for dimension alignment, slicing, or immediate plotting are bound directly to the ``DataArray``'s coords.
 
-* ``data`` (array): The binned or event-mode intensity counts (with built-in variances).
-* ``coords['position']`` (vectors): The physical 3D map of the detector pixels.
-* ``coords['tof']`` (array, TOF only): The Time-of-Flight bin edges or event timestamps.
+* ``data`` (array): The intensity counts, with built-in (Poisson) variances.
+
+  * For **non-TOF** instruments, this is a flat ``sc.DataArray`` with one bin per detector pixel along a ``detector_id`` dimension (reshape using the detector's pixel grid, e.g. via ``coords['position']``, for 2D plotting).
+  * For **TOF** instruments, this is *binned* (event-mode) data: still one outer bin per ``detector_id``, but each bin holds the individual weighted events (with their own ``tof`` coordinate) that landed on that pixel, rather than a single summed count. No TOF-axis histogramming is performed at save time — the exact TOF of every event is preserved for flexible slicing later (e.g. with ``mg_plot --wavelength_slice``), at the cost of output file size scaling with the number of simulated events rather than a fixed number of TOF bins.
+
+* ``coords['position']`` (vectors): The physical 3D position of each detector pixel, indexed by ``detector_id``.
+* ``coords['detector_id']``: The integer pixel index each event/bin belongs to.
+* ``coords['tof']`` (array, TOF only, inside the per-pixel event bins): The individual Time-of-Flight event timestamps in seconds — not pre-binned TOF edges.
 
 2. The ``instrument`` Block
 ---------------------------
@@ -33,7 +38,7 @@ A ``sc.DataGroup`` containing all relevant, standardized scalar metadata describ
 * ``is_tof_instrument`` (scalar bool): Indicates if the instrument operates in TOF mode.
 * ``detector_centre_offset_x`` / ``detector_centre_offset_y`` (scalar, meters): The physical misalignment corrections applied to map the beam center to the Nexus grid.
 * ``alpha_inc_deg`` (scalar, degrees): The incident angle of the beam.
-* ``beam_angle`` (scalar, degrees): The azimuthal rotation of the beam.
+* ``beam_angle`` (scalar, degrees): The beam declination angle relative to the nominal beam axis (either provided via ``--instrument_beam_angle``, or otherwise calculated automatically from the average particle velocities in the input file).
 * ``sample_orientation`` / ``sample_position`` / ``source_position``: Geometric alignment constants.
 * ``wavelength_selected`` (scalar, Angstroms): The fixed monochromatic wavelength (Present **only** for non-TOF instruments; for TOF, wavelength is calculated dynamically per-bin or stored in the provenance CLI args).
 

@@ -2,9 +2,14 @@
 Creating Custom Sample Models
 =============================
 
-One of the most powerful features of ``mcstas_gisans`` is the ability to fit custom sample models directly against experimental data using ``mg_fit``. 
+One of the most powerful features of ``mcstas_gisans`` is the ability to fit custom sample models directly against experimental data using ``mg_fit`` (the same mechanism is also used by ``mg_run`` for a single simulation).
 
-To do this, you must provide a Python script containing a `get_sample(**kwargs)` function. This script must be placed inside the `src/mcstas_gisans/bornagain_samples/` directory, or in the current working directory.
+To do this, you must provide a Python script containing a ``get_sample(**kwargs)`` function. Pass its name (without ``.py``) or path via ``--model``. It is resolved in two steps:
+
+1. **Local file:** if ``--model`` names an existing ``.py`` file (an absolute path, or a path relative to your current working directory), that file is loaded directly.
+2. **Built-in model:** otherwise, ``--model`` is looked up by name among the built-in scripts in ``src/mcstas_gisans/bornagain_samples/`` (see ``--help`` for the current list, e.g. ``silica_100nm_air``, ``silica_100nm_D2O``, ``hexagonal_spheres``, ``lamellas_and_spheres``).
+
+If neither resolves, ``mg_run``/``mg_fit`` exits with an error listing how to see the built-in options.
 
 Basic Template
 --------------
@@ -62,7 +67,7 @@ If you save the above script as ``my_custom_sample.py`` in the ``bornagain_sampl
 
 You must provide a real experimental NeXus file to fit against (e.g., from an ILL D22 measurement). For this example, we assume you have downloaded an experimental file named ``d22_experiment.nxs`` and that you generated an MCPL file named ``test_events.mcpl.gz`` during the Quickstart.
 
-To run a grid fit over the ``radius`` and ``height`` parameters, execute:
+To fit the ``radius`` and ``height`` parameters, execute:
 
 .. code-block:: bash
 
@@ -80,6 +85,13 @@ initial guess, unbounded), ``name min max`` (bounds, with the initial guess set 
 midpoint), or ``name x0 min max`` (explicit initial guess and bounds). In this case,
 ``--fit radius 5 20`` tells the optimizer to search for radii between 5 nm and 20 nm. The
 framework automatically maps the fitted values to the ``**kwargs`` dictionary passed into your
-``get_sample`` function.
+``get_sample`` function. Any keyword your function does not declare (and does not catch via
+``**kwargs``) is silently dropped, with a warning printed to the console.
 
-Under the hood, ``mg_fit`` uses `scipy.optimize.differential_evolution` (or Nelder-Mead, depending on the configuration) to minimize a Poisson-weighted cost function between the simulated scattering pattern and the experimental NeXus data over the masked regions.
+Under the hood, ``mg_fit`` selects an optimizer with ``--optimizer``: ``nelder-mead`` (default),
+``powell``, or ``differential-evolution`` (which requires finite bounds on every fitted
+parameter). Each iteration re-runs the full McStas-particles-through-BornAgain simulation and
+scores it against the experimental NeXus data over the *unmasked* detector region only, using a
+loss function selected with ``--loss_function`` (``reduced_chi2`` by default, or
+``log_residual``) — see :doc:`main_workflow` for how ``--mask_*`` options control which region
+counts towards the loss, and for the simpler grid-search alternative, ``--scan``.
