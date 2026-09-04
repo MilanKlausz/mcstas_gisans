@@ -192,8 +192,9 @@ def _load_nexus_datasets(args: Any, instr_name: str, alpha: float, sample_orient
                 nxs_sample_orient = args.nxs_sample_orientation
             nxs_instrument = Instrument(nxs_instr_params, alpha, args.wavelength, nxs_sample_orient)
 
-            from .nexus_reader import read_nexus_data
-            hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument)
+            from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
+            hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
+            warn_if_duration_mismatch([nxs_filename], getattr(args, 'experiment_time', None), label=nxs_filename)
             nxs_sum = np.sum(hist)
             if args.verbose:
                 print(f"{nxs_filename} sum: {nxs_sum}")

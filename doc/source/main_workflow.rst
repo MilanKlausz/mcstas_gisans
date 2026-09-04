@@ -70,11 +70,17 @@ The framework relies on the ``--sample_orientation`` flag to map the BornAgain s
 
 The ``mg_plot`` script takes the simulated ``.h5`` files and performs the Q-space transformations and visualizations.
 
+.. _nexus-integration:
+
 NeXus Integration
 ~~~~~~~~~~~~~~~~~
 If an experimental NeXus file is provided (``--nxs``), the generic ``nexus_reader.py`` module is invoked. This module uses the physical ``Instrument`` object parameters to convert both the simulated spatial hits and the experimental detector pixels into rigorous Q-space coordinates ($Q_y$, $Q_z$). *(Note: Plotted figures follow the convention where the y-axis is horizontal and the z-axis is vertical).*
 
 ``mg_plot --nxs`` accepts multiple files; each one is plotted as its own labelled dataset (paired positionally with ``--nxs_label``, if given). This is different from ``mg_fit --nxs``, described below, where multiple files are instead summed together into a single dataset to fit against.
+
+By default, the detector data inside each NeXus file is looked up at one of two known ILL D22 HDF5 layouts (``entry0/D22/Detector 1/data1`` or ``entry0/data1/MultiDetector1_data``). For NeXus files from other facilities or detector layouts, ``--nxs_data_path`` (also available on ``mg_fit`` and ``mg_beam_centre_correction``) overrides this with an explicit HDF5 path, e.g. ``--nxs_data_path "entry0/instrument/detector/data"``.
+
+If the NeXus file reports its own measurement duration (the standard NeXus ``NXentry/duration`` field, or the ILL-specific ``NXentry/time`` alias), it is compared against ``--experiment_time`` and a warning is printed — without stopping execution — on a mismatch of more than 1%. For ``mg_fit``'s multi-file ``--nxs``, the individual files' durations are summed before comparing, matching the counts-summing behavior described below.
 
 Upscaling to Experiment Time
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -96,7 +102,7 @@ Instead of manually guessing sample parameters (like particle radius, lattice sp
 
 Experimental data (``--nxs``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-``--nxs`` accepts one or more NeXus files. If multiple files are given (e.g. a measurement split into several segments), their raw detector counts are summed together before being compared against the simulation; in that case ``--experiment_time`` should be set to the *cumulative* experiment time across all given files, not the time of a single segment. All files must produce detector histograms of the same shape, or ``mg_fit`` raises an error.
+``--nxs`` accepts one or more NeXus files. If multiple files are given (e.g. a measurement split into several segments), their raw detector counts are summed together before being compared against the simulation; in that case ``--experiment_time`` should be set to the *cumulative* experiment time across all given files, not the time of a single segment. All files must produce detector histograms of the same shape, or ``mg_fit`` raises an error. See the note on ``--nxs_data_path`` and the measurement-duration cross-check under :ref:`mg_plot's NeXus Integration <nexus-integration>` above — both apply here too, with durations summed across all given files before comparing against ``--experiment_time``.
 
 Masking (``--mask_*``)
 ~~~~~~~~~~~~~~~~~~~~~~

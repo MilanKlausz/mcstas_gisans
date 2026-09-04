@@ -20,7 +20,7 @@ from .input_output import get_particles
 from .preconditioning import precondition
 from .parameters import pack_parameters
 from .run import process_particles, process_particles_parallelly
-from .nexus_reader import read_nexus_data
+from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
 from .experiment_time import upscale_simple
 from .masking import get_mask, apply_mask, save_view_masks_plot
 
@@ -547,12 +547,13 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
     instrument = Instrument(instr_params, args.alpha, wavelength_val, args.sample_orientation, args.wfm, args.no_gravity)
 
     nxs_paths = args.nxs if isinstance(args.nxs, list) else [args.nxs]
+    nxs_data_path = getattr(args, 'nxs_data_path', None)
 
     print(f"Loading experimental NeXus data from {len(nxs_paths)} file(s):")
     hist_list = []
     y_edges_nxs, z_edges_nxs = None, None
     for path in nxs_paths:
-        hist, _, y_edges_nxs, z_edges_nxs = read_nexus_data(path, instrument)
+        hist, _, y_edges_nxs, z_edges_nxs = read_nexus_data(path, instrument, data_path=nxs_data_path)
         print(f"  {path}: shape={hist.shape}, counts={np.sum(hist):.0f}")
         hist_list.append(hist)
 
@@ -564,6 +565,8 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
     hist_nxs_raw = np.sum(hist_list, axis=0)
     hist_nxs_error_raw = np.sqrt(hist_nxs_raw)
     print(f"Summed NeXus dataset of shape {hist_nxs_raw.shape}, total counts={np.sum(hist_nxs_raw):.0f}")
+
+    warn_if_duration_mismatch(nxs_paths, args.experiment_time, label=f"{len(nxs_paths)} --nxs file(s)")
 
     mask = get_mask(
         y_edges_nxs, z_edges_nxs,

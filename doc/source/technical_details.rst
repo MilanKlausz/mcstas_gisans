@@ -72,7 +72,7 @@ See :doc:`mcstas_preparation` for how to instrument a McStas model with the moni
 
 With the modularization of the codebase, specific tasks are handled by dedicated scripts under ``src/mcstas_gisans/``:
 
-* **nexus_reader.py**: Converts experimental NeXus detector pixel data into Q-space using the same ``Instrument`` object parameters as the simulation, for direct comparison. *(Note: the internal HDF5 path to the pixel dataset is currently hardcoded to two known ILL D22 layouts — there is no CLI option to point it at an arbitrary NeXus path.)*
+* **nexus_reader.py**: Converts experimental NeXus detector pixel data into Q-space using the same ``Instrument`` object parameters as the simulation, for direct comparison. By default the detector data is looked up at one of two known ILL D22 HDF5 layouts (``entry0/D22/Detector 1/data1`` or ``entry0/data1/MultiDetector1_data``); ``--nxs_data_path`` overrides this with an explicit HDF5 path for NeXus files from other facilities or layouts. It also provides ``read_nexus_duration()``, used to weakly cross-check ``--experiment_time`` against the measurement duration reported in the NeXus file itself (see :doc:`main_workflow`).
 * **instrument.py**: The ``Instrument`` class — wraps an instrument's ``instrument_defaults`` entry together with the run's alpha/wavelength/orientation to expose detector geometry, pixel positions, and Q-space conversions.
 * **coordinates.py** / **preconditioning.py**: Coordinate transformations and MCPL particle preconditioning (T0 correction, coordinate frame conversion, beam-angle calculation), see above.
 * **tof_filtering.py**: Derives MCPL TOF acceptance limits from a McStas monitor fit, see above.

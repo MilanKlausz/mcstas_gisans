@@ -19,7 +19,7 @@ def create_argparser():
     parser.add_argument('-s', '--savename', default='qPlot', required=False, help = 'Output image filename.')
     parser.add_argument('--pdf', action='store_true', help = 'Export figure as pdf.')
     parser.add_argument('--png', action='store_true', help = 'Export figure as png.')
-    parser.add_argument('-t', '--experiment_time', default=None, type=int, help = 'Experiment time in seconds to scale the results up to. (e.g. 10800). Must be a positive integer.')
+    parser.add_argument('-t', '--experiment_time', default=None, type=int, help = 'Experiment time in seconds to scale the results up to. (e.g. 10800). Must be a positive integer. If a --nxs file reports its own measurement duration, it is compared against this value and a warning (not an error) is printed on a mismatch.')
     parser.add_argument('--background', default=0, type=float, help = 'Add Poisson background to each bin.')
     parser.add_argument('-v', '--verbose', action='store_true', help = 'Verbose output.')
     parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
@@ -40,6 +40,7 @@ def create_argparser():
     storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
     storedDataParamGroup.add_argument('--nxs', nargs = '*', help = 'Full path to the D22 Nexus file.')
     storedDataParamGroup.add_argument('--nxs_label', nargs = '*', help = 'Label for Nexus input[s]. Must be used together with --nxs if a label is desired. If not provided, the label will be generated from the Nexus file name.')
+    storedDataParamGroup.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
     storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise simulated data to the total intensity in the Nexus file.')
     storedDataParamGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample. 1 - horizontal sample, 0/2 - vertical sample with the beam hitting it from left/right.')

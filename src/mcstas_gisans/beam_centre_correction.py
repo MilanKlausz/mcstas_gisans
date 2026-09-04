@@ -12,7 +12,7 @@ from .nexus_reader import read_nexus_data
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults
 
-def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False):
+def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False, nxs_data_path=None):
     """
     Find the required centre_offset values for the detector so that the beam centre
     measured in a NeXus file is positioned at (qy, qz) = (0, 0) in Q-space.
@@ -34,6 +34,9 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, w
         The name of the instrument key in instrument_defaults (default: 'd22').
     verbose : bool, optional
         If True, print detailed optimization progress.
+    nxs_data_path : str, optional
+        Explicit HDF5 path to the detector data inside the NeXus file. If None,
+        the default paths in nexus_reader.py are tried automatically.
 
     Returns
     -------
@@ -55,7 +58,7 @@ def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, w
         dummy_params['detector']['direct_beam_centre_offset'] = list(initial_guess)
         dummy_instrument = Instrument(dummy_params, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
 
-        hist, _, _, _ = read_nexus_data(filepath, dummy_instrument)
+        hist, _, _, _ = read_nexus_data(filepath, dummy_instrument, data_path=nxs_data_path)
 
         if verbose:
             print(f"\n--- Starting Beam Centre Minimisation ---")
@@ -110,6 +113,7 @@ def create_argparser():
     parser.add_argument('--sample_orientation', type=int, default=1, help="Sample orientation (default: 1).")
     parser.add_argument('--instrument', type=str, default='d22', help="Instrument name in instrument_defaults (default: 'd22').")
     parser.add_argument('--beam_angle', type=float, default=None, help="Override beam declination angle in degrees (default: loaded from instrument defaults).")
+    parser.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the NeXus file, e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     parser.add_argument('--verbose', action='store_true', help="Print detailed optimization progress.")
     return parser
 
@@ -124,7 +128,8 @@ def main():
             wavelength=args.wavelength,
             sample_orientation=args.sample_orientation,
             instrument_name=args.instrument,
-            verbose=args.verbose
+            verbose=args.verbose,
+            nxs_data_path=args.nxs_data_path
         )
         print(f"Calculated centre_offset [m]:  [{offset[0]:.6f}, {offset[1]:.6f}]")
     except Exception as e:

@@ -34,6 +34,14 @@ Multiple ``--nxs`` Files Don't Match (``mg_fit``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``mg_fit --nxs`` accepts more than one NeXus file (e.g. for a measurement recorded across several segments); their counts are summed before fitting. If you see ``Incompatible NeXus data shapes across files``, the given files were read out into detector histograms of different shapes (for example, because they were recorded with a different ``--instrument``/``--nxs_instrument_name`` or detector configuration than the others) and cannot be summed. Also remember to set ``--experiment_time`` to the *cumulative* time across all given files, not the time of a single one.
 
+Could Not Find Detector Data in NeXus File
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+By default, ``--nxs`` files are expected to hold their detector data at one of two known ILL D22 HDF5 paths. If you see ``Could not find detector data in NeXus file ... at any of the default paths``, your file uses a different facility/instrument layout: inspect it (e.g. with ``h5py`` or ``h5dump -n``) to find the correct dataset path, then pass it explicitly with ``--nxs_data_path``, e.g. ``--nxs_data_path "entry0/instrument/detector/data"``.
+
+Experiment Time / Measurement Duration Mismatch Warning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If your NeXus file(s) report their own measurement duration (checked via the standard ``NXentry/duration`` field, falling back to the ILL-specific ``NXentry/time`` alias), it is compared against ``--experiment_time`` on ``mg_plot``/``mg_fit`` (the tools that read both ``--nxs`` and ``--experiment_time``). A message like ``WARNING: ... report a total measurement duration of 1800.0s ... but --experiment_time was set to 3600.0s`` does **not** stop execution — it's a hint that ``--experiment_time`` may not match the actual measurement. This is common when reusing a placeholder value across a whole segmented series (e.g. always passing the nominal per-segment duration instead of the true cumulative sum, which can differ if a segment was cut short). If the value is intentional (e.g. deliberately simulating a different exposure time than the real measurement), the warning can be ignored.
+
 Wavelength Parse Errors
 ~~~~~~~~~~~~~~~~~~~~~~~
 

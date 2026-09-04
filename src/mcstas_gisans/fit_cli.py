@@ -13,7 +13,8 @@ def create_fit_parser():
     scan_group.add_argument('--scan', action='append', nargs='+', required=False,
                             help='Parameter name followed by values to scan, e.g., --scan radius 10 12 15')
     scan_group.add_argument('--nxs', type=str, nargs='+', required=True, help='Path(s) to experimental NeXus file(s) to match. If multiple files are given (e.g. segmented measurements), their counts are summed; --experiment_time should then be the cumulative experiment time across all given files.')
-    scan_group.add_argument('--experiment_time', type=float, default=None, help='Virtual experiment time in seconds for upscaling the simulation. If --nxs specifies multiple files, this should be their cumulative experiment time.')
+    scan_group.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
+    scan_group.add_argument('--experiment_time', type=float, default=None, help='Virtual experiment time in seconds for upscaling the simulation. If --nxs specifies multiple files, this should be their cumulative experiment time. If the NeXus file(s) report their own measurement duration, it is compared against this value and a warning (not an error) is printed on a mismatch.')
     scan_group.add_argument('--background', type=float, default=0.0, help='Flat background level added during upscaling.')
     scan_group.add_argument('--poisson_sampling', action='store_true', help='Enable random Poisson noise sampling on the simulated data. (Off by default during scans/fits to ensure deterministic, smooth objective function evaluation for optimizer convergence.)')
     scan_group.add_argument('--output_dir', type=str, default='scan_results', help='Directory to save scan results.')
