@@ -2,6 +2,7 @@ import os
 import tempfile
 import numpy as np
 import scipp as sc
+import h5py
 import json
 import pytest
 from unittest.mock import MagicMock
@@ -128,3 +129,90 @@ def test_save_simulation_results_metadata():
         data = dataset['data']
         assert np.array_equal(data.values, [1.0, 2.0, 3.0, 4.0])
         assert np.array_equal(data.variances, [0.1, 0.2, 0.3, 0.4])
+
+
+def test_save_simulation_results_tof_metadata_and_variance():
+    """
+    TOF-instrument counterpart to test_save_simulation_results_metadata: the
+    non-TOF path above was the only one covered before. This exercises the
+    event-mode branch of save_simulation_results_as_scipp (reading the
+    temporary per-worker HDF5 event buffer, binning into detector pixels,
+    and attaching pixel positions), and specifically pins down the
+    event-level variance convention (variance = weight**2, matching the
+    non-TOF path's pixelHistWeightsSquared and what plot.py's
+    scipp_binned.bins.sum() expects downstream).
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        savename = os.path.join(tmpdir, "test_tof_output")
+
+        # Build a fake per-worker TOF event buffer, matching what
+        # run.py's _update_tof_buffer writes: 3 events landing in 2 pixels.
+        detector_ids = np.array([0, 1, 0], dtype=np.int32)
+        tofs = np.array([100.0, 200.0, 150.0], dtype=np.float32)
+        weights = np.array([2.0, 3.0, 4.0], dtype=np.float64)
+
+        temp_h5_path = os.path.join(tmpdir, "worker_events.h5")
+        with h5py.File(temp_h5_path, 'w') as f:
+            f.create_dataset('detector_id', data=detector_ids)
+            f.create_dataset('tof', data=tofs)
+            f.create_dataset('weight', data=weights)
+
+        # Mock Instrument (TOF instrument, 1x2 pixel detector)
+        inst = MagicMock()
+        inst.is_tof_instrument = True
+        inst.detector = MagicMock()
+        inst.detector.direct_beam_centre_offset_x_nexus = 0.0
+        inst.detector.direct_beam_centre_offset_y_nexus = 0.0
+        inst.detector.sample_orientation = "horizontal"
+        inst.detector.pixels_x_nexus = 1
+        inst.detector.pixels_y_nexus = 2
+        pixel_positions = np.array([[0.0, 0.0, 5.0], [0.0, 0.1, 5.0]])
+        inst.detector.get_pixel_positions.return_value = pixel_positions
+
+        inst.alpha_inc = np.deg2rad(0.5)
+        inst.beam_angle = 1.2
+        inst.nominal_source_sample_distance = 15.0
+        inst.sample_detector_distance = 5.0
+
+        sample_mock = MagicMock()
+        mock_module = MagicMock()
+        mock_module.__file__ = __file__
+        sample_mock.get_module.return_value = mock_module
+
+        params = {
+            'instrument': inst,
+            'instrument_name': 'test_tof_instr',
+            'sample': sample_mock
+        }
+
+        result = {'temp_h5_path': temp_h5_path}
+
+        from argparse import Namespace
+        args = Namespace()
+        args.model = "test_sample_name"
+        args.sample_arguments = "radius=51"
+        args.filename = "test_mcpl.mcpl"
+
+        save_simulation_results_as_scipp(savename, params, result, args, mcpl_metadata=None)
+
+        h5_path = savename + ".h5"
+        assert os.path.exists(h5_path), "The HDF5 file was not created"
+        # The temp per-worker event file must be cleaned up after consumption
+        assert not os.path.exists(temp_h5_path), "Temporary TOF event file was not removed"
+
+        dataset = sc.io.hdf5.load_hdf5(h5_path)
+
+        assert isinstance(dataset, sc.DataGroup)
+        assert 'data' in dataset
+        assert 'mcpl' not in dataset, "No mcpl_metadata was given, so no mcpl group should be written"
+
+        data = dataset['data']
+        assert data.bins is not None, "TOF output should be binned event data"
+        assert data.sizes['detector_id'] == 2
+        assert np.array_equal(data.coords['position'].values, pixel_positions)
+
+        summed = data.bins.sum()
+        # Pixel 0 got events with weights 2.0 and 4.0; pixel 1 got weight 3.0.
+        assert np.allclose(summed.values, [6.0, 3.0])
+        # Variance must be sum(weight**2), not sum(weight): 2**2+4**2=20, 3**2=9.
+        assert np.allclose(summed.variances, [20.0, 9.0])
