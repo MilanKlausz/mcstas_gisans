@@ -148,7 +148,7 @@ def load_scipp_file(filename: str) -> Any:
 
             print("Creating Scipp DataArray...")
             da = sc.DataArray(
-                data=sc.array(dims=['event'], values=weights, variances=weights, unit='counts'),
+                data=sc.array(dims=['event'], values=weights, variances=weights**2, unit='counts'),
                 coords={
                     'detector_id': sc.array(dims=['event'], values=det_ids, unit=None),
                     'tof': sc.array(dims=['event'], values=tofs, unit='s')
@@ -289,7 +289,7 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
                     os.remove(tf)
 
         da = sc.DataArray(
-            data=sc.array(dims=['event'], values=weights, variances=weights, unit='counts'),
+            data=sc.array(dims=['event'], values=weights, variances=weights**2, unit='counts'),
             coords={
                 'detector_id': sc.array(dims=['event'], values=det_ids, unit=None),
                 'tof': sc.array(dims=['event'], values=tofs, unit='s')
