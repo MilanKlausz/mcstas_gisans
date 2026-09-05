@@ -6,27 +6,49 @@ the results and adjusting the uncertainties.
 import numpy as np
 import math as m
 
-def upscale_simple(hist, hist_error, experiment_time, background, poisson_sampling=True):
+def upscale_simple(hist, hist_error, experiment_time, background, poisson_sampling=True, rng=None):
     """Upscale simulated results by a virtual experiment time,
-    applying Poisson distribution and background to the data"""
-    #scale to experiment time
-    hist *= experiment_time
-    hist_error *= experiment_time
+    applying Poisson distribution and background to the data.
+
+    Uses a scipp DataArray (variances=hist_error**2) internally so the
+    experiment_time scaling's error propagation (hist_error *= experiment_time)
+    falls out of scipp's own scalar-multiply variance propagation rather than
+    being done by hand, and so this function no longer mutates the caller's
+    hist/hist_error arrays in place (the previous `hist *= experiment_time`
+    modified the caller's array directly -- harmless with current callers,
+    which don't reuse it afterwards, but fragile/surprising in general).
+
+    rng : numpy.random.Generator, optional
+        Source of randomness for Poisson sampling. Defaults to a fresh
+        np.random.default_rng() as before; pass an explicit seeded generator
+        for reproducible results (e.g. in tests).
+    """
+    import scipp as sc
+
+    dims = [f"dim{i}" for i in range(np.ndim(hist))]
+    da = sc.DataArray(data=sc.array(dims=dims, values=np.asarray(hist, dtype=float), variances=np.asarray(hist_error, dtype=float)**2))
+
+    # scale to experiment time (scipp propagates variance as variance*time**2,
+    # i.e. error*time -- matching the old hist_error *= experiment_time)
+    da = da * float(experiment_time)
 
     # add flat background (equal to adding Poisson background after sampling
-    # Poisson distribution for the whole dataset.)
-    hist += background
+    # Poisson distribution for the whole dataset.) A constant offset doesn't
+    # add variance, matching the old code (hist += background, hist_error untouched).
+    da = da + sc.scalar(float(background))
 
     if poisson_sampling:
         #sample Poisson distribution for each bin with lambda='simulated counts'
-        rng = np.random.default_rng()
-        hist = rng.poisson(lam=hist)
+        if rng is None:
+            rng = np.random.default_rng()
+        hist = rng.poisson(lam=da.values)
         hist_error = np.sqrt(hist)
     else:
         # For optimization/fitting: use the deterministic expected value and combine
         # the scaled Monte Carlo simulation error with the expected Poisson uncertainty.
         # Variance = (MC error)^2 + Expected Poisson variance (which is equal to the mean 'hist')
-        hist_error = np.sqrt(hist_error**2 + hist)
+        hist = da.values
+        hist_error = np.sqrt(da.variances + hist)
 
     return hist, hist_error
 
