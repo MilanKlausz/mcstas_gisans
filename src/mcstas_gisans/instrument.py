@@ -200,6 +200,22 @@ class Instrument:
         out_dir_z = pos_ba_z / L2
 
         if self.is_tof_instrument:
+            needs_wavelength = (
+                (scipp_da.bins is not None and 'wavelength' not in scipp_da.bins.coords) or
+                (scipp_da.bins is None and 'wavelength' not in scipp_da.coords)
+            )
+            if needs_wavelength:
+                # scn.convert needs sample_position/source_position to compute the
+                # flight path length; these aren't part of the saved event data
+                # itself (only of the separate 'instrument' metadata group), so
+                # attach them here from self.nominal_source_sample_distance, which
+                # is already adjusted for WFM mode (shorter virtual-source distance)
+                # at construction time.
+                if 'sample_position' not in scipp_da.coords:
+                    scipp_da.coords['sample_position'] = sc.vector(value=[0.0, 0.0, 0.0], unit='m')
+                if 'source_position' not in scipp_da.coords:
+                    scipp_da.coords['source_position'] = sc.vector(value=[0.0, 0.0, -self.nominal_source_sample_distance], unit='m')
+
             if scipp_da.bins is not None:
                 if 'wavelength' not in scipp_da.bins.coords:
                     scipp_da = scn.convert(scipp_da, origin='tof', target='wavelength', scatter=True)
