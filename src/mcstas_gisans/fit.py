@@ -80,9 +80,18 @@ def calculate_fitness(
     hist_sim_error: np.ndarray
 ) -> Tuple[float, float]:
     """
-    Evaluate fitness directly on the pre-masked histograms.
+    Evaluate fitness between an experimental and a simulated histogram.
 
-    Masked regions are represented by NaN in the histograms.
+    Masked regions are represented by NaN in hist_nxs/hist_sim (hist_nxs is
+    typically pre-masked once upfront by prepare_experimental_data; hist_sim
+    is typically passed in unmasked -- either input may legitimately contain
+    NaN, and any position where either does is excluded).
+
+    Uses a native scipp boolean mask internally (rather than manually
+    indexing NumPy arrays by a derived boolean array) so that the (I_exp -
+    I_sim) difference's variance (sigma_exp**2 + sigma_sim**2) falls out of
+    scipp's own automatic error propagation on subtraction, instead of being
+    computed by hand.
 
     Parameters
     ----------
@@ -100,22 +109,38 @@ def calculate_fitness(
     tuple
         A tuple containing (reduced_chi2, log_residual).
     """
-    valid_mask = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
+    import scipp as sc
 
-    I_exp = hist_nxs[valid_mask]
-    I_sim = hist_sim[valid_mask]
-    sigma_exp = hist_nxs_error[valid_mask]
-    sigma_sim = hist_sim_error[valid_mask]
+    exclude = ~(np.isfinite(hist_nxs) & np.isfinite(hist_sim))
+    keep = ~exclude
 
-    sigma_exp = np.where(sigma_exp > 0, sigma_exp, 1.0)
+    # Floor sigma_exp before squaring into a variance, so that scipp's
+    # automatic variance-sum on subtraction reproduces the old total_error_sq
+    # exactly, including this floor.
+    sigma_exp_floored = np.where(hist_nxs_error > 0, hist_nxs_error, 1.0)
+
+    dims = [f"dim{i}" for i in range(hist_nxs.ndim)]
+    nxs_da = sc.DataArray(
+        data=sc.array(dims=dims, values=np.nan_to_num(hist_nxs, nan=0.0), variances=sigma_exp_floored**2),
+        masks={'excluded': sc.array(dims=dims, values=exclude)},
+    )
+    sim_da = sc.DataArray(
+        data=sc.array(dims=dims, values=np.nan_to_num(hist_sim, nan=0.0), variances=hist_sim_error**2),
+        masks={'excluded': sc.array(dims=dims, values=exclude)},
+    )
+
+    # scipp propagates variances on subtraction as sigma_exp**2 + sigma_sim**2.
+    diff = nxs_da - sim_da
+    total_error_sq = np.where(diff.variances > 0, diff.variances, 1.0)
 
     # Chi-square: weighted square deviations directly comparing absolute counts
-    total_error_sq = sigma_exp**2 + sigma_sim**2
-    total_error_sq = np.where(total_error_sq > 0, total_error_sq, 1.0)
-    chi2 = np.sum(((I_exp - I_sim) ** 2) / total_error_sq)
-    reduced_chi2 = chi2 / len(I_exp) if len(I_exp) > 0 else np.nan
+    n_valid = int(np.sum(keep))
+    chi2 = np.sum(((diff.values ** 2) / total_error_sq)[keep])
+    reduced_chi2 = chi2 / n_valid if n_valid > 0 else np.nan
 
     # Logarithmic residual:
+    I_exp = hist_nxs[keep]
+    I_sim = hist_sim[keep]
     pos_mask = (I_exp > 0) & (I_sim > 0)
     if np.any(pos_mask):
         log_I_exp = np.log10(I_exp[pos_mask])
@@ -714,12 +739,18 @@ def run_simulation_evaluation(
             poisson_sampling=args.poisson_sampling
         )
 
+    # hist_nxs is already masked (NaN outside `mask`) by prepare_experimental_data,
+    # so calculate_fitness's own isfinite-based exclusion already covers the mask;
+    # hist_sim is passed in unmasked (masking.apply_mask would only overwrite
+    # already-excluded positions -- kept positions are identical either way).
+    reduced_chi2, log_residual = calculate_fitness(
+        hist_nxs, hist_nxs_error, hist_sim, hist_sim_error
+    )
+
+    # hist_sim_masked/_error_masked (NaN-filled) are only needed for the
+    # comparison plot's display, not for the fitness calculation above.
     hist_sim_masked = apply_mask(hist_sim, mask, np.nan)
     hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
-
-    reduced_chi2, log_residual = calculate_fitness(
-        hist_nxs, hist_nxs_error, hist_sim_masked, hist_sim_error_masked
-    )
 
     record = copy.deepcopy(grid_point)
     record['reduced_chi2'] = reduced_chi2
