@@ -16,7 +16,7 @@ def test_find_required_centre_offset_073162():
 
   # Check if it matches expected value
   assert np.isclose(offset[0], 0.29018731062878)
-  assert np.isclose(offset[1], -0.01568863004422238)
+  assert np.isclose(offset[1], -0.01918937428496497)
 
 def test_find_required_centre_offset_073174():
   filepath = os.path.join("data", "paper", "d22_measurement", "073174.nxs")
@@ -29,7 +29,7 @@ def test_find_required_centre_offset_073174():
 
   # Check if it matches expected value
   assert np.isclose(offset[0], 0.15351910619853737)
-  assert np.isclose(offset[1], -0.01627699118921419)
+  assert np.isclose(offset[1], -0.01977701711532396)
 
 def test_find_required_centre_offset_declination_override():
   filepath = os.path.join("data", "paper", "d22_measurement", "073162.nxs")
@@ -38,7 +38,7 @@ def test_find_required_centre_offset_declination_override():
   assert isinstance(offset, np.ndarray)
   assert offset.shape == (2,)
   assert np.isclose(offset[0], 0.29010969674566817)
-  assert np.isclose(offset[1], -0.15096395)
+  assert np.isclose(offset[1], -0.15446492477374202)
 
 if __name__ == "__main__":
   test_find_required_centre_offset_073162()

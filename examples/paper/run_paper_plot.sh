@@ -32,7 +32,7 @@ mg_plot \
   --q_min 0.072 \
   --q_max 0.102 \
   --plot_differences 1 \
-  --instrument_detector_centre_offset -0.290202 0.009179 \
+  --instrument_detector_centre_offset -0.290202 0.005678 \
   --sample_orientation 2 \
   --alpha 0.24 \
   --wavelength 6.0 \

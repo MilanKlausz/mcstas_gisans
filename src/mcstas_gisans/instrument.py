@@ -100,16 +100,39 @@ class Instrument:
         self.sample_detector_distance, self.detector.max_edge_z_bornagain
     )
 
-    # 3. Combine into coordinate limit vectors in BornAgain space [Y_BA, Z_BA, X_BA].
-    q_min_coords = [q_min_y_ba, q_min_z_ba, q_min_x_ba]
-    q_max_coords = [q_max_y_ba, q_max_z_ba, q_max_x_ba]
+    # 3. Combine into coordinate limit vectors in BornAgain space [Y_BA, Z_BA, X_BA]
+    # (horizontal, vertical, longitudinal by physical meaning -- same positional
+    # order as self.detector.gravity_acceleration_vector below, even though that
+    # array's own [gx,gy,gz] labels follow this module's *other* convention,
+    # horizontal/vertical/longitudinal, confirmed empirically: gy is the ~9.8
+    # dominant component, gx/gz are the small transverse/longitudinal ones).
+    q_min_coords = np.array([q_min_y_ba, q_min_z_ba, q_min_x_ba], dtype=np.float64)
+    q_max_coords = np.array([q_max_y_ba, q_max_z_ba, q_max_x_ba], dtype=np.float64)
+
+    # Apply outgoing gravity correction to find straight-line trajectories.
+    # Without this, only the incident beam direction (calculate_incident_direction,
+    # below) was gravity-dropped; the sample-to-detector-edge leg used here to
+    # define the Q-space bin edges was treated as a straight line, which is
+    # physically inconsistent (both legs of the flight path fall under gravity).
+    if not self.no_gravity:
+      import scipy.constants as const
+      w = wavelength if wavelength is not None else self.wavelength_selected
+      velocity = (const.h / const.m_n) / (w * 1e-10)
+
+      t_flight_min = np.linalg.norm(q_min_coords) / velocity
+      t_flight_max = np.linalg.norm(q_max_coords) / velocity
+
+      g_vec = self.detector.gravity_acceleration_vector
+
+      q_min_coords -= 0.5 * g_vec * t_flight_min**2
+      q_max_coords -= 0.5 * g_vec * t_flight_max**2
 
     # 4. Convert coordinate limits to outgoing direction unit vectors.
     outgoing_direction_q_min = q_min_coords / np.linalg.norm(q_min_coords)
     outgoing_direction_q_max = q_max_coords / np.linalg.norm(q_max_coords)
 
     wavenumber = self.get_wavenumber(wavelength)
-    
+
     # 5. Compute the reference incident direction. For non-TOF instruments, this uses the pre-calculated gravity-dropped reference direction.
     if not self.is_tof_instrument:
       w = wavelength if wavelength is not None else self.wavelength_selected
@@ -118,8 +141,12 @@ class Instrument:
       incident_direction = self.incident_direction
 
     # 6. Calculate min and max scattering vector (Q) limits.
-    q_min = (outgoing_direction_q_min - incident_direction) * wavenumber
-    q_max = (outgoing_direction_q_max - incident_direction) * wavenumber
+    q_min_raw = (outgoing_direction_q_min - incident_direction) * wavenumber
+    q_max_raw = (outgoing_direction_q_max - incident_direction) * wavenumber
+
+    # Ensure that q_min strictly contains the minimums and q_max the maximums
+    q_min = np.minimum(q_min_raw, q_max_raw)
+    q_max = np.maximum(q_min_raw, q_max_raw)
 
     return q_min, q_max
 
