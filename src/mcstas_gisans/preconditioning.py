@@ -9,6 +9,16 @@ from .instrument_defaults import instrument_defaults
 
 from .coordinates import CoordinateTransform
 
+# Threshold [deg] above which a mismatch between the beam angle actually used
+# for a simulation and the value independently estimated from the MCPL file's
+# particle velocities is reported. This is a sanity check only (e.g. to catch
+# a forgotten/wrong --instrument_beam_angle, or an MCPL file that does not
+# match the intended measurement) -- the estimate itself is never used as a
+# fallback value, since the same beam angle must be used consistently with
+# mg_beam_centre_correction, which has no MCPL data to estimate it from and
+# therefore always requires it to be known and provided explicitly.
+BEAM_ANGLE_MISMATCH_WARNING_DEG = 0.05
+
 def calculate_beam_angle(vx_nexus, vy_nexus, vz_nexus, p, sample_orientation):
     """
     Calculate the beam declination angle from the average particle velocities in the NeXus frame.
@@ -40,10 +50,19 @@ def transform_to_bornagain_coordinate_system(particles, alpha_inc_deg, sample_or
         y_nexus = y_nexus + nexus_y_shift
 
     calculated_beam_angle = calculate_beam_angle(vx_nexus, vy_nexus, vz_nexus, p, sample_orientation)
-    print(f"    Calculated beam angle: {calculated_beam_angle:.6f} deg")
+    print(f"    Calculated beam angle from MCPL particle velocities (for sanity-checking only): {calculated_beam_angle:.6f} deg")
 
-    actual_beam_angle = beam_angle if beam_angle is not None else calculated_beam_angle
+    actual_beam_angle = beam_angle if beam_angle is not None else 0.0
     print(f"    Actual beam angle used for simulation: {actual_beam_angle:.6f} deg")
+
+    angle_diff = abs(calculated_beam_angle - actual_beam_angle)
+    if angle_diff > BEAM_ANGLE_MISMATCH_WARNING_DEG:
+        print(
+            f"    WARNING: the beam angle used for this simulation ({actual_beam_angle:.6f} deg) differs from the "
+            f"value calculated from this MCPL file's particle velocities ({calculated_beam_angle:.6f} deg) by "
+            f"{angle_diff:.6f} deg. This does not stop execution, but double-check --instrument_beam_angle (and "
+            f"the instrument's configured default) and that this MCPL file matches the intended measurement."
+        )
 
     # In case the beam is not horizontal (beam_angle is not 0), the
     # beam_angle must be taken into account when calculating the

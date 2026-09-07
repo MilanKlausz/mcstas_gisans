@@ -184,13 +184,17 @@ simulation itself, adding the sample model and its incident angle
    mg_plot --filename sample_sim.h5 --nxs sample.nxs --overlay \
      --experiment_time <sample measurement time>
 
-Unlike ``mg_beam_centre_correction``, ``mg_run`` does not need the beam's
-declination angle to be known in advance: it estimates it automatically from
-the average transverse velocity of the loaded MCPL particles (printed to the
-console as "Calculated beam angle"), and uses that unless overridden with
-``--instrument_beam_angle``. If you have independently determined a more
-reliable beam angle (e.g. from a set of direct beam measurements), pass it
-explicitly instead.
+Like ``mg_beam_centre_correction``, ``mg_run`` defaults the beam angle to
+``0.0`` (or whatever is configured for the instrument in
+``instrument_defaults.py``) unless overridden with ``--instrument_beam_angle``
+— use the same value here as in step 1, for consistency with the detector
+offset calculated there. ``mg_run`` separately prints an independent estimate
+of the beam angle from the average transverse velocity of the loaded MCPL
+particles, purely as a sanity check: it is never used as the actual value, but
+a printed ``WARNING`` if it disagrees with the value actually used by more
+than 0.05°, is worth investigating — it usually means a forgotten/wrong
+``--instrument_beam_angle``, or an MCPL file that does not match the intended
+measurement.
 
 5. Unknown sample parameters: fitting instead of a single comparison
 -------------------------------------------------------------------------

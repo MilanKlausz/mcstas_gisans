@@ -86,7 +86,7 @@ def create_argparser() -> argparse.ArgumentParser:
     instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
     instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
     instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
-    instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, it is automatically calculated from the simulation events using arcsin(mean(v_transverse) / mean(v_total)).')
+    instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, defaults to 0.0 (or the instrument\'s configured default in instrument_defaults.py). An independent estimate from the MCPL file\'s particle velocities is printed and compared against the value actually used, purely as a sanity check (it is never used as a fallback value, since it must match whatever value was assumed for mg_beam_centre_correction, which has no MCPL data to estimate it from).')
     instrumentGroup.add_argument('--nexus_y_shift', type=float, default=0.0, help='Shift the beam slightly upwards (in NeXus frame) to ensure it hits the sample surface. E.g. 0.0065')
 
     return parser

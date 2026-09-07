@@ -59,7 +59,7 @@ def create_argparser():
     instrumentGroup.add_argument('--instrument_t0_monitor_name', type=str, help='Override t0 monitor name.')
     instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
     instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
-    instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, it is automatically calculated from the simulation events using arcsin(mean(v_transverse) / mean(v_total)).')
+    instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the instrument beam angle [deg]. This is the angle of the incident beam relative to the nominal horizontal axis. If not provided, defaults to the value stored in the loaded .h5 file\'s metadata (i.e. whatever was actually used by mg_run/mg_fit for that simulation), or 0.0 otherwise.')
 
     nxsInstrumentGroup = parser.add_argument_group('NeXus Instrument overrides', 'Override parameters specifically for the NeXus instrument used to parse the measured data.')
     nxsInstrumentGroup.add_argument('--nxs_instrument_name', type=str.lower, choices=list(instrument_defaults.keys()), help='NeXus instrument name. Defaults to the simulated instrument if not provided.')
