@@ -34,6 +34,15 @@ def format_time(seconds):
   else:
     return f"{seconds:.2f}s"
 
+def format_fit_value(v):
+  """Format a fitted parameter value with 4 decimal places, falling back to
+  scientific notation for nonzero values too small to show at that precision
+  (e.g. an SLD on the order of 1e-6), which would otherwise print as 0.0000."""
+  s = f"{v:.4f}"
+  if v != 0 and float(s) == 0.0:
+    return f"{v:.4e}"
+  return s
+
 def create_fit_parser():
   parser = create_run_parser()
 
@@ -848,7 +857,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     remaining = args.max_evals - eval_counter[0]
     eta = avg_iter_time * max(0, remaining)
 
-    param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={v:.4f}" for k, v in display_point.items())
+    param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
     print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     return loss
 
@@ -898,7 +907,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     if k in fit_integers or base_name in fit_integers:
       val_str = str(int(np.round(v)))
     else:
-      val_str = f"{v:.4f}"
+      val_str = format_fit_value(v)
     fit_results_lines.append(f"  {k} = {val_str}")
 
   fit_results_lines.extend([
