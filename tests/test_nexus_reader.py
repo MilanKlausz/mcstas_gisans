@@ -145,3 +145,15 @@ def test_fit_prepare_experimental_data_wires_data_path_and_duration_warning(caps
     assert hist_nxs_raw.shape == (128, 256)
     assert np.sum(hist_nxs_raw) > 0
 
+
+
+def test_read_nexus_raw_accepts_2d_and_sums_frames(tmp_path):
+    import h5py
+    from mcstas_gisans.nexus_reader import read_nexus_raw
+    image = np.arange(12.0).reshape(3, 4)
+    with h5py.File(tmp_path / "two_d.nxs", 'w') as f:
+        f.create_dataset('entry0/D22/Detector 1/data1', data=image)
+    with h5py.File(tmp_path / "frames.nxs", 'w') as f:
+        f.create_dataset('entry0/D22/Detector 1/data1', data=np.stack([image, 2 * image], axis=2))
+    np.testing.assert_array_equal(read_nexus_raw(str(tmp_path / "two_d.nxs")), image)
+    np.testing.assert_array_equal(read_nexus_raw(str(tmp_path / "frames.nxs")), 3 * image)

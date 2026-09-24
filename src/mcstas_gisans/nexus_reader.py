@@ -42,7 +42,15 @@ def read_nexus_raw(filepath, data_path=None):
                     break
             else:
                 raise KeyError(f"Could not find detector data in NeXus file {filepath} at any of the default paths {DEFAULT_NEXUS_DATA_PATHS}. Use --nxs_data_path to specify the correct HDF5 path.")
-    return np.asarray(detector_data[:, :, 0], dtype=np.float64)
+    data = np.asarray(detector_data, dtype=np.float64)
+    if data.ndim == 2:
+        return data
+    if data.ndim == 3:
+        if data.shape[2] != 1:
+            print(f"WARNING: the detector data in {filepath} has {data.shape[2]} frames/time channels; they are summed.")
+        return data.sum(axis=2)
+    raise ValueError(f"Unsupported detector data shape {data.shape} in {filepath}: a 2D pixel image [x, y] "
+                     f"(optionally with a third frame/time-channel axis) is expected.")
 
 
 def read_nexus_data(filepath, instrument, data_path=None, scale_factor=None):
@@ -63,6 +71,10 @@ def read_nexus_data(filepath, instrument, data_path=None, scale_factor=None):
         Multiplicative factor applied to the raw detector counts (and their errors).
     """
     hist = read_nexus_raw(filepath, data_path)
+    expected_shape = (instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)
+    if hist.shape != expected_shape:
+        raise ValueError(f"The detector image in {filepath} has shape {hist.shape}, but the instrument detector "
+                         f"has {expected_shape} pixels (see --instrument_detector_pixels / --nxs_instrument_detector_pixels).")
     hist_error = np.sqrt(hist)
     if scale_factor is not None:
         hist = hist * scale_factor

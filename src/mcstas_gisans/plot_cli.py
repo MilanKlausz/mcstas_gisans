@@ -42,7 +42,7 @@ def create_argparser():
     storedDataParamGroup.add_argument('--nxs_label', nargs = '*', help = 'Label for Nexus input[s]. Must be used together with --nxs if a label is desired. If not provided, the label will be generated from the Nexus file name.')
     storedDataParamGroup.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
-    storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise simulated data to the total intensity in the Nexus file.')
+    storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise the total intensity of each simulated dataset to that of the (first) NeXus file.')
     storedDataParamGroup.add_argument('--sample_orientation', default=None, choices=[0,1,2], type=int, help = 'Orientation of the sample, by the direction of its surface normal (looking along the beam): 1 - horizontal sample, normal up (reflection goes up); 0 - vertical sample, normal pointing right (reflection goes right, towards lower raw detector x index); 2 - vertical sample, normal pointing left (reflection goes left, towards higher raw detector x index).')
     storedDataParamGroup.add_argument('-a', '--alpha', default=None, type=float, help = 'Incident angle on the sample [deg]. Default: the value stored in the simulation file, otherwise 0.')
     storedDataParamGroup.add_argument('--wavelength', type=float, default=None, help = 'Wavelength in Angstrom used for the Q axes (monochromatic instruments) and the TOF binning range. Default: the selected wavelength stored in the simulation file, otherwise 6.0.')
@@ -96,6 +96,9 @@ def parse_args(parser):
         parser.error('The --experiment_time must be a positive integer.')
 
 
+
+    if args.nxs_label and args.nxs and len(args.nxs_label) != len(args.nxs):
+        parser.error(f"The number of NeXus labels ({len(args.nxs_label)}) doesn't agree with the number of NeXus files ({len(args.nxs)})")
 
     if args.normalise_to_nxs and not args.nxs:
         parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')

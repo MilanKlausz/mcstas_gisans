@@ -164,6 +164,15 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
         if not args.wavelength and not args.input_tof_limits:
             parser.error("The --wavelength or --input_tof_limits must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
 
+    if instr_params['tof_instrument']:
+        name = args.instrument
+        if not args.no_mcpl_filtering and not args.input_tof_limits and 'mcpl_monitor_name' not in instr_params:
+            parser.error(f"The '{name}' instrument defines no 'mcpl_monitor_name' (McStas TOFLambda monitor for MCPL TOF filtering): "
+                         "use --input_tof_limits or --no_mcpl_filtering.")
+        if not args.no_t0_correction and args.t0_fixed is None and not args.wfm and 't0_monitor_name' not in instr_params:
+            parser.error(f"The '{name}' instrument defines no 't0_monitor_name' (McStas TOFLambda monitor for T0 correction): "
+                         "use --t0_fixed or --no_t0_correction.")
+
     if args.t0_fixed is not None:
         if args.t0_wavelength_rebin is not None:
             parser.error("The --t0_fixed option can not be used together with --t0_wavelength_rebin.")

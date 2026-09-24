@@ -195,7 +195,7 @@ def save_view_masks_plot(hist_raw: np.ndarray,
     ax_bottom = fig.add_subplot(gs[1:, :])
 
     qz_min_index = np.digitize(q_min, z_edges_nxs) - 1
-    qz_max_index = np.digitize(q_max, z_edges_nxs)
+    qz_max_index = np.digitize(q_max, z_edges_nxs) - 1
 
     # For 1D extraction, replace NaN with 0 so np.sum works properly
     hist_masked_1d = np.nan_to_num(hist_masked, nan=0.0)
@@ -212,10 +212,9 @@ def save_view_masks_plot(hist_raw: np.ndarray,
     plot_q_1d(values_masked, errors_masked, y_bins_nxs, 'Qy [1/nm]', color='green',
               label='Masked data', ax=ax_bottom, limits=y_plot_range, output='none')
 
-    axes[0, 0].axhline(z_edges_nxs[qz_min_index], color='magenta', linestyle='--')
-    axes[0, 0].axhline(z_edges_nxs[qz_max_index], color='magenta', linestyle='--')
-    axes[0, 1].axhline(z_edges_nxs[qz_min_index], color='magenta', linestyle='--')
-    axes[0, 1].axhline(z_edges_nxs[qz_max_index], color='magenta', linestyle='--')
+    for ax in (axes[0, 0], axes[0, 1]):
+        for z_limit in z_limits:  # the summed Qz range
+            ax.axhline(z_limit, color='magenta', linestyle='--')
 
     # Format 1D overlay plot (grid only on the major ticks of this plot)
     ax_bottom.set_title(f"Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]")

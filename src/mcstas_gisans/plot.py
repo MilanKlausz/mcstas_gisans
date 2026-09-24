@@ -192,9 +192,10 @@ def _load_nexus_datasets(args: Any, reference: Optional[Tuple[Dict[str, Any], Di
     for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
         hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
         warn_if_duration_mismatch([nxs_filename], getattr(args, 'experiment_time', None), label=nxs_filename)
-        nxs_sum = np.sum(hist)
+        if not datasets:
+            nxs_sum = np.sum(hist)  # --normalise_to_nxs uses the first NeXus file
         if args.verbose:
-            print(f"{nxs_filename} sum: {nxs_sum}")
+            print(f"{nxs_filename} sum: {np.sum(hist)}")
         datasets.append((hist, hist_error, y_edges, z_edges, nxs_label))
     return datasets, nxs_sum
 
@@ -226,13 +227,17 @@ def _load_sim_datasets(args: Any) -> Tuple[List[Tuple[np.ndarray, np.ndarray, np
             if scipp_da.bins is not None:
                 # TOF / event data: Q per event
                 scipp_da = instrument.compute_q_scipp(scipp_da)
-                y_min, y_max = (args.y_plot_range[0], args.y_plot_range[1]) if getattr(args, 'y_plot_range', None) else (y_edges[0], y_edges[-1])
-                z_min, z_max = (args.z_plot_range[0], args.z_plot_range[1]) if getattr(args, 'z_plot_range', None) else (z_edges[0], z_edges[-1])
-                bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
                 if getattr(args, 'wavelength_slice', None) is not None:
                     min_w, max_w = args.wavelength_slice
                     scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
                 scipp_da = scipp_da.bins.concat()
+                # default Q range: the extent of the events (all wavelengths), in 1/nm
+                events = scipp_da.bins.constituents['data']
+                event_qy, event_qz = events.coords['Qy'].values * 10.0, events.coords['Qz'].values * 10.0
+                pad = lambda lo, hi: (lo - 1e-9 * max(1.0, abs(hi - lo)), hi + 1e-9 * max(1.0, abs(hi - lo)))
+                y_min, y_max = tuple(args.y_plot_range) if getattr(args, 'y_plot_range', None) else pad(np.nanmin(event_qy), np.nanmax(event_qy))
+                z_min, z_max = tuple(args.z_plot_range) if getattr(args, 'z_plot_range', None) else pad(np.nanmin(event_qz), np.nanmax(event_qz))
+                bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
                 scipp_binned = scipp_da.bin(
                     Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
                     Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')
@@ -478,16 +483,15 @@ def main() -> None:
                 log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
 
             qz_min_index = np.digitize(args.q_min, z_edges) - 1
-            qz_max_index = np.digitize(args.q_max, z_edges)
-            qz_max_index_clamped = min(qz_max_index, len(z_edges) - 1)
+            qz_max_index = np.digitize(args.q_max, z_edges) - 1
             values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index, qz_max_index])
             all_1d_values.append(values)
             all_1d_errors.append(errors)
             title_text = f" Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]"
             horizontal_axis_label = 'Qy [1/nm]'
             plot_q_1d(values, errors, y_bins, horizontal_axis_label, color=line_color, title_text=title_text, label=label, ax=axes_bottom, limits=y_plot_range, savename=args.savename, output='none')
-            plot_2d_axes.axhline(z_edges[min(qz_min_index, len(z_edges)-1)], color='magenta', linestyle='--', label=f'q_z = {z_edges[min(qz_min_index, len(z_edges)-1)]:.3f}')
-            plot_2d_axes.axhline(z_edges[qz_max_index_clamped], color='magenta', linestyle='--', label=f'q_z = {z_edges[qz_max_index_clamped]:.3f}')
+            for z_limit in z_limits:  # the summed Qz range
+                plot_2d_axes.axhline(z_limit, color='magenta', linestyle='--', label=f'q_z = {z_limit:.3f}')
 
             _plot_differences(args, dataset_index, datasets, all_1d_values, all_1d_errors, axes_top, axes_bottom, y_bins, y_plot_range, z_plot_range, line_colors)
 
@@ -521,17 +525,15 @@ def main() -> None:
                 log_plot_2d(hist, y_edges, z_edges, '', ax=ax1, intensity_min=intensity_min, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, match_horizontal_axes=match_horizontal_axes, output=plot_output)
 
                 qz_min_index_exp = np.digitize(args.q_min, z_edges) - 1
-                qz_max_index_exp = np.digitize(args.q_max, z_edges)
+                qz_max_index_exp = np.digitize(args.q_max, z_edges) - 1
                 values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index_exp, qz_max_index_exp])
                 title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
                 horizontal_axis_label = 'Qy [1/nm]'
                 plot_q_1d(values, errors, y_bins, horizontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=args.savename, output=plot_output)
 
                 if ax1 is not None:
-                    if 0 <= qz_min_index_exp < len(z_edges):
-                        ax1.axhline(z_edges[qz_min_index_exp], color='magenta', linestyle='--')
-                    if 0 <= qz_max_index_exp < len(z_edges):
-                        ax1.axhline(z_edges[qz_max_index_exp], color='magenta', linestyle='--')
+                    for z_limit in z_limits:  # the summed Qz range
+                        ax1.axhline(z_limit, color='magenta', linestyle='--')
 
                 if ax2 is not None:
                     ax2.grid(True)

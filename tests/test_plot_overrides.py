@@ -51,7 +51,10 @@ def test_plot_instrument_overrides(patch_instrument_defaults, monkeypatch, instr
     if instrument_name == "d22":
         # Verify that calling read_nexus_data loads the overriden settings
         instrument = Instrument(current_inst, alpha_inc_deg=0.24, wavelength_selected=6.0, sample_orientation=2)
-        _, _, q_y, q_z = read_nexus_data("data/paper/d22_measurement/073174.nxs", instrument=instrument)
+        q_y, q_z = instrument.get_q_pixel_limits()
+        # a measured image that does not match the overridden pixel count is rejected
+        with pytest.raises(ValueError):
+            read_nexus_data("data/paper/d22_measurement/073174.nxs", instrument=instrument)
 
         # sample_orientation=2 rotates the detector 90 degrees, so the NeXus x/y pixel
         # counts (pixels[0]/pixels[1]) map to the BornAgain frame's z/y (not y/z) axes.

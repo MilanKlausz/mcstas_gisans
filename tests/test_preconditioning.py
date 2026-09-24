@@ -85,3 +85,31 @@ def test_t0_fixed_nonzero_is_subtracted():
     result = apply_t0_correction(particles, Args())
 
     assert np.array_equal(result[:, 8], [85.0, 185.0])
+
+
+def _particles(z, vz, x=0.0, y=0.0, vx=600.0):
+    # columns p, x, y, z, vx, vy, vz, w, t
+    return np.array([[1.0, x, y, z, vx, 0.0, vz, 6.0, 0.001]])
+
+
+def test_particle_hitting_the_sample_is_propagated_onto_the_surface():
+    from mcstas_gisans.preconditioning import propagate_to_sample_surface
+    from mcstas_gisans.sample import Sample
+    # starts 2 mm above the surface, 3 cm upstream, descending at ~5.7 deg: hits 1 cm upstream of the centre
+    out = propagate_to_sample_surface(_particles(z=0.002, vz=-60.0, x=-0.03), 0.1, 0.1, allow_sample_miss=False)
+    assert out.shape[0] == 1
+    assert out[0, 3] == 0.0
+    assert out[0, 1] == pytest.approx(-0.03 + 600.0 * 0.002 / 60.0)  # x moved by vx * t
+    assert out[0, 8] == pytest.approx(0.001 + 0.002 / 60.0)          # t increased by the flight time
+    assert not Sample(0.1, 0.1, 'silica_100nm_air', None).sample_missed(out[0, 1], out[0, 2], out[0, 3], out[0, 6])
+
+
+@pytest.mark.parametrize("z, vz", [(0.002, -1e-6), (0.002, 0.0), (-0.001, -1.0), (0.002, 1.0)])
+def test_missed_particles_are_not_moved(z, vz):
+    """A grazing particle (vz ~ 0) that misses the sample must not be pushed to the far-away z=0 crossing."""
+    from mcstas_gisans.preconditioning import propagate_to_sample_surface
+    from mcstas_gisans.sample import Sample
+    particles = _particles(z=z, vz=vz)
+    out = propagate_to_sample_surface(particles.copy(), 0.1, 0.1, allow_sample_miss=True)
+    np.testing.assert_array_equal(out, particles)
+    assert Sample(0.1, 0.1, 'silica_100nm_air', None).sample_missed(out[0, 1], out[0, 2], out[0, 3], out[0, 6])

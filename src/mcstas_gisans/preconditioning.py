@@ -77,37 +77,33 @@ def transform_to_bornagain_coordinate_system(particles, alpha_inc_deg, sample_or
         return np.vstack([p, x_bornagain, y_bornagain, z_bornagain, vx_bornagain, vy_bornagain, vz_bornagain, w, t]).T, actual_beam_angle
 
 def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_sample_miss):
-    """Propagate particles to z=0, the sample surface (in BornAgain coordinates, z is up).
-    Discard those which would miss the sample unless allow_sample_miss is True.
-    Particles not moving toward the sample surface are not propagated here.
+    """Propagate the particles that hit the sample to z=0, the sample surface (in BornAgain
+    coordinates, z is up). Particles missing the sample are discarded, unless allow_sample_miss
+    is True, in which case they are kept unchanged (they fly on in a straight line from their
+    input position; propagating them to the z=0 plane would move grazing particles, vz ~ 0,
+    arbitrarily far, e.g. past the detector for a direct beam at alpha = 0).
     """
     p, x, y, z, vx, vy, vz, w, t, *polarization = particles.T
     z_original = z.copy()
 
-    # Initialize t_propagate with zeros.
-    # This handles cases where vz is zero (particle moves parallel to z=0 or is already on it)
+    # Time to reach the z=0 plane, for particles moving towards it from above (or on it)
+    approaching = (vz < 0) & (z_original > -1e-12)
     t_propagate = np.zeros_like(z, dtype=float)
+    t_propagate[approaching] = np.maximum(0.0, -z[approaching] / vz[approaching])
 
-    # Create a mask for particles where vz is not zero to avoid division by zero.
-    non_zero_vz_mask = (vz != 0)
-
-    # Calculate t_propagate for particles with non-zero vz.
-    # Then, ensure t_propagate is non-negative to avoid back propagation.
-    calculated_t_propagate = -z[non_zero_vz_mask] / vz[non_zero_vz_mask]
-    t_propagate[non_zero_vz_mask] = np.maximum(0, calculated_t_propagate)
+    hit_sample_mask = (
+        approaching &
+        (abs(y + vy * t_propagate) < sample_size_y * 0.5) &  # Within transverse bounds (left/right, BA Y axis)
+        (abs(x + vx * t_propagate) < sample_size_x * 0.5)    # Within longitudinal bounds (forward/backward, BA X axis)
+    )
+    t_propagate[~hit_sample_mask] = 0.0
 
     x += vx * t_propagate
     y += vy * t_propagate
     z += vz * t_propagate
+    z[hit_sample_mask] = 0.0
     t += t_propagate
 
-    # Create a boolean mask for the particles to select those which hit the sample
-    hit_sample_mask = (
-        (abs(y) < sample_size_y * 0.5) &  # Within transverse bounds (left/right, BA Y axis)
-        (abs(x) < sample_size_x * 0.5) &  # Within longitudinal bounds (forward/backward, BA X axis)
-        (z_original > -1e-12) &           # Not already below the surface
-        (vz < 0)                          # Moving toward the surface
-    )
     events_on_sample_surface = np.vstack([p, x, y, z, vx, vy, vz, w, t, *polarization]).T if allow_sample_miss else np.vstack([p, x, y, z, vx, vy, vz, w, t, *polarization]).T[hit_sample_mask]
 
     event_number = len(particles)

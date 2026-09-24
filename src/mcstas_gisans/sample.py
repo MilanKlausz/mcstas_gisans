@@ -93,13 +93,15 @@ class Sample:
                 return value
 
     def sample_missed(self, x, y, z, vz):
-        """Decide if position is outside the area of the sample surface or the
-        particle is not approaching the sample surface (i.e., vz >= 0).
+        """Decide whether a (preconditioned) particle misses the sample: particles hitting the
+        sample have been propagated onto the surface (z = 0) by propagate_to_sample_surface;
+        a particle is missed if it is not on the surface, outside the sample area, or not
+        approaching the surface (vz >= 0).
         In BornAgain coordinates: x is forward (longitudinal), y is left (horizontal), z is up (vertical)."""
         return (
+            (abs(z) > 1e-9) or               # Not on the sample surface (missed particles are not propagated)
             (abs(x) > 0.5 * self.size_x) or  # Outside longitudinal bounds
             (abs(y) > 0.5 * self.size_y) or  # Outside horizontal bounds
-            (z < -1e-12) or                  # Already below the sample surface
             (vz >= 0)                        # Moving away from or parallel to surface
         )
 

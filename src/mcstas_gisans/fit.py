@@ -265,7 +265,7 @@ def save_comparison_plot(
     ax_bottom = fig.add_subplot(gs[1:, :])
 
     qz_min_index = np.digitize(q_min, z_edges_sim) - 1
-    qz_max_index = np.digitize(q_max, z_edges_sim)
+    qz_max_index = np.digitize(q_max, z_edges_sim) - 1
 
     # For 1D extraction, replace NaN with 0 so np.sum works properly
     hist_nxs_1d = np.nan_to_num(hist_nxs, nan=0.0)
@@ -283,10 +283,9 @@ def save_comparison_plot(
     plot_q_1d(values_sim, errors_sim, y_bins_sim, 'Qy [1/nm]', color='green',
               label=label_sim, ax=ax_bottom, limits=y_plot_range, output='none')
 
-    axes[0, 0].axhline(z_edges_sim[qz_min_index], color='magenta', linestyle='--')
-    axes[0, 0].axhline(z_edges_sim[qz_max_index], color='magenta', linestyle='--')
-    axes[0, 1].axhline(z_edges_sim[qz_min_index], color='magenta', linestyle='--')
-    axes[0, 1].axhline(z_edges_sim[qz_max_index], color='magenta', linestyle='--')
+    for ax in (axes[0, 0], axes[0, 1]):
+        for z_limit in z_limits:  # the summed Qz range
+            ax.axhline(z_limit, color='magenta', linestyle='--')
 
     # Format 1D overlay plot (grid only on the major ticks of this plot)
     ax_bottom.set_title(f"Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]")
@@ -502,10 +501,10 @@ def save_joint_comparison_plot(
     ax_bottom = fig.add_subplot(gs[2, :])
 
     qz_min_index1 = np.digitize(q_min, edges_sim1_1) - 1
-    qz_max_index1 = np.digitize(q_max, edges_sim1_1)
+    qz_max_index1 = np.digitize(q_max, edges_sim1_1) - 1
 
     qz_min_index2 = np.digitize(q_min, edges_sim2_1) - 1
-    qz_max_index2 = np.digitize(q_max, edges_sim2_1)
+    qz_max_index2 = np.digitize(q_max, edges_sim2_1) - 1
 
     # Sample 1 1D curves
     hist_nxs1_1d = np.nan_to_num(hist_nxs1, nan=0.0)
@@ -544,10 +543,8 @@ def save_joint_comparison_plot(
         (axes[1, 0], z_edges_nxs2, qz_min_index2, qz_max_index2),
         (axes[1, 1], edges_sim2_1, qz_min_index2, qz_max_index2),
     ]:
-        if 0 <= qz_min_idx < len(z_edges):
-            ax.axhline(z_edges[qz_min_idx], color='magenta', linestyle='--')
-        if 0 <= qz_max_idx < len(z_edges):
-            ax.axhline(z_edges[qz_max_idx], color='magenta', linestyle='--')
+        ax.axhline(z_edges[min(max(qz_min_idx, 0), len(z_edges) - 2)], color='magenta', linestyle='--')
+        ax.axhline(z_edges[min(max(qz_max_idx, 0), len(z_edges) - 2) + 1], color='magenta', linestyle='--')
 
     ax_bottom.set_title(f"Qz=[{z_limits1[0]:.4f} 1/nm, {z_limits1[1]:.4f} 1/nm]")
     ax_bottom.grid(True, which='major')
@@ -675,6 +672,43 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
 
     return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
 
+def widen_angle_range_for_simulation(angle_range: List[float], particles: np.ndarray, instrument: Any,
+                                     sample_size_x: float, sample_size_y: float) -> List[float]:
+    """
+    Widen the outgoing-angle range [horiz_min, horiz_max, vert_min, vert_max] (deg, BornAgain
+    frame) that encloses the unmasked pixels as seen from the sample centre, so that every
+    simulated neutron that can reach those pixels is simulated:
+    - horizontal: the outgoing horizontal angles are sampled relative to each neutron's incident
+      horizontal direction (max |phi_i| of the particles), and scattering happens anywhere across
+      the sample width;
+    - both: the detector resolution (3 sigma);
+    - lab-vertical: a neutron launched above the region falls into it (gravity drop over the flight
+      path at the longest wavelength), i.e. the range is extended upwards in the lab frame.
+    """
+    h_min, h_max, v_min, v_max = angle_range
+    L = instrument.sample_detector_distance
+    det = instrument.detector
+    vx, vy, vz, wavelength = particles[:, 4], particles[:, 5], particles[:, 6], particles[:, 7]
+    phi_i_max = float(np.rad2deg(np.max(np.abs(np.arctan2(vy, vx))))) if len(particles) else 0.0
+    resolution = float(np.rad2deg(3 * max(det.sigma_x_nexus, det.sigma_y_nexus) / L))
+    footprint_h = float(np.rad2deg(0.5 * sample_size_y / L))
+    footprint_v = float(np.rad2deg(0.5 * sample_size_x * np.tan(np.deg2rad(max(abs(v_min), abs(v_max)))) / L))
+    h_margin = phi_i_max + footprint_h + resolution
+    v_margin = footprint_v + resolution
+    h_min, h_max, v_min, v_max = h_min - h_margin, h_max + h_margin, v_min - v_margin, v_max + v_margin
+
+    if not instrument.no_gravity and len(particles):
+        from .particle_calculations import calculate_neutron_velocity
+        t = L / calculate_neutron_velocity(float(np.max(wavelength)))
+        drop_angle = float(np.rad2deg(0.5 * 9.80665 * t**2 / L))
+        up = -det.gravity_acceleration_vector / np.linalg.norm(det.gravity_acceleration_vector)  # lab up in BA frame
+        if abs(up[2]) >= abs(up[1]):   # lab vertical ~ BornAgain z (horizontal sample)
+            v_min, v_max = (v_min, v_max + drop_angle) if up[2] > 0 else (v_min - drop_angle, v_max)
+        else:                          # lab vertical ~ BornAgain y (vertical sample)
+            h_min, h_max = (h_min, h_max + drop_angle) if up[1] > 0 else (h_min - drop_angle, h_max)
+    return [h_min, h_max, v_min, v_max]
+
+
 def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
     """
     Load particle data and precondition it.
@@ -695,6 +729,9 @@ def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
         args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization
     )
     particles = precondition(particles, args)
+    if len(particles) == 0:
+        raise ValueError("No incident particles are left to simulate (none hit the sample). Check --alpha, the sample size "
+                         "and --sample_orientation, or use --allow_sample_miss.")
     print(f"Loaded and preconditioned {len(particles)} particles.")
     return particles, particle_type, mcpl_metadata
 
@@ -1057,6 +1094,8 @@ def run_automated_fit(
             particles2, particle_type2, mcpl_metadata2 = load_and_precondition_particles(args2)
         else:
             particles2, particle_type2, mcpl_metadata2 = particles, particle_type, mcpl_metadata
+        if getattr(args2, 'simulate_mask_angle_range', False):
+            _widen_simulated_angle_range(args2, particles2, particle_type2)
 
         param_names, x0, bounds, s1_map, s2_map = parse_joint_fit_arguments(args)
     else:
@@ -1333,6 +1372,14 @@ def run_parameter_scan(
 
     save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
+def _widen_simulated_angle_range(args: Any, particles: np.ndarray, particle_type: str) -> None:
+    instrument = pack_parameters(args, particle_type)['instrument']
+    args.angle_range = widen_angle_range_for_simulation(args.angle_range, particles, instrument, args.sample_size_x, args.sample_size_y)
+    h_min, h_max, v_min, v_max = args.angle_range
+    print(f"Simulated angle range incl. margins for beam divergence, sample size, resolution and gravity [deg]: "
+          f"horiz=[{h_min:.4f}, {h_max:.4f}], vert=[{v_min:.4f}, {v_max:.4f}]")
+
+
 def main() -> None:
     """
     Main entry point for fit.py. Parses arguments and delegates to run_automated_fit or run_parameter_scan.
@@ -1365,6 +1412,8 @@ def main() -> None:
         return
 
     particles, particle_type, mcpl_metadata = load_and_precondition_particles(args)
+    if getattr(args, 'simulate_mask_angle_range', False):
+        _widen_simulated_angle_range(args, particles, particle_type)
 
     if args.fit or args.fit2 or args.fit_common:
         run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)

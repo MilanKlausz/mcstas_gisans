@@ -100,3 +100,16 @@ def test_simulate_mask_angle_range_q_box_matching():
     assert np.isclose(calc_qy_max, 0.05, atol=0.01)
     assert np.isclose(calc_qz_min, 0.15, atol=0.01)
     assert np.isclose(calc_qz_max, 0.25, atol=0.01)
+
+
+def test_qz_slice_sums_exactly_the_bins_overlapping_the_requested_range():
+    import numpy as np
+    from mcstas_gisans.plotting_utils import extract_range_to_1d
+    z_edges = np.linspace(0.0, 1.0, 11)          # bins of 0.1
+    y_edges = np.linspace(-1.0, 1.0, 3)
+    hist = np.tile(np.arange(10.0), (2, 1))     # value = z bin index
+    q_min, q_max = 0.25, 0.55                   # bins 2..5
+    idx = [np.digitize(q_min, z_edges) - 1, np.digitize(q_max, z_edges) - 1]
+    values, _, _, z_limits = extract_range_to_1d(hist, np.ones_like(hist), y_edges, z_edges, idx)
+    assert values[0] == 2 + 3 + 4 + 5
+    assert z_limits == pytest.approx([0.2, 0.6])

@@ -427,6 +427,9 @@ def main() -> None:
     particles, particle_type, mcpl_metadata = get_particles(args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization)
 
     particles = precondition(particles, args)
+    if len(particles) == 0:
+        sys.exit("ERROR: no incident particles are left to simulate (none hit the sample). Check --alpha, the sample size "
+                 "and --sample_orientation, or use --allow_sample_miss to propagate missing particles to the detector.")
 
     if args.outgoing_directions is not None:
         suffix = args.outgoing_directions

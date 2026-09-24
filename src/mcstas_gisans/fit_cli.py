@@ -39,9 +39,9 @@ def create_fit_parser():
     scan_mask_group.add_argument('--mask_include_q_box', action='append', nargs=4, type=float, default=None,
                                  help='Include rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. Applied after exclusions. (Can be specified multiple times).')
     scan_mask_group.add_argument('--simulate_mask_angle_range', action='store_true',
-                                 help='Calculate minimum simulation angle range enclosing the unmasked detector pixels to optimize performance.')
+                                 help='Simulate only the outgoing angles that can reach the unmasked detector pixels (faster). The range enclosing the unmasked pixels is widened by the incident beam divergence, the sample size, the detector resolution and the gravity drop.')
     scan_mask_group.add_argument('--simulate_mask_angle_range_factor', type=float, default=1.0,
-                                 help='Expansion factor for --simulate_mask_angle_range (default: 1.0). Use e.g. 1.05 for a 5%% safety margin around the ROI.')
+                                 help='Additional expansion factor for the --simulate_mask_angle_range range before the margins are added (default: 1.0).')
     fit_group = parser.add_argument_group('Automated optimization / fitting options')
     fit_group.add_argument('--fit', action='append', nargs='+', required=False,
                            help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')
