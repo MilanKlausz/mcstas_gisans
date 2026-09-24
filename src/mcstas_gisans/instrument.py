@@ -34,7 +34,7 @@ class Instrument:
         Selected wavelength for the instrument (Angstrom).
     is_tof_instrument : bool
         Whether the instrument operates in Time-of-Flight mode.
-    wavenumber_fixed : float
+    wavenumber_fixed : float or None
         Fixed wavenumber if not a TOF instrument.
     """
 
@@ -79,10 +79,8 @@ class Instrument:
 
         self.is_tof_instrument = bool(instr_params['tof_instrument'])
         if not self.is_tof_instrument:
-            if wavelength_selected is not None:
-                self.wavenumber_fixed = float(calculate_wavenumber(wavelength_selected))
-            else:
-                self.wavenumber_fixed = 0.0
+            # None (not 0) without a selected wavelength, so that using it fails loudly
+            self.wavenumber_fixed = float(calculate_wavenumber(wavelength_selected)) if wavelength_selected is not None else None
 
     def calculate_incident_direction(self, wavelength: Optional[float] = None) -> npt.NDArray[np.float64]:
         """
@@ -155,20 +153,20 @@ class Instrument:
         Returns
         -------
         float
-            Wavenumber in inverse Angstrom.
+            Wavenumber in 1/nm.
         """
+        if not self.is_tof_instrument:
+            if self.wavenumber_fixed is None:
+                raise ValueError("The selected wavelength (--wavelength_selected) is required for a non-TOF instrument.")
+            return self.wavenumber_fixed
         if wavelength is None:
             wavelength = self.wavelength_selected
-
         if wavelength is None:
-            if not self.is_tof_instrument:
-                return self.wavenumber_fixed
             raise ValueError(
                 "get_wavenumber() requires a wavelength for a TOF instrument, but none was "
                 "provided and self.wavelength_selected is also None."
             )
-
-        return calculate_wavenumber(wavelength) if self.is_tof_instrument else self.wavenumber_fixed
+        return calculate_wavenumber(wavelength)
 
     def compute_q_scipp(self, scipp_da: Any) -> Any:
         """
