@@ -68,11 +68,15 @@ def get_mcstas_monitor_data(dirname, monitor, wavelength_rebin, selected_wavelen
             print('  new shape: ', data.shape)
 
     wavelength_bin_edges = np.linspace(lambda_min, lambda_max, num=lambda_bin_number+1, endpoint=True)
-    tof_bins = np.linspace(tof_min, tof_max, num=tof_bin_number)
+    # TOF bin centres
+    tof_bins = tof_min + (np.arange(tof_bin_number) + 0.5) * (tof_max - tof_min) / tof_bin_number
     labels = [info['xlabel'].replace('[\\gms]', f'[$\mu$s]'),
               info['ylabel'].replace('[AA]', f'[$\AA$]')]
 
-    wavelength_index = np.digitize(selected_wavelength, wavelength_bin_edges) - 1
+    if not lambda_min <= selected_wavelength <= lambda_max:
+        raise ValueError(f"The wavelength {selected_wavelength} Å is outside the wavelength range "
+                         f"[{lambda_min}, {lambda_max}] Å of the McStas monitor '{monitor}'.")
+    wavelength_index = min(int(np.digitize(selected_wavelength, wavelength_bin_edges)) - 1, lambda_bin_number - 1)
     selected_wavelength_tof = data[wavelength_index]
 
     return data, labels, limits, tof_bins, selected_wavelength_tof
@@ -125,7 +129,12 @@ def find_mcstas_monitor_tof_centre(dirname, monitor, wavelength, method='com', t
                   tof_max if tof_limits[1] is None else tof_limits[1]]
     tof_limit_mask = (float(tof_limits[0]) <= tof_bins) & (tof_bins <= float(tof_limits[1]))
 
+    if not np.any(tof_limit_mask) or np.sum(selected_wavelength_tof[tof_limit_mask]) <= 0:
+        raise ValueError(f"The McStas monitor '{monitor}' has no intensity at {wavelength} Å within the TOF limits "
+                         f"{tof_limits} µs.")
     tof_centre_value = find_centre(tof_bins[tof_limit_mask], selected_wavelength_tof[tof_limit_mask], method)
+    if not np.isfinite(tof_centre_value):
+        raise ValueError(f"Could not determine the TOF centre of the McStas monitor '{monitor}' at {wavelength} Å.")
 
     if(figure_output is not None):
         ax1, ax2 = create_monitor_and_slice_figure(data, limits, tof_bins, selected_wavelength_tof, labels, wavelength, figure_output)

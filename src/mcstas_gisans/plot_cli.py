@@ -61,6 +61,7 @@ def create_argparser():
     instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
     instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the beam angle. Angle of the incident beam above the nominal beam axis [deg], in the plane of incidence, positive towards the sample surface normal (opposite sign to the former beam declination angle). It must describe the mean direction of the simulated (MCPL) beam at the sample; it cancels in the reduction of measured data. If not provided, defaults to the value stored in the loaded .h5 file\'s metadata (i.e. whatever was actually used by mg_run/mg_fit for that simulation), or 0.0 otherwise.')
 
+    instrumentGroup.add_argument('--instrument_beam_declination_angle', type=float, default=None, help=argparse.SUPPRESS)  # removed, see parse_args
     nxsInstrumentGroup = parser.add_argument_group('NeXus Instrument overrides', 'Override parameters specifically for the NeXus instrument used to parse the measured data.')
     nxsInstrumentGroup.add_argument('--nxs_instrument_name', type=str.lower, choices=list(instrument_defaults.keys()), help='NeXus instrument name. Defaults to the simulated instrument if not provided.')
     nxsInstrumentGroup.add_argument('--nxs_sample_orientation', choices=[0,1,2], type=int, help = 'Orientation of the sample in the NeXus experiment (same codes as --sample_orientation). Defaults to the simulated sample orientation.')
@@ -85,6 +86,10 @@ def create_argparser():
 def parse_args(parser):
     args = parser.parse_args()
 
+
+    if args.instrument_beam_declination_angle is not None:
+        parser.error("--instrument_beam_declination_angle was renamed to --instrument_beam_angle, with the OPPOSITE sign "
+                     f"(positive = beam rising towards the sample normal): use --instrument_beam_angle {-args.instrument_beam_declination_angle}")
 
     if args.filename is None and args.nxs is None:
         parser.error('No input file provided! This is only allowed when the --nxs option is used.')

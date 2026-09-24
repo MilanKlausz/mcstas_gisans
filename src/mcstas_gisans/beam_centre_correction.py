@@ -89,6 +89,7 @@ def create_argparser():
     parser.add_argument('--sample_orientation', type=int, default=1, choices=[0, 1, 2], help="Sample orientation (0, 1, 2); defines the plane in which the beam angle acts (default: 1).")
     parser.add_argument('--instrument', type=str.lower, default='d22', choices=list(instrument_defaults.keys()), help="Instrument name in instrument_defaults (default: 'd22').")
     parser.add_argument('--beam_angle', type=float, default=None, help="Beam angle in degrees: angle of the incident beam above the nominal beam axis, in the plane of incidence, positive towards the sample surface normal (default: the instrument's configured value, or 0). Note: opposite sign to the former --beam_declination.")
+    parser.add_argument('--beam_declination', type=float, default=None, help=argparse.SUPPRESS)  # removed, see main
     parser.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the NeXus file, e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     parser.add_argument('--verbose', action='store_true', help="Print the direct-beam centroid and the predicted landing point.")
     return parser
@@ -96,6 +97,9 @@ def create_argparser():
 def main():
     parser = create_argparser()
     args = parser.parse_args()
+    if args.beam_declination is not None:
+        parser.error("--beam_declination was renamed to --beam_angle, with the OPPOSITE sign "
+                     f"(positive = beam rising towards the sample normal): use --beam_angle {-args.beam_declination}")
 
     try:
         offset = find_required_centre_offset(

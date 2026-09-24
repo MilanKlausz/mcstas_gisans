@@ -88,6 +88,7 @@ def create_argparser() -> argparse.ArgumentParser:
     instrumentGroup.add_argument('--instrument_wfm_t0_monitor_name', type=str, help='Override WFM t0 monitor name.')
     instrumentGroup.add_argument('--instrument_wfm_virtual_source_distance', type=float, help='Override WFM virtual source distance. [m]')
     instrumentGroup.add_argument('--instrument_beam_angle', type=float, help='Override the beam angle. Angle of the incident beam above the nominal beam axis [deg], in the plane of incidence, positive towards the sample surface normal (opposite sign to the former beam declination angle). It must describe the mean direction of the simulated (MCPL) beam at the sample; it cancels in the reduction of measured data. If not provided, defaults to 0.0 (or the instrument\'s configured default in instrument_defaults.py). An independent estimate from the MCPL file\'s particle velocities is printed and compared against the value actually used, purely as a sanity check (it is never used as a fallback value, since it must match whatever value was assumed for mg_beam_centre_correction, which has no MCPL data to estimate it from).')
+    instrumentGroup.add_argument('--instrument_beam_declination_angle', type=float, default=None, help=argparse.SUPPRESS)  # removed, see parse_args
     instrumentGroup.add_argument('--nexus_y_shift', type=float, default=0.0, help='Shift the beam slightly upwards (in NeXus frame) to ensure it hits the sample surface. E.g. 0.0065')
 
     return parser
@@ -119,6 +120,9 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
     elif not has_outgoing_directions:
         args.outgoing_directions = None
 
+    if args.instrument_beam_declination_angle is not None:
+        parser.error("--instrument_beam_declination_angle was renamed to --instrument_beam_angle, with the OPPOSITE sign "
+                     f"(positive = beam rising towards the sample normal): use --instrument_beam_angle {-args.instrument_beam_declination_angle}")
     if args.parallel_processes is not None and args.parallel_processes < 1:
         parser.error("--parallel_processes must be at least 1.")
     if args.seed is None:

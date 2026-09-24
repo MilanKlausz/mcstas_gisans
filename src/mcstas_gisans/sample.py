@@ -26,31 +26,30 @@ class Sample:
         if not self.kwargs:
             return
 
-        try:
-            module = self.get_module()
-            if not hasattr(module, 'get_sample'):
-                return
+        # errors in the model file surface here, in the main process, rather than later in a worker
+        module = self.get_module()
+        if not hasattr(module, 'get_sample'):
+            raise ValueError(f"The sample model '{self.sim_module_name}' does not define a get_sample() function.")
 
-            import inspect
-            sig = inspect.signature(module.get_sample)
-            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        import inspect
+        sig = inspect.signature(module.get_sample)
+        has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
 
-            if not has_var_kw:
-                valid_kwargs = {}
-                ignored_params = []
-                for k, v in self.kwargs.items():
-                    if k in sig.parameters:
-                        valid_kwargs[k] = v
-                    else:
-                        ignored_params.append(k)
+        if not has_var_kw:
+            valid_kwargs = {}
+            ignored_params = []
+            for k, v in self.kwargs.items():
+                if k in sig.parameters:
+                    valid_kwargs[k] = v
+                else:
+                    ignored_params.append(k)
 
-                if ignored_params:
-                    ignored_str = ", ".join(f"'{p}'" for p in ignored_params)
-                    print(f"WARNING: The following sample argument(s) are ignored because sample model '{self.sim_module_name}' does not accept them in get_sample(): {ignored_str}")
+            if ignored_params:
+                ignored_str = ", ".join(f"'{p}'" for p in ignored_params)
+                accepted = ", ".join(sig.parameters)
+                print(f"WARNING: The following sample argument(s) are IGNORED because sample model '{self.sim_module_name}' does not accept them in get_sample(): {ignored_str} (accepted: {accepted})")
 
-                self.kwargs = valid_kwargs
-        except Exception:
-            pass
+            self.kwargs = valid_kwargs
 
     @staticmethod
     def get_models_dir():
@@ -67,7 +66,7 @@ class Sample:
         return sorted([
             Path(f).stem
             for f in os.listdir(models_dir)
-            if f.endswith('.py') and f != '__init__.py'
+            if f.endswith('.py') and f != '__init__.py' and '_local' not in f  # git-ignored private models
         ])
 
     def parse_sample_arguments(self, sample_arguments):
@@ -83,7 +82,12 @@ class Sample:
         return kwargs
 
     def convert_numbers(self, value):
-        """Attempt to convert strings to integers or floats"""
+        """Convert strings to int, float, bool (true/false) or None (none); otherwise keep the string."""
+        lowered = value.lower()
+        if lowered in ('true', 'false'):
+            return lowered == 'true'
+        if lowered == 'none':
+            return None
         try:
             return int(value)
         except ValueError:

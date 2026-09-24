@@ -110,7 +110,7 @@ def test_save_simulation_results_metadata():
         
         # 4. Verify MCPL metadata values
         mcpl_meta = dataset['mcpl']
-        assert mcpl_meta['filename'].value == 'test_mcpl.mcpl'
+        assert mcpl_meta['filename'].value == os.path.abspath('test_mcpl.mcpl')  # stored as an absolute path
         assert mcpl_meta['sourcename'].value == 'test_source_name'
         assert mcpl_meta['nparticles'].value == 12345
         assert mcpl_meta['comments'].value == "comment1\ncomment2"

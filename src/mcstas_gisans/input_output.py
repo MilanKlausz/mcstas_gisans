@@ -241,7 +241,8 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
     mcpl_group = None
     if mcpl_metadata:
         mcpl_group = sc.DataGroup({
-            'filename': sc.scalar(getattr(args, 'filename', 'unknown')),
+            'filename': sc.scalar(os.path.abspath(getattr(args, 'filename', 'unknown'))),
+            'file_size_bytes': sc.scalar(os.path.getsize(args.filename) if os.path.exists(getattr(args, 'filename', '')) else -1),
             'sourcename': sc.scalar(mcpl_metadata.get('sourcename', '')),
             'nparticles': sc.scalar(mcpl_metadata.get('nparticles', 0)),
             'comments': sc.scalar("\n".join(mcpl_metadata.get('comments', [])))
@@ -250,9 +251,16 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
     # Prepare provenance metadata
     # Try to safely get mcstas_gisans version
     try:
-        from . import __version__ as mg_version
-    except ImportError:
+        from importlib.metadata import version as _package_version
+        mg_version = _package_version('mcstas_gisans')
+    except Exception:
         mg_version = 'unknown'
+    try:
+        import subprocess
+        git_commit = subprocess.run(['git', 'describe', '--always', '--dirty'], cwd=os.path.dirname(os.path.abspath(__file__)),
+                                    capture_output=True, text=True, timeout=5).stdout.strip() or 'unknown'
+    except Exception:
+        git_commit = 'unknown'
 
     provenance_metadata = {
         'cli_command': sc.scalar(" ".join(sys.argv)),
@@ -260,6 +268,7 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
         'random_seed': sc.scalar(str(getattr(args, 'seed', None))),
         'bornagain_version': sc.scalar(str(getattr(bornagain, 'version', 'unknown'))),
         'mcstas_gisans_version': sc.scalar(mg_version),
+        'mcstas_gisans_git_commit': sc.scalar(git_commit),
         'mcpl_version': sc.scalar(mcpl.__version__),
         'timestamp': sc.scalar(datetime.datetime.now().isoformat())
     }
