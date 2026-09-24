@@ -36,12 +36,13 @@ def test_plot_instrument_overrides(patch_instrument_defaults, monkeypatch, instr
     ]
 
     monkeypatch.setattr(sys, "argv", argv)
-    
-    # Trigger the parsing to apply overrides
-    _ = parse_args(create_argparser())
+    defaults_before = copy.deepcopy(instrument_defaults)
+    args = parse_args(create_argparser())
 
-    # Check if the overrides mutated the dictionary in instrument_defaults
-    current_inst = patch_instrument_defaults[instrument_name]
+    # The overrides are applied to the instrument built for plotting, never to the defaults
+    from mcstas_gisans.plot import build_plot_instrument
+    instrument, current_inst, _ = build_plot_instrument(args, {})
+    assert instrument_defaults == defaults_before
     assert current_inst['sample_detector_distance'] == float(sample_dist)
     assert current_inst['detector']['pixels'] == [int(p) for p in pixels]
     assert current_inst['detector']['size'] == [float(s) for s in size]
@@ -51,7 +52,7 @@ def test_plot_instrument_overrides(patch_instrument_defaults, monkeypatch, instr
         # Verify that calling read_nexus_data loads the overriden settings
         instrument = Instrument(current_inst, alpha_inc_deg=0.24, wavelength_selected=6.0, sample_orientation=2)
         _, _, q_y, q_z = read_nexus_data("data/paper/d22_measurement/073174.nxs", instrument=instrument)
-        
+
         # sample_orientation=2 rotates the detector 90 degrees, so the NeXus x/y pixel
         # counts (pixels[0]/pixels[1]) map to the BornAgain frame's z/y (not y/z) axes.
         assert len(q_y) == int(pixels[1]) + 1

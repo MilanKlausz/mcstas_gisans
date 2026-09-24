@@ -118,10 +118,10 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
     elif not has_outgoing_directions:
         args.outgoing_directions = None
 
-    # Apply instrument parameter overrides in instrument_defaults
-    set_instrument_parameters(args)
+    # Resolve the instrument parameters (defaults + CLI overrides) once: args.instrument_params
+    instr_params = set_instrument_parameters(args)
 
-    if args.wfm and any(key not in instrument_defaults[args.instrument] for key in required_keys_for_wfm):
+    if args.wfm and any(key not in instr_params for key in required_keys_for_wfm):
         parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
 
     if args.tof_filtering_figure:
@@ -132,7 +132,7 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
         if args.no_mcpl_filtering:
             parser.error("The --tof_filtering_figure option can not be used when no TOF filtering is selected with --no_mcpl_filtering.")
 
-    if instrument_defaults[args.instrument]['tof_instrument']: # tof instrument
+    if instr_params['tof_instrument']: # tof instrument
         if args.wavelength_selected:
             parser.error("The --wavelength_selected parameter should not be used for TOF instruments. Use the --wavelength parameter instead.")
     else:
@@ -148,11 +148,11 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
             parser.error("The --no_t0_correction option can not be used together with --t0_wavelength_rebin.")
         if args.wfm:
             parser.error("The --no_t0_correction option can not be used together with --wfm.")
-    elif instrument_defaults[args.instrument]['tof_instrument']:
+    elif instr_params['tof_instrument']:
         if not args.wavelength:
             parser.error("The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
 
-    if not args.no_mcpl_filtering and instrument_defaults[args.instrument]['tof_instrument']:
+    if not args.no_mcpl_filtering and instr_params['tof_instrument']:
         if not args.wavelength and not args.input_tof_limits:
             parser.error("The --wavelength or --input_tof_limits must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
 

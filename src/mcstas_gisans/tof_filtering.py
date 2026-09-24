@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, List
 
-from .instrument_defaults import instrument_defaults
+from .instrument_defaults import get_instrument_parameters
 from .input_output import print_tof_limits
 
 def get_tof_filtering_limits(args: Any) -> List[float]:
@@ -49,7 +49,7 @@ def get_tof_filtering_limits(args: Any) -> List[float]:
        defined by fitting a Gaussian function and getting a single FWHM range
        centred around the mean TOF value.
     """
-    inst_params = instrument_defaults[args.instrument]
+    inst_params = get_instrument_parameters(args)
     tof_limits = [float('-inf'), float('inf')]
 
     # Check if we should apply TOF filtering based on instrument parameters and user arguments

@@ -8,9 +8,9 @@
 
    .. autosummary::
    
+      build_plot_instrument
       get_datasets
       get_overlay_plot_axes
       get_plot_ranges
       main
-      setup_global_instrument
    

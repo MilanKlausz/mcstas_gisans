@@ -567,8 +567,8 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
     wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
 
     from .instrument import Instrument
-    from .instrument_defaults import instrument_defaults
-    instr_params = instrument_defaults[args.instrument] #note: the instrument defaults are already updated by parse_run_args
+    from .instrument_defaults import get_instrument_parameters
+    instr_params = get_instrument_parameters(args)
     instrument = Instrument(instr_params, args.alpha, wavelength_val, args.sample_orientation, args.wfm, args.no_gravity)
 
     nxs_paths = args.nxs if isinstance(args.nxs, list) else [args.nxs]

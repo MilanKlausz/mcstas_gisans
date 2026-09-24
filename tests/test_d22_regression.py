@@ -2,7 +2,6 @@ import numpy as np
 import subprocess
 import pytest
 
-from mcstas_gisans.plot import setup_global_instrument
 
 def get_mask(y_edges, z_edges, mask_exclude_q_box):
     mask = np.ones((len(y_edges) - 1, len(z_edges) - 1), dtype=bool)
@@ -92,9 +91,7 @@ def test_d22_reduced_chi2(tmp_path):
 
     print("Simulation finished. Processing datasets for chi2...")
 
-    global_instrument, _, _, _ = setup_global_instrument(args)
     import mcstas_gisans.plot as plot_module
-    plot_module.global_instrument = global_instrument
 
     datasets = plot_module.get_datasets(args)
 

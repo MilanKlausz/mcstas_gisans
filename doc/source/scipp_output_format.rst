@@ -40,6 +40,8 @@ A ``sc.DataGroup`` containing all relevant, standardized scalar metadata describ
 * ``alpha_inc_deg`` (scalar, degrees): The incident angle of the beam.
 * ``beam_angle`` (scalar, degrees): The beam angle used for the simulation (``--instrument_beam_angle`` or the instrument default, otherwise 0): the angle of the incident beam above the nominal beam axis, towards the sample surface normal.
 * ``sample_orientation`` / ``sample_position`` / ``source_position``: Geometric alignment constants.
+* ``parameters_json`` (scalar string): The complete, resolved instrument parameter dictionary used for the simulation (defaults plus command line overrides, including the detector size/pixels/resolution/offset and the beam angle actually used), as JSON. ``mg_plot`` rebuilds the instrument from it.
+* ``no_gravity`` / ``wfm`` (scalar bool): Whether the simulation ignored gravity, and whether Wavelength Frame Multiplication mode was used.
 * ``wavelength_selected`` (scalar, Angstroms): The fixed monochromatic wavelength (Present **only** for non-TOF instruments; for TOF, wavelength is calculated dynamically per-bin or stored in the provenance CLI args).
 
 3. The ``sample`` Block

@@ -100,114 +100,80 @@ def reset_instrument_defaults():
     for k, v in copy.deepcopy(_initial_instrument_defaults).items():
         instrument_defaults[k] = v
 
+# CLI override flags (without prefix) -> instrument parameter keys. Detector keys live in params['detector'].
+_OVERRIDE_KEYS = {
+    'nominal_source_sample_distance': 'nominal_source_sample_distance',
+    'sample_detector_distance': 'sample_detector_distance',
+    't0_monitor_name': 't0_monitor_name',
+    'wfm_t0_monitor_name': 'wfm_t0_monitor_name',
+    'wfm_virtual_source_distance': 'wfm_virtual_source_distance',
+    'beam_angle': 'beam_angle',
+}
+_DETECTOR_OVERRIDE_KEYS = {
+    'detector_size': 'size',
+    'detector_centre_offset': 'direct_beam_centre_offset',
+    'detector_pixels': 'pixels',
+    'detector_resolution': 'resolution',
+}
+
+
+def resolve_instrument_parameters(instrument_name, args=None, prefix='instrument_', base=None):
+    """
+    Return a NEW, fully resolved instrument parameter dict: the built-in defaults of
+    `instrument_name` (or a copy of `base`, e.g. parameters stored in a simulation
+    output file) with any command line overrides `--<prefix><key>` applied.
+    The module-level instrument_defaults are never modified.
+    """
+    if base is None:
+        if instrument_name not in instrument_defaults:
+            raise KeyError(f"Unknown instrument '{instrument_name}'. Available: {list(instrument_defaults)}")
+        base = instrument_defaults[instrument_name]
+    params = copy.deepcopy(base)
+    params.setdefault('detector', copy.deepcopy(default_detector))
+    if args is not None:
+        for flag, key in _OVERRIDE_KEYS.items():
+            value = getattr(args, prefix + flag, None)
+            if value is not None:
+                params[key] = value
+        tof = getattr(args, prefix + 'tof_instrument', None)
+        if tof is not None:
+            params['tof_instrument'] = (tof == 'true')
+        for flag, key in _DETECTOR_OVERRIDE_KEYS.items():
+            value = getattr(args, prefix + flag, None)
+            if value is not None:
+                params['detector'][key] = list(value)
+    params['name'] = instrument_name
+    return params
+
+
 def set_instrument_parameters(args, instrument_name=None):
     """
-    Apply command line argument overrides to instrument_defaults in-place.
-    Returns the updated instrument parameter dictionary for the target instrument.
+    Resolve the instrument parameters of the selected instrument with the command line
+    overrides, store them as args.instrument_params (the single source of instrument
+    parameters for the rest of the run) and return them.
     """
-    instr_name = getattr(args, 'instrument_name', getattr(args, 'instrument', instrument_name)) if args else instrument_name
-    if not instr_name:
-        instr_name = 'd22'
+    instr_name = (getattr(args, 'instrument', None) if args is not None else None) or instrument_name or 'd22'
+    params = resolve_instrument_parameters(instr_name, args)
+    if args is not None:
+        args.instrument_params = params
+    return params
 
-    if instr_name in instrument_defaults:
-        instr_params = instrument_defaults[instr_name]
 
-        if getattr(args, 'instrument_nominal_source_sample_distance', None) is not None:
-            instr_params['nominal_source_sample_distance'] = args.instrument_nominal_source_sample_distance
+def get_instrument_parameters(args):
+    """Resolved instrument parameters of a run (args.instrument_params), resolving them if needed."""
+    params = getattr(args, 'instrument_params', None)
+    return params if params is not None else set_instrument_parameters(args)
 
-        if getattr(args, 'instrument_sample_detector_distance', None) is not None:
-            instr_params['sample_detector_distance'] = args.instrument_sample_detector_distance
 
-        if getattr(args, 'instrument_tof_instrument', None) is not None:
-            instr_params['tof_instrument'] = (args.instrument_tof_instrument == 'true')
-
-        if getattr(args, 'instrument_t0_monitor_name', None) is not None:
-            instr_params['t0_monitor_name'] = args.instrument_t0_monitor_name
-
-        if getattr(args, 'instrument_wfm_t0_monitor_name', None) is not None:
-            instr_params['wfm_t0_monitor_name'] = args.instrument_wfm_t0_monitor_name
-
-        if getattr(args, 'instrument_wfm_virtual_source_distance', None) is not None:
-            instr_params['wfm_virtual_source_distance'] = args.instrument_wfm_virtual_source_distance
-
-        if getattr(args, 'instrument_beam_angle', None) is not None:
-            instr_params['beam_angle'] = args.instrument_beam_angle
-
-        # Handle detector overrides
-        if 'detector' not in instr_params:
-            instr_params['detector'] = copy.deepcopy(default_detector)
-
-        det_params = instr_params['detector']
-
-        if getattr(args, 'instrument_detector_size', None) is not None:
-            det_params['size'] = list(args.instrument_detector_size)
-
-        if getattr(args, 'instrument_detector_centre_offset', None) is not None:
-            det_params['direct_beam_centre_offset'] = list(args.instrument_detector_centre_offset)
-
-        if getattr(args, 'instrument_detector_pixels', None) is not None:
-            det_params['pixels'] = list(args.instrument_detector_pixels)
-
-        if getattr(args, 'instrument_detector_resolution', None) is not None:
-            det_params['resolution'] = list(args.instrument_detector_resolution)
-
-        instr_params['name'] = instr_name
-        return instr_params
-    return instrument_defaults.get(instr_name, {})
-
-def get_nxs_instrument_parameters(args, default_instr_name='d22'):
+def get_nxs_instrument_parameters(args, default_instr_name='d22', base=None):
     """
-    Extract command line argument overrides for the NeXus instrument.
-    Returns a new instrument parameter dictionary for the target NeXus instrument,
-    or None if no NeXus specific overrides were provided.
+    Instrument parameters for interpreting measured NeXus data: `base` (e.g. the
+    parameters of the simulation being compared, if it is the same instrument) or the
+    built-in defaults, with the --nxs_instrument_* overrides applied. Returns a new dict.
     """
-    if not args:
-        return copy.deepcopy(instrument_defaults.get(default_instr_name, {}))
-    instr_name = getattr(args, 'nxs_instrument_name', None)
+    instr_name = getattr(args, 'nxs_instrument_name', None) if args is not None else None
     if instr_name is None:
         instr_name = default_instr_name
-
-    if instr_name in instrument_defaults:
-        instr_params = copy.deepcopy(instrument_defaults[instr_name])
-
-        if getattr(args, 'nxs_instrument_nominal_source_sample_distance', None) is not None:
-            instr_params['nominal_source_sample_distance'] = args.nxs_instrument_nominal_source_sample_distance
-
-        if getattr(args, 'nxs_instrument_sample_detector_distance', None) is not None:
-            instr_params['sample_detector_distance'] = args.nxs_instrument_sample_detector_distance
-
-        if getattr(args, 'nxs_instrument_tof_instrument', None) is not None:
-            instr_params['tof_instrument'] = (args.nxs_instrument_tof_instrument == 'true')
-
-        if getattr(args, 'nxs_instrument_t0_monitor_name', None) is not None:
-            instr_params['t0_monitor_name'] = args.nxs_instrument_t0_monitor_name
-
-        if getattr(args, 'nxs_instrument_wfm_t0_monitor_name', None) is not None:
-            instr_params['wfm_t0_monitor_name'] = args.nxs_instrument_wfm_t0_monitor_name
-
-        if getattr(args, 'nxs_instrument_wfm_virtual_source_distance', None) is not None:
-            instr_params['wfm_virtual_source_distance'] = args.nxs_instrument_wfm_virtual_source_distance
-
-        if getattr(args, 'nxs_instrument_beam_angle', None) is not None:
-            instr_params['beam_angle'] = args.nxs_instrument_beam_angle
-
-        if 'detector' not in instr_params:
-            instr_params['detector'] = copy.deepcopy(default_detector)
-
-        det_params = instr_params['detector']
-
-        if getattr(args, 'nxs_instrument_detector_size', None) is not None:
-            det_params['size'] = list(args.nxs_instrument_detector_size)
-
-        if getattr(args, 'nxs_instrument_detector_centre_offset', None) is not None:
-            det_params['direct_beam_centre_offset'] = list(args.nxs_instrument_detector_centre_offset)
-
-        if getattr(args, 'nxs_instrument_detector_pixels', None) is not None:
-            det_params['pixels'] = list(args.nxs_instrument_detector_pixels)
-
-        if getattr(args, 'nxs_instrument_detector_resolution', None) is not None:
-            det_params['resolution'] = list(args.nxs_instrument_detector_resolution)
-
-        instr_params['name'] = instr_name
-        return instr_params
-    return copy.deepcopy(instrument_defaults.get(instr_name, {}))
+    elif base is not None and base.get('name') != instr_name:
+        base = None
+    return resolve_instrument_parameters(instr_name, args, prefix='nxs_instrument_', base=base)

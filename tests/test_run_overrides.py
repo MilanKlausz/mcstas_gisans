@@ -74,10 +74,10 @@ def test_set_and_reset_instrument_parameters(clean_defaults, monkeypatch):
     parser = create_argparser()
     args = parser.parse_args(["dummy.mcpl.gz", "-i", "d22", "--instrument_sample_detector_distance", "18.2"])
     
-    set_instrument_parameters(args)
-    assert instrument_defaults['d22']['sample_detector_distance'] == 18.2
-    
-    reset_instrument_defaults()
+    params = set_instrument_parameters(args)
+    # the resolved parameters carry the override; the module-level defaults are untouched
+    assert params['sample_detector_distance'] == 18.2
+    assert args.instrument_params is params
     assert instrument_defaults['d22']['sample_detector_distance'] == 17.6
 
 if __name__ == "__main__":

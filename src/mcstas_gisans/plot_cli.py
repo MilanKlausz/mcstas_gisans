@@ -1,6 +1,6 @@
 
 import argparse
-from .instrument_defaults import instrument_defaults, set_instrument_parameters
+from .instrument_defaults import instrument_defaults
 
 def zero_to_one(x):
     """Argparser type check function for float number in range [0.0, 1.0]"""
@@ -43,12 +43,12 @@ def create_argparser():
     storedDataParamGroup.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
     storedDataParamGroup.add_argument('--normalise_to_nxs', action='store_true', help = 'Normalise simulated data to the total intensity in the Nexus file.')
-    storedDataParamGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help = 'Orientation of the sample, by the direction of its surface normal (looking along the beam): 1 - horizontal sample, normal up (reflection goes up); 0 - vertical sample, normal pointing right (reflection goes right, towards lower raw detector x index); 2 - vertical sample, normal pointing left (reflection goes left, towards higher raw detector x index).')
-    storedDataParamGroup.add_argument('-a', '--alpha', default=0.0, type=float, help = 'Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-    storedDataParamGroup.add_argument('--wavelength', type=float, default=6.0, help = 'Wavelength in Angstroms.')
+    storedDataParamGroup.add_argument('--sample_orientation', default=None, choices=[0,1,2], type=int, help = 'Orientation of the sample, by the direction of its surface normal (looking along the beam): 1 - horizontal sample, normal up (reflection goes up); 0 - vertical sample, normal pointing right (reflection goes right, towards lower raw detector x index); 2 - vertical sample, normal pointing left (reflection goes left, towards higher raw detector x index).')
+    storedDataParamGroup.add_argument('-a', '--alpha', default=None, type=float, help = 'Incident angle on the sample [deg]. Default: the value stored in the simulation file, otherwise 0.')
+    storedDataParamGroup.add_argument('--wavelength', type=float, default=None, help = 'Wavelength in Angstrom used for the Q axes (monochromatic instruments) and the TOF binning range. Default: the selected wavelength stored in the simulation file, otherwise 6.0.')
 
     instrumentGroup = parser.add_argument_group('Instrument overrides', 'Override default parameters for the selected instrument.')
-    instrumentGroup.add_argument('-i', '--instrument', default='d22', type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
+    instrumentGroup.add_argument('-i', '--instrument', default=None, type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instrument_defaults.py). Default: the instrument stored in the simulation file, otherwise d22.')
     instrumentGroup.add_argument('--instrument_nominal_source_sample_distance', type=float, help='Override nominal source to sample distance. [m]')
     instrumentGroup.add_argument('--instrument_sample_detector_distance', type=float, help='Override sample to detector distance. [m]')
     instrumentGroup.add_argument('--instrument_detector_size', nargs=2, type=float, help='Override detector dimensions [size_x, size_y] in meters.')
@@ -63,7 +63,7 @@ def create_argparser():
 
     nxsInstrumentGroup = parser.add_argument_group('NeXus Instrument overrides', 'Override parameters specifically for the NeXus instrument used to parse the measured data.')
     nxsInstrumentGroup.add_argument('--nxs_instrument_name', type=str.lower, choices=list(instrument_defaults.keys()), help='NeXus instrument name. Defaults to the simulated instrument if not provided.')
-    nxsInstrumentGroup.add_argument('--nxs_sample_orientation', choices=[0,1,2], type=float, help = 'Orientation of the sample in the NeXus experiment (same codes as --sample_orientation). Defaults to the simulated sample orientation.')
+    nxsInstrumentGroup.add_argument('--nxs_sample_orientation', choices=[0,1,2], type=int, help = 'Orientation of the sample in the NeXus experiment (same codes as --sample_orientation). Defaults to the simulated sample orientation.')
     nxsInstrumentGroup.add_argument('--nxs_instrument_nominal_source_sample_distance', type=float, help='Override NeXus nominal source to sample distance. [m]')
     nxsInstrumentGroup.add_argument('--nxs_instrument_sample_detector_distance', type=float, help='Override NeXus sample to detector distance. [m]')
     nxsInstrumentGroup.add_argument('--nxs_instrument_detector_size', nargs=2, type=float, help='Override NeXus detector dimensions [size_x, size_y] in meters.')
@@ -85,8 +85,6 @@ def create_argparser():
 def parse_args(parser):
     args = parser.parse_args()
 
-    # Apply instrument parameter overrides in instrument_defaults
-    set_instrument_parameters(args)
 
     if args.filename is None and args.nxs is None:
         parser.error('No input file provided! This is only allowed when the --nxs option is used.')

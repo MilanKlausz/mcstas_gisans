@@ -77,273 +77,216 @@ def get_overlay_plot_axes(column: int = 2) -> Tuple[List[plt.Axes], plt.Axes]:
     axes_top = [axes[i] for i in range(column)]
     return axes_top, axes_bottom
 
-def _extract_metadata_from_scipp(scipp_da_meta: Any) -> Dict[str, Any]:
+PLOT_DEFAULTS = {'instrument': 'd22', 'alpha': 0.0, 'sample_orientation': 1, 'wavelength': 6.0}
+
+
+def _extract_metadata_from_scipp(scipp_dg: Any) -> Dict[str, Any]:
     """
-    Helper to extract metadata from a Scipp DataArray.
+    Extract the instrument configuration stored by mg_run in a Scipp DataGroup.
+    Missing entries (older files) are simply absent from the returned dict.
     """
+    import json
     import scipp as sc
-    metadata = {}
-    if scipp_da_meta is not None:
-        if isinstance(scipp_da_meta, sc.DataGroup) and 'instrument' in scipp_da_meta:
-            inst = scipp_da_meta['instrument']
-            if 'sample_orientation' in inst:
-                metadata['sample_orientation'] = inst['sample_orientation'].value
-            if 'alpha_inc_deg' in inst:
-                metadata['alpha'] = inst['alpha_inc_deg'].value
-            if 'beam_angle' in inst:
-                metadata['beam_angle'] = inst['beam_angle'].value
-            if 'detector_centre_offset_x' in inst and 'detector_centre_offset_y' in inst:
-                metadata['instrument_detector_centre_offset'] = [
-                    inst['detector_centre_offset_x'].value,
-                    inst['detector_centre_offset_y'].value
-                ]
-            if 'name' in inst:
-                name = inst['name'].value
-                if isinstance(name, bytes):
-                    name = name.decode('utf-8')
-                metadata['instrument_name'] = name
+    metadata: Dict[str, Any] = {}
+    if not (isinstance(scipp_dg, sc.DataGroup) and 'instrument' in scipp_dg):
+        return metadata
+    inst = scipp_dg['instrument']
+
+    def value(key):
+        v = inst[key].value
+        return v.decode('utf-8') if isinstance(v, bytes) else v
+
+    for key, meta_key in (('name', 'instrument'), ('alpha_inc_deg', 'alpha'), ('sample_orientation', 'sample_orientation'),
+                          ('beam_angle', 'beam_angle'), ('no_gravity', 'no_gravity'), ('wfm', 'wfm')):
+        if key in inst:
+            metadata[meta_key] = value(key)
+    if 'wavelength_selected' in inst and value('wavelength_selected'):
+        metadata['wavelength'] = float(value('wavelength_selected'))
+    if 'detector_centre_offset_x' in inst and 'detector_centre_offset_y' in inst:
+        metadata['detector_centre_offset'] = [float(value('detector_centre_offset_x')), float(value('detector_centre_offset_y'))]
+    if 'parameters_json' in inst:
+        metadata['parameters'] = json.loads(value('parameters_json'))
+    if metadata.get('instrument') == 'unknown':
+        del metadata['instrument']
     return metadata
 
-def setup_global_instrument(args: Any) -> Tuple[Optional[Any], str, float, Any]:
+
+def _cli_or_metadata(args: Any, name: str, metadata: Dict[str, Any], label: str) -> Any:
+    """Explicit command line value > value stored in the simulation file > plotting default."""
+    cli_value = getattr(args, name, None)
+    stored = metadata.get(name)
+    if cli_value is not None:
+        if stored is not None and not _same(cli_value, stored):
+            print(f"WARNING: --{name} {cli_value} overrides the value stored in {label} ({stored}).")
+        return cli_value
+    return stored if stored is not None else PLOT_DEFAULTS[name]
+
+
+def _same(a: Any, b: Any) -> bool:
+    try:
+        return bool(np.isclose(float(a), float(b)))
+    except (TypeError, ValueError):
+        return a == b
+
+
+def build_plot_instrument(args: Any, metadata: Dict[str, Any], label: str = 'the simulation file') -> Tuple[Any, Dict[str, Any], Dict[str, Any]]:
     """
-    Setup the global instrument based on provided arguments and NeXus/Scipp metadata.
+    Build the Instrument for one simulation file from its stored configuration, with
+    explicitly given command line values taking precedence.
 
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed command line arguments.
-
-    Returns
-    -------
-    tuple
-        (instrument, instr_name, alpha, sample_orientation)
+    Returns (instrument, instrument_parameters, settings) where settings holds alpha,
+    sample_orientation, wavelength, no_gravity and wfm.
     """
     from .instrument import Instrument
-    from .instrument_defaults import instrument_defaults
+    from .instrument_defaults import resolve_instrument_parameters
 
-    if getattr(args, 'filename', None):
-        for filename in args.filename:
-            if filename.endswith('.h5'):
-                scipp_da_meta = load_scipp_file(filename)
-                metadata = _extract_metadata_from_scipp(scipp_da_meta)
+    name = _cli_or_metadata(args, 'instrument', metadata, label)
+    stored_params = metadata.get('parameters') if metadata.get('instrument') == name else None
+    params = resolve_instrument_parameters(name, args, prefix='instrument_', base=stored_params)
+    if stored_params is None and metadata.get('instrument') == name:
+        # older files: only the offset and beam angle were stored
+        if metadata.get('detector_centre_offset') is not None and getattr(args, 'instrument_detector_centre_offset', None) is None:
+            params['detector']['direct_beam_centre_offset'] = list(metadata['detector_centre_offset'])
+        if metadata.get('beam_angle') is not None and getattr(args, 'instrument_beam_angle', None) is None:
+            params['beam_angle'] = metadata['beam_angle']
 
-                cli_instrument = getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22'))
-                instr_name = metadata.get('instrument_name', cli_instrument)
-                if instr_name == 'unknown':
-                    instr_name = cli_instrument
+    settings = {
+        'alpha': float(_cli_or_metadata(args, 'alpha', metadata, label)),
+        'sample_orientation': int(_cli_or_metadata(args, 'sample_orientation', metadata, label)),
+        'wavelength': float(_cli_or_metadata(args, 'wavelength', metadata, label)),
+        'no_gravity': bool(metadata.get('no_gravity', False)),
+        'wfm': bool(metadata.get('wfm', False)),
+    }
+    instrument = Instrument(params, settings['alpha'], settings['wavelength'], settings['sample_orientation'],
+                            wfm=settings['wfm'], no_gravity=settings['no_gravity'])
+    return instrument, params, settings
 
-                if '--instrument' in sys.argv or '-i' in sys.argv:
-                    instr_name = cli_instrument
 
-                alpha = metadata.get('alpha', args.alpha)
-                if '--alpha' in sys.argv or '-a' in sys.argv:
-                    alpha = args.alpha
-
-                sample_orientation = metadata.get('sample_orientation', args.sample_orientation)
-                if '--sample_orientation' in sys.argv:
-                    sample_orientation = args.sample_orientation
-
-                beam_angle = metadata.get('beam_angle', 0.0)
-                if getattr(args, 'instrument_beam_angle', None) is not None:
-                    beam_angle = args.instrument_beam_angle
-
-                centre_offset = metadata.get('instrument_detector_centre_offset', None)
-                if getattr(args, 'instrument_detector_centre_offset', None) is not None:
-                    centre_offset = args.instrument_detector_centre_offset
-
-                instr_params = instrument_defaults[instr_name]
-                instr_params['beam_angle'] = beam_angle
-                if centre_offset is not None:
-                    instr_params['detector']['direct_beam_centre_offset'] = centre_offset
-
-                return Instrument(instr_params, alpha, args.wavelength, sample_orientation), instr_name, alpha, sample_orientation
-    return None, getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22')), args.alpha, args.sample_orientation
-
-def _load_nexus_datasets(args: Any, instr_name: str, alpha: float, sample_orientation: Any) -> Tuple[List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]], float]:
+def _load_nexus_datasets(args: Any, reference: Optional[Tuple[Dict[str, Any], Dict[str, Any]]]) -> Tuple[List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]], float]:
     """
-    Load Nexus datasets based on arguments.
-    
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed command line arguments.
-    instr_name : str
-        Instrument name.
-    alpha : float
-        Incident angle alpha.
-    sample_orientation : Any
-        Sample orientation.
-        
-    Returns
-    -------
-    tuple
-        (datasets, nxs_sum) where datasets is a list of dataset tuples.
+    Load the measured NeXus datasets.
+
+    The measurement is interpreted with the instrument configuration of the first
+    simulation file (`reference` = (instrument_parameters, settings)) if one is given,
+    otherwise with the command line / default configuration; --nxs_instrument_* and
+    --nxs_sample_orientation override it. Measured data always include gravity.
     """
+    from .instrument import Instrument
+    from .instrument_defaults import get_nxs_instrument_parameters
+    from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
+
     datasets = []
     nxs_sum = 0.0
-    if args.nxs:
-        nxs_labels = args.nxs_label if args.nxs_label else args.nxs #default to filename if no label provided
-        for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
-            from .instrument_defaults import get_nxs_instrument_parameters
-            from .instrument import Instrument
-            nxs_instr_params = get_nxs_instrument_parameters(args, default_instr_name=instr_name)
-            nxs_sample_orient = sample_orientation
-            if getattr(args, 'nxs_sample_orientation', None) is not None:
-                nxs_sample_orient = args.nxs_sample_orientation
-            nxs_instrument = Instrument(nxs_instr_params, alpha, args.wavelength, nxs_sample_orient)
+    if not args.nxs:
+        return datasets, nxs_sum
 
-            from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
-            hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
-            warn_if_duration_mismatch([nxs_filename], getattr(args, 'experiment_time', None), label=nxs_filename)
-            nxs_sum = np.sum(hist)
-            if args.verbose:
-                print(f"{nxs_filename} sum: {nxs_sum}")
-            datasets.append((hist, hist_error, y_edges, z_edges, nxs_label))
+    if reference is not None:
+        base_params, settings = reference
+    else:
+        _, base_params, settings = build_plot_instrument(args, {})
+    nxs_params = get_nxs_instrument_parameters(args, default_instr_name=base_params['name'], base=base_params)
+    orientation = int(args.nxs_sample_orientation) if getattr(args, 'nxs_sample_orientation', None) is not None else settings['sample_orientation']
+    nxs_instrument = Instrument(nxs_params, settings['alpha'], settings['wavelength'], orientation)
+
+    nxs_labels = args.nxs_label if args.nxs_label else args.nxs  # default to filename if no label provided
+    for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
+        hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
+        warn_if_duration_mismatch([nxs_filename], getattr(args, 'experiment_time', None), label=nxs_filename)
+        nxs_sum = np.sum(hist)
+        if args.verbose:
+            print(f"{nxs_filename} sum: {nxs_sum}")
+        datasets.append((hist, hist_error, y_edges, z_edges, nxs_label))
     return datasets, nxs_sum
 
-def _load_sim_datasets(args: Any, global_instrument: Any, instr_name: str, alpha: float, sample_orientation: Any, nxs_sum: float) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]]:
+
+def _load_sim_datasets(args: Any) -> Tuple[List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]], Optional[Tuple[Dict[str, Any], Dict[str, Any]]]]:
     """
-    Load simulation datasets from h5/npz files.
-    
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed command line arguments.
-    global_instrument : Instrument
-        The global instrument instance.
-    instr_name : str
-        Instrument name.
-    alpha : float
-        Incident angle alpha.
-    sample_orientation : Any
-        Sample orientation.
-    nxs_sum : float
-        Sum of nexus data for normalisation.
-        
-    Returns
-    -------
-    list
-        List of dataset tuples.
+    Load simulation datasets from .h5 (and legacy .npz) files, each with the instrument
+    configuration stored in the file itself. Returns (datasets, reference) where reference
+    is the (instrument_parameters, settings) of the first .h5 file (or None).
     """
+    import scipp as sc
     datasets = []
-    if args.filename:
-        labels = args.label if args.label else args.filename #default to filename if no label is provided
-        from .instrument import Instrument
-        for filename, label in zip(args.filename, labels):
-            if filename.endswith('.h5'):
-                scipp_da = load_scipp_file(filename)
-                import scipp as sc
-                
-                from .instrument_defaults import instrument_defaults
-                sim_instr_params = copy.deepcopy(instrument_defaults[instr_name])
-                has_offset = False
+    reference = None
+    if not args.filename:
+        return datasets, reference
+    labels = args.label if args.label else args.filename  # default to filename if no label is provided
+    for filename, label in zip(args.filename, labels):
+        if filename.endswith('.h5'):
+            scipp_dg = load_scipp_file(filename)
+            if not (isinstance(scipp_dg, sc.DataGroup) and 'instrument' in scipp_dg):
+                raise ValueError(f"{filename} does not appear to be a valid mcstas_gisans sc.DataGroup output.")
+            instrument, params, settings = build_plot_instrument(args, _extract_metadata_from_scipp(scipp_dg), label=filename)
+            if reference is None:
+                reference = (params, settings)
+            scipp_da = scipp_dg['data']
+            wavelength = settings['wavelength']
 
-                if isinstance(scipp_da, sc.DataGroup) and 'instrument' in scipp_da:
-                    dg_inst = scipp_da['instrument']
-                    if 'detector_centre_offset_x' in dg_inst:
-                        sim_instr_params['detector']['direct_beam_centre_offset_x_nexus'] = dg_inst['detector_centre_offset_x'].value
-                        has_offset = True
-                    if 'detector_centre_offset_y' in dg_inst:
-                        sim_instr_params['detector']['direct_beam_centre_offset_y_nexus'] = dg_inst['detector_centre_offset_y'].value
-                        has_offset = True
-                    scipp_da = scipp_da['data']  # Extract underlying DataArray for plotting
-                else:
-                    raise ValueError("The loaded file does not appear to be a valid mcstas_gisans sc.DataGroup output.")
-
-                if has_offset:
-                    instrument = Instrument(sim_instr_params, alpha, args.wavelength, sample_orientation)
-                else:
-                    instrument = global_instrument
-
+            y_edges, z_edges = instrument.get_q_pixel_limits(wavelength)
+            if scipp_da.bins is not None:
+                # TOF / event data: Q per event
                 scipp_da = instrument.compute_q_scipp(scipp_da)
-
-                y_edges, z_edges = instrument.get_q_pixel_limits(args.wavelength)
                 y_min, y_max = (args.y_plot_range[0], args.y_plot_range[1]) if getattr(args, 'y_plot_range', None) else (y_edges[0], y_edges[-1])
                 z_min, z_max = (args.z_plot_range[0], args.z_plot_range[1]) if getattr(args, 'z_plot_range', None) else (z_edges[0], z_edges[-1])
                 bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
-
-                import scipp as sc
-
-                # Bin into Qy, Qz
-                if scipp_da.bins is not None:
-                    # For TOF / event data
-                    if getattr(args, 'wavelength_slice', None) is not None:
-                        min_w = args.wavelength_slice[0]
-                        max_w = args.wavelength_slice[1]
-                        scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
-
-                    scipp_da = scipp_da.bins.concat()
-
-                    scipp_binned = scipp_da.bin(
-                        Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
-                        Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')
-                    )
-                    scipp_hist = scipp_binned.bins.sum()
-                    scipp_hist = scipp_hist.transpose(['Qy', 'Qz'])
-                    hist = scipp_hist.values
-                    if scipp_hist.variances is not None:
-                        hist_error = np.sqrt(scipp_hist.variances)
-                    else:
-                        hist_error = np.sqrt(hist)
-
-                    y_edges = scipp_hist.coords['Qy'].values * 10.0
-                    z_edges = scipp_hist.coords['Qz'].values * 10.0
-                else:
-                    # For non-TOF / flattened pixel data, preserve the exact pixel grid to match NeXus perfectly
-                    raw_hist = scipp_da.values.reshape((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus))
-                    if scipp_da.variances is not None:
-                        raw_err = np.sqrt(scipp_da.variances.reshape((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)))
-                    else:
-                        raw_err = np.sqrt(raw_hist)
-
-                    hist = instrument.detector.coords.rotate_detector_image(raw_hist)
-                    hist_error = instrument.detector.coords.rotate_detector_image(raw_err)
-                    y_edges, z_edges = instrument.get_q_pixel_limits(args.wavelength)
-
-            elif filename.endswith('.npz'):
-                # Legacy NPZ support
-                data = np.load(filename)
-                hist = data['hist']
-                if 'error' in data:
-                    hist_error = data['error']
-                else:
-                    hist_error = np.sqrt(hist)
-
-                if len(hist.shape) == 3:
-                    hist = np.sum(hist, axis=0)
-                    hist_error = np.sqrt(np.sum(hist_error**2, axis=0))
-
-                y_edges = data['yEdges']
-                z_edges = data['zEdges']
+                if getattr(args, 'wavelength_slice', None) is not None:
+                    min_w, max_w = args.wavelength_slice
+                    scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
+                scipp_da = scipp_da.bins.concat()
+                scipp_binned = scipp_da.bin(
+                    Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
+                    Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')
+                )
+                scipp_hist = scipp_binned.bins.sum().transpose(['Qy', 'Qz'])
+                hist = scipp_hist.values
+                hist_error = np.sqrt(scipp_hist.variances) if scipp_hist.variances is not None else np.sqrt(hist)
+                y_edges = scipp_hist.coords['Qy'].values * 10.0
+                z_edges = scipp_hist.coords['Qz'].values * 10.0
             else:
-                sys.exit("Unsupported file extension. Only .h5 and .npz files are supported.")
-            
-            if args.experiment_time:
-                hist, hist_error = upscale_simple(hist, hist_error, args.experiment_time, args.background)
+                # non-TOF pixel data: keep the exact pixel grid, identical to the NeXus treatment
+                shape = (instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)
+                raw_hist = scipp_da.values.reshape(shape)
+                raw_err = np.sqrt(scipp_da.variances.reshape(shape)) if scipp_da.variances is not None else np.sqrt(raw_hist)
+                hist = instrument.detector.coords.rotate_detector_image(raw_hist)
+                hist_error = instrument.detector.coords.rotate_detector_image(raw_err)
 
-            hist_sum = np.sum(hist)
-            if args.verbose:
-                print(f"{filename} sum: {hist_sum}")
-            if args.normalise_to_nxs and nxs_sum > 0:
-                hist *= nxs_sum / hist_sum #normalise total intensity of the sim to the nxs data
-                hist_error *= nxs_sum / hist_sum
-            datasets.append((hist, hist_error, y_edges, z_edges, label))
+        elif filename.endswith('.npz'):
+            # Legacy Q-histogram files of the dev branch: hist shape (Qy, Qz[, Qx])
+            data = np.load(filename)
+            hist = data['hist']
+            hist_error = data['error'] if 'error' in data else np.sqrt(hist)
+            if hist.ndim == 3:
+                hist = np.sum(hist, axis=2)
+                hist_error = np.sqrt(np.sum(hist_error**2, axis=2))
+            y_edges = data['yEdges']
+            z_edges = data['zEdges']
+        else:
+            sys.exit("Unsupported file extension. Only .h5 and .npz files are supported.")
 
-            if args.csv:
-                csv_filename = f"{filename.rsplit('.', 1)[0]}.csv"
-                np.savetxt(csv_filename, hist, delimiter=',')
-                print(f"Created {csv_filename}")
-    return datasets
+        if args.experiment_time:
+            hist, hist_error = upscale_simple(hist, hist_error, args.experiment_time, args.background)
+
+        hist_sum = np.sum(hist)
+        if args.verbose:
+            print(f"{filename} sum: {hist_sum}")
+        datasets.append((hist, hist_error, y_edges, z_edges, label))
+
+        if args.csv:
+            csv_filename = f"{filename.rsplit('.', 1)[0]}.csv"
+            np.savetxt(csv_filename, hist, delimiter=',')
+            print(f"Created {csv_filename}")
+    return datasets, reference
+
 
 def get_datasets(args: Any) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]]:
     """
     Prepare the datasets to be plotted.
-    
-    Loads data from NeXus measurement files (.nxs) or McStas/BornAgain simulation
-    results (.h5). For TOF simulations, data is loaded as Scipp event data arrays,
-    Q-values are calculated per event using the instrument geometry, and binned
-    into 2D histograms.
-    Scales intensities to experiment time if required.
+
+    Simulation files (.h5) are interpreted with the instrument configuration stored in
+    each file (explicit command line values take precedence, with a warning). Measured
+    NeXus data are interpreted with the configuration of the first simulation file
+    (unless overridden with the command line or --nxs_instrument_* options), or with the
+    command line configuration if no simulation file is given.
 
     Parameters
     ----------
@@ -353,25 +296,15 @@ def get_datasets(args: Any) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray, np
     Returns
     -------
     list
-        List of dataset tuples.
+        List of dataset tuples (hist, hist_error, y_edges, z_edges, label), NeXus datasets first.
     """
-    global_instrument, instr_name, alpha, sample_orientation = setup_global_instrument(args)
-
-    if global_instrument is None:
-        from .instrument import Instrument
-        from .instrument_defaults import instrument_defaults
-        instr_name = getattr(args, 'instrument_name', getattr(args, 'instrument', 'd22'))
-        instr_params = instrument_defaults[instr_name]
-        beam_angle = getattr(args, 'instrument_beam_angle', 0.0)
-        if beam_angle is None: beam_angle = 0.0
-        instr_params['beam_angle'] = beam_angle
-        alpha = args.alpha
-        sample_orientation = args.sample_orientation
-        global_instrument = Instrument(instr_params, alpha, args.wavelength, sample_orientation)
-
-    nxs_datasets, nxs_sum = _load_nexus_datasets(args, instr_name, alpha, sample_orientation)
-    sim_datasets = _load_sim_datasets(args, global_instrument, instr_name, alpha, sample_orientation, nxs_sum)
-    
+    sim_datasets, reference = _load_sim_datasets(args)  # first .h5 file = reference configuration
+    nxs_datasets, nxs_sum = _load_nexus_datasets(args, reference)
+    if args.normalise_to_nxs and nxs_sum > 0:
+        # normalise the total intensity of each simulation to the NeXus data (float arithmetic:
+        # Poisson-sampled histograms are integer arrays)
+        sim_datasets = [(hist * (nxs_sum / np.sum(hist)), err * (nxs_sum / np.sum(hist)), y, z, label)
+                        for hist, err, y, z, label in sim_datasets]
     return nxs_datasets + sim_datasets
 
 def _plot_differences(args: Any, 

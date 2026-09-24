@@ -76,9 +76,13 @@ The ``mg_plot`` script takes the simulated ``.h5`` files and performs the Q-spac
 
 .. _nexus-integration:
 
+Instrument configuration of the plotted data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Every ``.h5`` file written by ``mg_run`` stores the complete instrument configuration it was simulated with (instrument parameters including detector geometry and offset, beam angle, incident angle, sample orientation, selected wavelength, gravity and WFM settings). ``mg_plot`` rebuilds the instrument **separately for each file** from this stored configuration, so files simulated with different settings can be plotted together. Values given explicitly on the command line (``-i``, ``--alpha``, ``--sample_orientation``, ``--wavelength``, ``--instrument_*``) take precedence, and a warning is printed when they differ from the stored ones. Without a stored value, the defaults are ``d22``, :math:`\alpha = 0`, orientation ``1`` and 6 Å.
+
 NeXus Integration
 ~~~~~~~~~~~~~~~~~
-If an experimental NeXus file is provided (``--nxs``), the generic ``nexus_reader.py`` module is invoked. This module uses the physical ``Instrument`` object parameters to convert both the simulated spatial hits and the experimental detector pixels into rigorous Q-space coordinates ($Q_y$, $Q_z$). *(Note: Plotted figures follow the convention where the y-axis is horizontal and the z-axis is vertical).*
+If an experimental NeXus file is provided (``--nxs``), the generic ``nexus_reader.py`` module converts the measured detector pixels into Q-space coordinates (:math:`Q_y`, :math:`Q_z`) with the same Q convention as the simulation (see :ref:`q_convention`). The measurement is interpreted with the instrument configuration of the **first** simulation file (detector offset, beam angle, incident angle, orientation, wavelength) — or with the command line configuration if no simulation file is given — and the ``--nxs_instrument_*`` / ``--nxs_sample_orientation`` options override it. Measured data are always treated with gravity. *(Note: Plotted figures follow the convention where the y-axis is horizontal and the z-axis is vertical).*
 
 ``mg_plot --nxs`` accepts multiple files; each one is plotted as its own labelled dataset (paired positionally with ``--nxs_label``, if given). This is different from ``mg_fit --nxs``, described below, where multiple files are instead summed together into a single dataset to fit against.
 

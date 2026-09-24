@@ -210,6 +210,14 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
     }
     if not inst.is_tof_instrument:
         instrument_metadata['wavelength_selected'] = sc.scalar(inst.wavelength_selected if inst.wavelength_selected is not None else 0.0, unit='angstrom')
+    # Complete, resolved instrument configuration used for this simulation (defaults + CLI overrides),
+    # so that mg_plot / mg_fit can rebuild exactly the same Instrument from the file.
+    instrument_metadata['no_gravity'] = sc.scalar(bool(params.get('no_gravity', inst.no_gravity)))
+    instrument_metadata['wfm'] = sc.scalar(bool(params.get('wfm', False)))
+    if params.get('instrument_params') is not None:
+        resolved = dict(params['instrument_params'])
+        resolved['beam_angle'] = inst.beam_angle
+        instrument_metadata['parameters_json'] = sc.scalar(json.dumps(resolved))
 
     # Prepare sample metadata
     import inspect

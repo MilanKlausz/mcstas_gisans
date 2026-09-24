@@ -5,7 +5,7 @@ Preconditioning the particles before the BornAgain simulation
 import numpy as np
 from pathlib import Path
 
-from .instrument_defaults import instrument_defaults
+from .instrument_defaults import get_instrument_parameters
 
 from .coordinates import CoordinateTransform
 
@@ -139,11 +139,11 @@ def apply_t0_correction(particles, args):
     else: #T0 correction based on McStas (TOFLambda) monitor
         if not args.wfm:
             tof_limits = [None, None] #Do not restrict the monitor TOF spectrum for T0 correction fitting
-            t0_monitor = instrument_defaults[args.instrument]['t0_monitor_name']
+            t0_monitor = get_instrument_parameters(args)['t0_monitor_name']
         else: # Wavelength Frame Multiplication (WFM)
             from .instrument_defaults import get_saga_subpulse_tof_limits
             tof_limits = get_saga_subpulse_tof_limits(args.wavelength)
-            t0_monitor = instrument_defaults[args.instrument]['wfm_t0_monitor_name']
+            t0_monitor = get_instrument_parameters(args)['wfm_t0_monitor_name']
         print(f"Applying T0 correction based on McStas monitor: {t0_monitor}")
         figure_output = f"{args.savename}_t0_correction.{args.t0_correction_figure}" if args.t0_correction_figure in ['png', 'pdf'] else args.t0_correction_figure
         mcstas_directory = Path(args.filename).resolve().parent
@@ -168,17 +168,13 @@ def precondition(particles, args):
     2) Propagate particles to the sample surface
     3) Optionally apply T0 (time-of-flight) correction
     """
-    instr_params = instrument_defaults.get(args.instrument, {})
-    beam_angle = getattr(args, 'instrument_beam_angle', None)
-    if beam_angle is None:
-        beam_angle = instr_params.get('beam_angle', None)
+    instr_params = get_instrument_parameters(args)
 
-    particles, actual_beam_angle = transform_to_bornagain_coordinate_system(
-        particles, args.alpha, args.sample_orientation, beam_angle, getattr(args, 'nexus_y_shift', 0.0))
+    particles, _ = transform_to_bornagain_coordinate_system(
+        particles, args.alpha, args.sample_orientation, instr_params.get('beam_angle'), getattr(args, 'nexus_y_shift', 0.0))
 
-    args.instrument_beam_angle = actual_beam_angle
     particles = propagate_to_sample_surface(particles, args.sample_size_y, args.sample_size_x, args.allow_sample_miss)
-    if args.no_t0_correction or not instrument_defaults[args.instrument]['tof_instrument']:
+    if args.no_t0_correction or not instr_params['tof_instrument']:
         print("No T0 correction is applied.")
     else:
         particles = apply_t0_correction(particles, args)

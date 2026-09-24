@@ -1,11 +1,11 @@
 
-from .instrument_defaults import set_instrument_parameters
+from .instrument_defaults import get_instrument_parameters
 from .instrument import Instrument
 from .sample import Sample
 
 def pack_parameters(args, particle_type):
     """Pack parameters necessary for processing in a single dictionary"""
-    instr_params = set_instrument_parameters(args)
+    instr_params = get_instrument_parameters(args)
     no_gravity = args.no_gravity if particle_type != 'photon' else True
     instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.sample_orientation, args.wfm, no_gravity)
 
@@ -37,6 +37,9 @@ def pack_parameters(args, particle_type):
         'analyzer_direction': args.analyzer_direction if any(args.analyzer_direction) else None,
         'analyzer_efficiency': args.analyzer_efficiency,
         'instrument_name': args.instrument,
+        'instrument_params': instr_params,
+        'no_gravity': no_gravity,
+        'wfm': bool(args.wfm),
         'analyzer_transmission': args.analyzer_transmission,
         'bornagain_number_of_threads': args.bornagain_number_of_threads,
     }
