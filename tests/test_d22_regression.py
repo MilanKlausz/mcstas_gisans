@@ -43,7 +43,7 @@ def test_d22_reduced_chi2(tmp_path):
         normalise_to_nxs = False
         y_range = None
         z_range = None
-        instrument_detector_centre_offset = [0.290030, -0.015917]
+        instrument_detector_centre_offset = [0.290852, -0.016066]
         label = ["D22 simulation"]
         nxs_label = ["D22 measurement"]
         verbose = False

@@ -33,7 +33,7 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
         "--specular", "include_specular",
         "--use_avg_materials",
         "--sample_orientation", "2",
-        "--instrument_detector_centre_offset", "0.290030", "-0.015917",
+        "--instrument_detector_centre_offset", "0.290852", "-0.016066",
         "--nxs", "data/paper/d22_measurement/073174.nxs",
         "--experiment_time", "10800",
         "--background", "1.6",
@@ -75,7 +75,7 @@ def test_specular_box_mask_excludes_the_specular_peak(monkeypatch):
     import mcstas_gisans.fit as fit
     from mcstas_gisans.run_cli import parse_args
     argv = ["mg_fit", "--nxs", "data/paper/d22_measurement/073174.nxs", "-i", "d22", "--wavelength_selected", "6.0",
-            "--alpha", "0.24", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290030", "-0.015917",
+            "--alpha", "0.24", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290852", "-0.016066",
             "--mask_exclude_q_box", "-0.035", "0.035", "0.072", "0.102", "--mask_view"]
     monkeypatch.setattr(sys, "argv", argv)
     args = parse_args(fit.create_fit_parser())

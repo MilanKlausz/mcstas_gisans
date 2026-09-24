@@ -67,13 +67,39 @@ e.g.:
 
    Calculated centre_offset [m]:  [X, Y]
 
-(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290030, -0.015917]``;
+(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290852, -0.016066]``;
 the 0.29 m matches the recorded 300 mm sideways detector translation).
 
 Keep this ``[X, Y]`` value — it is reused, unchanged, in steps 3 and 4 below as
 ``--instrument_detector_centre_offset X Y``. With it, the measured direct beam
 is exactly at Q = 0 and a simulated direct beam lands on the measured one (see
-:ref:`q_convention` in :doc:`technical_details`).
+:ref:`q_convention` in :doc:`technical_details`). The centroid is computed
+within ``--beam_radius`` (default 50 mm) of the beam, so that scattered
+background elsewhere on the detector does not bias it.
+
+**Cross-checks in the same command (recommended).** Given the MCPL file of the
+direct-beam McStas simulation (``--mcpl``), the tool ray-traces the McStas beam
+with the found offset — exactly like a ``mg_run`` direct-beam simulation, but
+within seconds — and reports the centroid residual between the simulated and
+the measured beam, the spot widths, the MCPL beam angle and mean wavelength
+(against ``--beam_angle``/``--wavelength``), and, with ``--experiment_time``,
+the intensity factor of step 2. ``--figure png|pdf|show`` draws the two beams
+and their profiles. A residual above half a pixel is reported with the offset
+that would make the simulation match; it points at the McStas beam (direction,
+position, slits), the beam angle or the wavelength — the offset printed first
+always describes the measurement. Given a sample measurement at the same
+wavelength (``--sample_nxs``), the real incident angle is measured from the
+distance between the specular spot and the direct beam (:math:`2\alpha`; the
+gravity drop cancels) and compared with ``--alpha``:
+
+.. code-block:: bash
+
+   mg_beam_centre_correction direct_beam.nxs --instrument d22 --wavelength 6.0 --sample_orientation 2 \
+     --mcpl direct_beam.mcpl.gz --experiment_time 60 --figure png \
+     --sample_nxs sample.nxs --alpha 0.24
+
+For the D22 paper data this gives a residual of 0.01 pixel, an intensity
+factor of 0.2107, and a measured incident angle of 0.234° for the nominal 0.24°.
 
 2. Direct beam simulation and the intensity factor
 -----------------------------------------------------

@@ -49,6 +49,7 @@ The ``mg_beam_centre_correction`` utility is used to align the instrument based 
 - It outputs the detector offset ``[x, y]`` (meters, NeXus frame) that puts the measured centroid on that point: the position of the detector centre relative to the undeflected beam axis through the sample. This is a property of the detector position only, so it is the same for every sample orientation.
 - With this offset, the measured direct beam maps exactly to :math:`(Q_y, Q_z) = (0, 0)` (see :ref:`q_convention`), and a simulated direct beam lands on the measured one.
 - Pass the offset to all subsequent simulations and comparisons with ``--instrument_detector_centre_offset X Y`` (``mg_run``, ``mg_fit``, ``mg_plot``; ``mg_plot`` also reads it from the ``.h5`` metadata).
+- Optional cross-checks: ``--mcpl`` (ray-trace the McStas direct beam with the found offset and compare it with the measurement, incl. the intensity factor with ``--experiment_time`` and a comparison figure with ``--figure``), and ``--sample_nxs``/``--alpha`` (incident angle measured from the specular spot). See :doc:`replicating_measurements`.
 
 Important Coordinate Units & Orientations
 -----------------------------------------

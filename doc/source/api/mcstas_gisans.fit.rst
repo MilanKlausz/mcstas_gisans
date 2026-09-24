@@ -27,4 +27,5 @@
       save_joint_comparison_plot
       save_summary_csv
       validate_fit_args
+      widen_angle_range_for_simulation
    

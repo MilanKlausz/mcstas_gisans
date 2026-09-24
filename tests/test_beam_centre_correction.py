@@ -25,7 +25,13 @@ def _expected_offset(wavelength):
     size_x, size_y = instrument_defaults['d22']['detector']['size']
     x_rel = (np.arange(nx) + 0.5) * size_x / nx - size_x / 2
     y_rel = (np.arange(ny) + 0.5) * size_y / ny - size_y / 2
-    centroid = np.array([(image.sum(axis=1) * x_rel).sum(), (image.sum(axis=0) * y_rel).sum()]) / image.sum()
+    # windowed centroid: pixels within 50 mm of the centroid, iterated from the brightest pixel
+    X, Y = np.meshgrid(x_rel, y_rel, indexing='ij')
+    i, j = np.unravel_index(np.argmax(image), image.shape)
+    centroid = np.array([x_rel[i], y_rel[j]])
+    for _ in range(50):
+        w = image * (((X - centroid[0]) ** 2 + (Y - centroid[1]) ** 2) <= 0.05 ** 2)
+        centroid = np.array([(w * X).sum(), (w * Y).sum()]) / w.sum()
     L = instrument_defaults['d22']['sample_detector_distance']
     drop = 0.5 * G * (L * M_N * wavelength * 1e-10 / H) ** 2
     return np.array([0.0, -drop]) - centroid
@@ -60,6 +66,40 @@ def test_beam_angle_override_does_not_leak_into_instrument_defaults():
     np.testing.assert_allclose(find_required_centre_offset(DIRECT_BEAM_FILE), _expected_offset(6.0), atol=1e-7)
 
 
+def test_background_far_from_the_beam_does_not_bias_the_centroid(tmp_path):
+    """Uniform background on a detector that is off-centre w.r.t. the beam must not pull the centroid."""
+    with h5py.File(DIRECT_BEAM_FILE, 'r') as f:
+        image = f['entry0/D22/Detector 1/data1'][:, :, 0].astype(float)
+    noisy = image + np.random.default_rng(0).poisson(0.5, image.shape)  # ~16k background counts
+    path = tmp_path / "noisy.nxs"
+    with h5py.File(path, 'w') as f:
+        f.create_dataset('entry0/D22/Detector 1/data1', data=noisy[:, :, None])
+    clean = find_required_centre_offset(DIRECT_BEAM_FILE)
+    np.testing.assert_allclose(find_required_centre_offset(str(path)), clean, atol=2e-4)
+    assert abs(find_required_centre_offset(str(path), beam_radius=0)[0] - clean[0]) > 5e-3  # whole detector: biased
+
+
 def test_find_required_centre_offset_file_not_found():
     with pytest.raises(FileNotFoundError):
         find_required_centre_offset("non_existent_file.nxs")
+
+
+def test_simulated_direct_beam_matches_the_measurement(tmp_path):
+    """The paper MCPL beam ray-traced with the found offset lands on the measured direct beam, and the
+    intensity factor equals the hand calculation of examples/paper/README.md (120538 / 60 / 9639.83)."""
+    from mcstas_gisans.beam_centre_correction import compare_with_simulated_direct_beam
+    offset = find_required_centre_offset(DIRECT_BEAM_FILE, sample_orientation=2)
+    results = compare_with_simulated_direct_beam(
+        DIRECT_BEAM_FILE, "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz", offset, sample_orientation=2,
+        experiment_time=60, figure='png', savename=str(tmp_path / "check"))
+    assert np.all(np.abs(results['residual_pixels']) < 0.2)
+    assert results['intensity_factor'] == pytest.approx(120538 / 60 / 9639.83, rel=1e-3)
+    assert results['mcpl_mean_wavelength'] == pytest.approx(6.0, rel=0.02)
+    assert (tmp_path / "check.png").exists()
+
+
+def test_incident_angle_is_measured_from_the_specular_spot():
+    """073174 (orientation 2, nominal 0.24 deg): 2*alpha between the specular spot and the direct beam."""
+    from mcstas_gisans.beam_centre_correction import measure_incident_angle
+    alpha = measure_incident_angle("data/paper/d22_measurement/073174.nxs", DIRECT_BEAM_FILE, sample_orientation=2)
+    assert alpha == pytest.approx(0.24, rel=0.05)

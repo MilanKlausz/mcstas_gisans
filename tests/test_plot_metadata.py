@@ -93,7 +93,7 @@ def test_stored_wavelength_is_used_by_default(tmp_path):
 
 def test_nexus_data_use_the_simulation_configuration(tmp_path):
     path = tmp_path / "sim.h5"
-    params = _write_sim_file(path, offset=(0.290030, -0.015917), alpha=0.24, wavelength=6.0, orientation=2)
+    params = _write_sim_file(path, offset=(0.290852, -0.016066), alpha=0.24, wavelength=6.0, orientation=2)
     datasets = plot.get_datasets(_args(['-f', str(path), '--nxs', 'data/paper/d22_measurement/073162.nxs']))
     (_, _, y_nxs, z_nxs, _), (_, _, y_sim, z_sim, _) = datasets
     np.testing.assert_allclose(y_nxs, y_sim)
@@ -111,7 +111,7 @@ def test_legacy_npz_is_summed_over_the_last_axis(tmp_path):
 
 def test_normalise_to_nxs_with_poisson_upscaling_does_not_crash(tmp_path):
     path = tmp_path / "sim.h5"
-    _write_sim_file(path, offset=(0.290030, -0.015917), orientation=2)
+    _write_sim_file(path, offset=(0.290852, -0.016066), orientation=2)
     datasets = plot.get_datasets(_args(['-f', str(path), '--nxs', 'data/paper/d22_measurement/073162.nxs',
                                         '--normalise_to_nxs', '-t', '60']))
     nxs_sum = datasets[0][0].sum()

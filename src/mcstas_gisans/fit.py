@@ -679,7 +679,7 @@ def widen_angle_range_for_simulation(angle_range: List[float], particles: np.nda
     frame) that encloses the unmasked pixels as seen from the sample centre, so that every
     simulated neutron that can reach those pixels is simulated:
     - horizontal: the outgoing horizontal angles are sampled relative to each neutron's incident
-      horizontal direction (max |phi_i| of the particles), and scattering happens anywhere across
+      horizontal direction (the largest absolute ``phi_i`` of the particles), and scattering happens anywhere across
       the sample width;
     - both: the detector resolution (3 sigma);
     - lab-vertical: a neutron launched above the region falls into it (gravity drop over the flight
