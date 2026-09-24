@@ -73,83 +73,119 @@ def convert_val(value_str: str) -> Union[int, float, str]:
         except ValueError:
             return value_str
 
+def format_fit_value(v: float) -> str:
+    """Format a fitted parameter value with 4 decimal places, falling back to
+    scientific notation for nonzero values too small to show at that precision
+    (e.g. an SLD on the order of 1e-6), which would otherwise print as 0.0000."""
+    text = f"{v:.4f}"
+    if v != 0 and float(text) == 0.0:
+        return f"{v:.4e}"
+    return text
+
+
+LOSS_FUNCTIONS = ('poisson_deviance', 'reduced_chi2', 'log_residual')
+MC_TO_POISSON_WARNING_RATIO = 1.0  # warn if the MC variance exceeds the counting variance in >5% of the pixels
+
+
+def poisson_deviance_with_mc(counts: np.ndarray, expected: np.ndarray, mc_variance: np.ndarray) -> np.ndarray:
+    """
+    Per-pixel deviance 2 [ln P(N | N) - ln P(N | m, sigma^2)] of measured counts N against a
+    simulated expectation m with Monte Carlo variance sigma^2.
+
+    The finite simulation statistics are modelled by a gamma-distributed expectation (mean m,
+    variance sigma^2), which makes N negative-binomially distributed with mean m and variance
+    m + sigma^2 (effective likelihood for weighted Monte Carlo, cf. Arguelles, Schneider & Yuan,
+    JHEP 06 (2019) 030). Limits: sigma -> 0 gives the Poisson deviance 2 [m - N + N ln(N/m)]
+    (unbiased also at low counts); at high counts it approaches (N - m)^2 / (m + sigma^2).
+    P(N | N) is the saturated Poisson term, so a perfect model gives ~1 per pixel.
+    """
+    from scipy.special import gammaln, betaln, xlogy
+    counts = np.asarray(counts, dtype=float)
+    m = np.maximum(np.asarray(expected, dtype=float), 1e-12)
+    var = np.maximum(np.asarray(mc_variance, dtype=float), 0.0)
+
+    saturated = xlogy(counts, counts) - counts - gammaln(counts + 1)
+    log_p = xlogy(counts, m) - m - gammaln(counts + 1)          # Poisson
+
+    alpha = np.divide(m * m, var, out=np.full_like(m, np.inf), where=var > 0)
+    use_nb = np.isfinite(alpha) & (alpha < 1e14)
+    if np.any(use_nb):
+        n = counts[use_nb]
+        a = alpha[use_nb]
+        r = var[use_nb] / m[use_nb]                                 # 1 / beta
+        # ln Gamma(a + n) - ln Gamma(a) = gammaln(n) - betaln(a, n) for n >= 1 (stable for large a)
+        lgamma_ratio = np.where(n > 0, gammaln(np.maximum(n, 1)) - betaln(a, np.maximum(n, 1)), 0.0)
+        log_nb = (lgamma_ratio - gammaln(n + 1)
+                  - a * np.log1p(r)                                 # a ln(beta / (1 + beta))
+                  - n * np.log1p(1.0 / r))                          # n ln(1 / (1 + beta))
+        log_p = log_p.copy()
+        log_p[use_nb] = log_nb
+    return 2.0 * (saturated - log_p)
+
+
 def calculate_fitness(
     hist_nxs: np.ndarray,
-    hist_nxs_error: np.ndarray,
     hist_sim: np.ndarray,
-    hist_sim_error: np.ndarray
-) -> Tuple[float, float]:
+    hist_sim_mc_error: np.ndarray
+) -> Dict[str, float]:
     """
-    Evaluate fitness between an experimental and a simulated histogram.
+    Goodness-of-fit metrics between measured counts and simulated expected counts.
 
-    Masked regions are represented by NaN in hist_nxs/hist_sim (hist_nxs is
-    typically pre-masked once upfront by prepare_experimental_data; hist_sim
-    is typically passed in unmasked -- either input may legitimately contain
-    NaN, and any position where either does is excluded).
-
-    Uses a native scipp boolean mask internally (rather than manually
-    indexing NumPy arrays by a derived boolean array) so that the (I_exp -
-    I_sim) difference's variance (sigma_exp**2 + sigma_sim**2) falls out of
-    scipp's own automatic error propagation on subtraction, instead of being
-    computed by hand.
+    Pixels where either input is NaN (masked) are excluded; n is the number of used pixels.
 
     Parameters
     ----------
     hist_nxs : np.ndarray
-        Experimental NeXus histogram.
-    hist_nxs_error : np.ndarray
-        Experimental NeXus histogram errors.
+        Measured counts N (NaN outside the mask).
     hist_sim : np.ndarray
-        Simulated histogram.
-    hist_sim_error : np.ndarray
-        Simulated histogram errors.
+        Simulated expected counts m over the measurement time, including background.
+    hist_sim_mc_error : np.ndarray
+        Monte Carlo (statistical) uncertainty of hist_sim.
 
     Returns
     -------
-    tuple
-        A tuple containing (reduced_chi2, log_residual).
+    dict
+        poisson_deviance : mean per-pixel deviance of poisson_deviance_with_mc (Poisson
+            likelihood, with the Monte Carlo uncertainty of the simulation folded in).
+            ~1 for a perfect model; unbiased also at low counts.
+        reduced_chi2 : 1/n * sum[(N - m)^2 / (m + sigma_MC^2)] (Pearson chi^2 with the model's
+            Poisson variance plus the Monte Carlo variance; biased at low counts).
+        log_residual : mean of (log10 N - log10 m)^2 over pixels where both are positive.
+        mc_to_poisson_variance : 95th percentile of sigma_MC^2 / m over the pixels, i.e. how
+            large the Monte Carlo variance of the simulation is compared to the counting variance.
     """
-    import scipp as sc
-
-    exclude = ~(np.isfinite(hist_nxs) & np.isfinite(hist_sim))
-    keep = ~exclude
-
-    # Floor sigma_exp before squaring into a variance, so that scipp's
-    # automatic variance-sum on subtraction reproduces the old total_error_sq
-    # exactly, including this floor.
-    sigma_exp_floored = np.where(hist_nxs_error > 0, hist_nxs_error, 1.0)
-
-    dims = [f"dim{i}" for i in range(hist_nxs.ndim)]
-    nxs_da = sc.DataArray(
-        data=sc.array(dims=dims, values=np.nan_to_num(hist_nxs, nan=0.0), variances=sigma_exp_floored**2),
-        masks={'excluded': sc.array(dims=dims, values=exclude)},
-    )
-    sim_da = sc.DataArray(
-        data=sc.array(dims=dims, values=np.nan_to_num(hist_sim, nan=0.0), variances=hist_sim_error**2),
-        masks={'excluded': sc.array(dims=dims, values=exclude)},
-    )
-
-    # scipp propagates variances on subtraction as sigma_exp**2 + sigma_sim**2.
-    diff = nxs_da - sim_da
-    total_error_sq = np.where(diff.variances > 0, diff.variances, 1.0)
-
-    # Chi-square: weighted square deviations directly comparing absolute counts
+    keep = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
     n_valid = int(np.sum(keep))
-    chi2 = np.sum(((diff.values ** 2) / total_error_sq)[keep])
-    reduced_chi2 = chi2 / n_valid if n_valid > 0 else np.nan
+    if n_valid == 0:
+        return {key: np.nan for key in LOSS_FUNCTIONS + ('mc_to_poisson_variance',)}
 
-    # Logarithmic residual:
-    I_exp = hist_nxs[keep]
-    I_sim = hist_sim[keep]
-    pos_mask = (I_exp > 0) & (I_sim > 0)
-    if np.any(pos_mask):
-        log_I_exp = np.log10(I_exp[pos_mask])
-        log_I_sim = np.log10(I_sim[pos_mask])
-        log_residual = np.mean((log_I_exp - log_I_sim) ** 2)
+    counts = hist_nxs[keep]
+    expected = hist_sim[keep]
+    mc_variance = hist_sim_mc_error[keep] ** 2
+
+    poisson_deviance = float(np.sum(poisson_deviance_with_mc(counts, expected, mc_variance)) / n_valid)
+
+    variance = expected + mc_variance
+    variance = np.where(variance > 0, variance, 1.0)
+    reduced_chi2 = float(np.sum((counts - expected) ** 2 / variance) / n_valid)
+
+    both_positive = (counts > 0) & (expected > 0)
+    if np.any(both_positive):
+        log_residual = float(np.mean((np.log10(counts[both_positive]) - np.log10(expected[both_positive])) ** 2))
     else:
         log_residual = np.nan
 
-    return reduced_chi2, log_residual
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ratio = mc_variance / expected
+    ratio = ratio[np.isfinite(ratio)]
+    mc_to_poisson_variance = float(np.percentile(ratio, 95)) if ratio.size else np.nan
+
+    return {
+        'poisson_deviance': poisson_deviance,
+        'reduced_chi2': reduced_chi2,
+        'log_residual': log_residual,
+        'mc_to_poisson_variance': mc_to_poisson_variance,
+    }
 
 def save_comparison_plot(
     hist_nxs: np.ndarray,
@@ -533,13 +569,34 @@ def validate_fit_args(args: Any, parser: argparse.ArgumentParser) -> None:
     parser : argparse.ArgumentParser
         The argument parser instance for raising errors.
     """
+    has_fit = bool(args.fit or args.fit_common or args.fit2)
     if not args.mask_view:
         if not args.filename:
             parser.error("the following arguments are required: filename")
-        if not args.scan and not args.fit and not args.fit_common and not args.fit2:
+        if not args.scan and not has_fit:
             parser.error("Either --scan, --fit, --fit2, or --fit_common must be specified.")
+        if args.scan and has_fit:
+            parser.error("--scan cannot be combined with --fit/--fit2/--fit_common.")
+        if args.scan and (args.nxs2 or args.sample_arguments2):
+            parser.error("Joint (two-sample) options are only supported for fits, not for --scan.")
+        if not args.experiment_time:
+            parser.error("--experiment_time is required: the simulated rates must be scaled to expected counts to be compared with the measured counts.")
+        if getattr(args, 'instrument_params', {}).get('tof_instrument', False):
+            parser.error("Fitting is not implemented for TOF instruments yet.")
     if not args.nxs:
         parser.error("the following arguments are required: --nxs")
+
+    if has_fit:
+        try:
+            param_names, _, _, _, _ = parse_joint_fit_arguments(args)
+        except ValueError as err:
+            parser.error(str(err))
+        if getattr(args, 'fit_integer', None):
+            base_names = {name[3:] if name.startswith(('s1_', 's2_')) else name for name in param_names}
+            for item in args.fit_integer:
+                for name in item:
+                    if name not in param_names and name not in base_names:
+                        parser.error(f"--fit_integer {name}: '{name}' is not a fitted parameter ({param_names}).")
 
     if (args.fit2 or args.sample_arguments2) and not args.nxs2:
         args.nxs2 = args.nxs  # Default secondary NeXus dataset to primary NeXus dataset if omitted
@@ -605,6 +662,10 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
 
     hist_nxs = apply_mask(hist_nxs_raw, mask, np.nan)
     hist_nxs_error = apply_mask(hist_nxs_error_raw, mask, 0.0)
+    n_unmasked = int(np.sum(np.isfinite(hist_nxs)))
+    print(f"Unmasked detector pixels used for the comparison: {n_unmasked}")
+    if n_unmasked == 0 and not args.mask_view:
+        raise ValueError("The mask excludes every detector pixel; nothing is left to compare.")
 
     if getattr(args, 'simulate_mask_angle_range', False):
         factor = getattr(args, 'simulate_mask_angle_range_factor', 1.0)
@@ -650,7 +711,7 @@ def run_simulation_evaluation(
     label_prefix: str = "sim",
     save_simulation_output: bool = False,
     mcpl_metadata: Optional[Dict[str, Any]] = None
-) -> Tuple[float, float, Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[Dict[str, float], Dict[str, Any], Dict[str, Any]]:
     """
     Run a single simulation point evaluation and return fitness metrics.
 
@@ -684,13 +745,13 @@ def run_simulation_evaluation(
     Returns
     -------
     tuple
-        (reduced_chi2, log_residual, record, sim_data)
+        (metrics, record, sim_data); metrics as returned by calculate_fitness.
     """
     sample_args_dict = {}
     if args.sample_arguments:
         for pair in args.sample_arguments.split(';'):
             if '=' in pair:
-                k, v = pair.split('=')
+                k, v = pair.split('=', 1)
                 sample_args_dict[k.strip()] = convert_val(v.strip())
 
     for k, v in grid_point.items():
@@ -706,9 +767,6 @@ def run_simulation_evaluation(
         result = process_particles_parallelly(particles, params, process_number)
 
     instrument = params['instrument']
-
-    if getattr(instrument, 'is_tof_instrument', False):
-        raise NotImplementedError("TOF fitting is not yet implemented in fit.py after the Scipp refactoring.")
 
     raw_hist = result['pixelHist']
     raw_err = np.sqrt(result['pixelHistWeightsSquared'])
@@ -733,19 +791,18 @@ def run_simulation_evaluation(
         else:
             raise ValueError(f"Incompatible shapes: NeXus={hist_nxs.shape}, Sim={hist_sim.shape}")
 
-    if args.experiment_time:
-        hist_sim, hist_sim_error = upscale_simple(
-            hist_sim, hist_sim_error, args.experiment_time, args.background,
-            poisson_sampling=args.poisson_sampling
-        )
-
-    # hist_nxs is already masked (NaN outside `mask`) by prepare_experimental_data,
-    # so calculate_fitness's own isfinite-based exclusion already covers the mask;
-    # hist_sim is passed in unmasked (masking.apply_mask would only overwrite
-    # already-excluded positions -- kept positions are identical either way).
-    reduced_chi2, log_residual = calculate_fitness(
-        hist_nxs, hist_nxs_error, hist_sim, hist_sim_error
+    # expected counts over the measurement time (deterministic: no Poisson sampling, which
+    # would make the objective function random) and their Monte Carlo uncertainty
+    hist_sim, hist_sim_mc_error = upscale_simple(
+        hist_sim, hist_sim_error, args.experiment_time, args.background, poisson_sampling=False
     )
+
+    # hist_nxs is NaN outside the mask (prepare_experimental_data)
+    metrics = calculate_fitness(hist_nxs, hist_sim, hist_sim_mc_error)
+    _warn_if_mc_uncertainty_large(metrics, args)
+
+    # for display: expected spread of a measurement = Poisson + Monte Carlo
+    hist_sim_error = np.sqrt(np.maximum(hist_sim, 0.0) + hist_sim_mc_error**2)
 
     # hist_sim_masked/_error_masked (NaN-filled) are only needed for the
     # comparison plot's display, not for the fitness calculation above.
@@ -753,8 +810,8 @@ def run_simulation_evaluation(
     hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
 
     record = copy.deepcopy(grid_point)
-    record['reduced_chi2'] = reduced_chi2
-    record['log_residual'] = log_residual
+    for key in LOSS_FUNCTIONS:
+        record[key] = metrics[key]
 
     if args.png:
         plot_path = os.path.join(args.output_dir, f"{label_prefix}_{param_str}.png")
@@ -779,7 +836,21 @@ def run_simulation_evaluation(
         'edges': edges
     }
 
-    return reduced_chi2, log_residual, record, sim_data
+    return metrics, record, sim_data
+
+
+_MC_WARNING_ISSUED = [False]
+
+
+def _warn_if_mc_uncertainty_large(metrics: Dict[str, float], args: Any) -> None:
+    """Warn once per run if the simulation's Monte Carlo variance is not small compared to the counting variance."""
+    ratio = metrics.get('mc_to_poisson_variance', np.nan)
+    if not _MC_WARNING_ISSUED[0] and np.isfinite(ratio) and ratio > MC_TO_POISSON_WARNING_RATIO:
+        _MC_WARNING_ISSUED[0] = True
+        print(f"WARNING: in more than 5% of the unmasked pixels the Monte Carlo variance of the simulation exceeds "
+              f"the expected counting (Poisson) variance (95th percentile of their ratio: {ratio:.2f}). The loss "
+              f"accounts for it, but the comparison is limited by the simulation statistics there; consider more "
+              f"simulated statistics (more incident neutrons, or more --outgoing_directions).")
 
 def save_summary_csv(records: List[Dict[str, Any]], output_dir: str, filename: str) -> None:
     """
@@ -810,7 +881,8 @@ def save_and_print_summary(
     output_dir: str,
     filename: str,
     title_header: str,
-    extra_summary_text: Optional[str] = None
+    extra_summary_text: Optional[str] = None,
+    sort_key: str = 'poisson_deviance'
 ) -> None:
     """
     Save evaluation records to CSV and print a nicely formatted summary to standard output.
@@ -828,8 +900,8 @@ def save_and_print_summary(
     extra_summary_text : str, optional
         Additional text to append to the summary output.
     """
-    if records and 'reduced_chi2' in records[0]:
-        records.sort(key=lambda r: (np.isnan(r['reduced_chi2']), r['reduced_chi2']))
+    if records and sort_key in records[0]:
+        records.sort(key=lambda r: (np.isnan(r[sort_key]), r[sort_key]))
 
     save_summary_csv(records, output_dir, filename)
     summary_path = os.path.join(output_dir, filename)
@@ -837,7 +909,7 @@ def save_and_print_summary(
     print(f"\n{title_header} complete! Summary saved to: {summary_path}")
 
     summary_lines = []
-    summary_lines.append(f"--- {title_header} Results (Sorted by reduced_chi2) ---")
+    summary_lines.append(f"--- {title_header} Results (Sorted by {sort_key}) ---")
     if records:
         headers = list(records[0].keys())
         col_widths = {h: max(len(h), 12) for h in headers}
@@ -978,7 +1050,10 @@ def run_automated_fit(
         args2 = make_secondary_args(args)
         hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, _, _ = prepare_experimental_data(args2)
 
-        if getattr(args, 'filename2', None) or (getattr(args, 'alpha2', None) is not None and args.alpha2 != args.alpha):
+        # sample 2 needs its own particles if anything that get_particles/precondition use differs
+        if (getattr(args, 'filename2', None)
+                or (getattr(args, 'alpha2', None) is not None and args.alpha2 != args.alpha)
+                or (getattr(args, 'intensity_factor2', None) is not None and args.intensity_factor2 != args.intensity_factor)):
             particles2, particle_type2, mcpl_metadata2 = load_and_precondition_particles(args2)
         else:
             particles2, particle_type2, mcpl_metadata2 = particles, particle_type, mcpl_metadata
@@ -1009,92 +1084,64 @@ def run_automated_fit(
     records = []
     start_total_time = time.time()
 
+    def is_integer(name: str) -> bool:
+        base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
+        return name in fit_integers or base_name in fit_integers
+
+    def print_progress(message: str, eval_start_time: float) -> None:
+        eval_duration = time.time() - eval_start_time
+        avg_iter_time = (time.time() - start_total_time) / eval_counter[0]
+        eta = avg_iter_time * max(0, args.max_evals - eval_counter[0])
+        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {message} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+
     def objective_function(x):
         eval_start_time = time.time()
         eval_counter[0] += 1
 
         # Map continuous variables to rounded integers where configured
-        grid_point_s1 = {}
-        for name, idx in s1_map.items():
-            val = x[idx]
-            grid_point_s1[name] = int(np.round(val)) if (param_names[idx] in fit_integers or name in fit_integers) else float(val)
+        values = [int(np.round(val)) if is_integer(name) else float(val) for name, val in zip(param_names, x)]
+        display_point = dict(zip(param_names, values))
+        grid_point_s1 = {name: values[idx] for name, idx in s1_map.items()}
 
-        display_point = {}
-        for idx, name in enumerate(param_names):
-            val = x[idx]
-            base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
-            display_point[name] = int(np.round(val)) if (name in fit_integers or base_name in fit_integers) else float(val)
-
-        # Bounds penalty
-        for name, val, (low, high) in zip(param_names, x, bounds):
-            base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
-            eval_val = int(np.round(val)) if (name in fit_integers or base_name in fit_integers) else val
-            if low is not None and eval_val < low:
-                eval_duration = time.time() - eval_start_time
-                total_elapsed = time.time() - start_total_time
-                avg_iter_time = total_elapsed / eval_counter[0]
-                remaining = args.max_evals - eval_counter[0]
-                eta = avg_iter_time * max(0, remaining)
-                print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({name}: {eval_val} < {low}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
-                return 1e9
-            if high is not None and eval_val > high:
-                eval_duration = time.time() - eval_start_time
-                total_elapsed = time.time() - start_total_time
-                avg_iter_time = total_elapsed / eval_counter[0]
-                remaining = args.max_evals - eval_counter[0]
-                eta = avg_iter_time * max(0, remaining)
-                print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: Bound constraint violated ({name}: {eval_val} > {high}). Penalty applied | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        # Bounds penalty (the optimizers are given the bounds; this guards rounding and DE edge cases)
+        for name, val, (low, high) in zip(param_names, values, bounds):
+            if (low is not None and val < low) or (high is not None and val > high):
+                print_progress(f"Bound constraint violated ({name}: {val} outside [{low}, {high}]). Penalty applied", eval_start_time)
                 return 1e9
 
         if not is_joint_fit:
-            res = run_simulation_evaluation(
+            metrics, _, _ = run_simulation_evaluation(
                 grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
                 label_prefix=f"fit_eval_{eval_counter[0]}", mcpl_metadata=mcpl_metadata
             )
-            reduced_chi2, log_residual = res[0], res[1]
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
-            rec['reduced_chi2'] = reduced_chi2
-            rec['log_residual'] = log_residual
-            records.append(rec)
-            save_summary_csv(records, args.output_dir, "fit_summary.csv")
-
-            loss = log_residual if args.loss_function == 'log_residual' else reduced_chi2
+            for key in LOSS_FUNCTIONS:
+                rec[key] = metrics[key]
+            loss = metrics[args.loss_function]
         else:
-            grid_point_s2 = {}
-            for name, idx in s2_map.items():
-                grid_point_s2[name] = int(np.round(x[idx])) if (param_names[idx] in fit_integers or name in fit_integers) else float(x[idx])
+            grid_point_s2 = {name: values[idx] for name, idx in s2_map.items()}
 
             png_backup = getattr(args, 'png', False)
             args.png = False
-            res1 = run_simulation_evaluation(
+            metrics1, _, sim_data1 = run_simulation_evaluation(
                 grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
                 label_prefix=f"fit_eval_s1_{eval_counter[0]}", mcpl_metadata=mcpl_metadata
             )
-            res2 = run_simulation_evaluation(
-                grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2, label_prefix=f"fit_eval_s2_{eval_counter[0]}", mcpl_metadata=mcpl_metadata2
+            metrics2, _, sim_data2 = run_simulation_evaluation(
+                grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2,
+                label_prefix=f"fit_eval_s2_{eval_counter[0]}", mcpl_metadata=mcpl_metadata2
             )
             args.png = png_backup
 
-            reduced_chi2_1, log_res_1, sim_data1 = res1[0], res1[1], res1[3] if len(res1) > 3 else {}
-            reduced_chi2_2, log_res_2, sim_data2 = res2[0], res2[1], res2[3] if len(res2) > 3 else {}
-            args.png = png_backup
-
-            joint_reduced_chi2 = reduced_chi2_1 + reduced_chi2_2
-            joint_log_residual = log_res_1 + log_res_2
-
+            # joint loss: sum of the per-sample (per-pixel normalised) metrics
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
-            rec['chi2_sample1'] = reduced_chi2_1
-            rec['chi2_sample2'] = reduced_chi2_2
-            rec['reduced_chi2'] = joint_reduced_chi2
-            rec['log_res_sample1'] = log_res_1
-            rec['log_res_sample2'] = log_res_2
-            rec['log_residual'] = joint_log_residual
-            records.append(rec)
-            save_summary_csv(records, args.output_dir, "fit_summary.csv")
-
-            loss = joint_log_residual if args.loss_function == 'log_residual' else joint_reduced_chi2
+            for key in LOSS_FUNCTIONS:
+                rec[f"{key}_sample1"] = metrics1[key]
+                rec[f"{key}_sample2"] = metrics2[key]
+                rec[key] = metrics1[key] + metrics2[key]
+            loss = rec[args.loss_function]
 
             if args.png:
                 plot_path = os.path.join(args.output_dir, f"fit_eval_joint_{eval_counter[0]:03d}.png")
@@ -1109,25 +1156,25 @@ def run_automated_fit(
                     plot_path
                 )
 
+        records.append(rec)
+        save_summary_csv(records, args.output_dir, "fit_summary.csv")
+
         if np.isnan(loss):
             loss = 1e9
 
-        eval_duration = time.time() - eval_start_time
-        total_elapsed = time.time() - start_total_time
-        avg_iter_time = total_elapsed / eval_counter[0]
-        remaining = args.max_evals - eval_counter[0]
-        eta = avg_iter_time * max(0, remaining)
-
-        param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={v:.4f}" for k, v in display_point.items())
-        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
+        print_progress(f"{param_str} --> {args.loss_function} = {loss:.4f}", eval_start_time)
         return loss
 
     if args.optimizer.lower() == 'differential-evolution':
-        integrality = [name in fit_integers or (name[3:] if name.startswith(('s1_', 's2_')) else name) in fit_integers for name in param_names]
-        # Each generation in DE evaluates popsize * len(param_names) times (default popsize is 15).
-        # We scale maxiter so that the total evaluations respect args.max_evals.
+        integrality = [is_integer(name) for name in param_names]
+        # DE evaluates the initial population (popsize * N) and then popsize * N per generation.
         popsize = args.popsize
-        de_maxiter = max(1, args.max_evals // (popsize * len(param_names)))
+        population = max(5, popsize * len(param_names))  # scipy uses at least 5 population members
+        if args.max_evals < population:
+            print(f"WARNING: --max_evals {args.max_evals} is smaller than the initial DE population ({population}); "
+                  f"the initial population alone will be evaluated.")
+        de_maxiter = max(0, args.max_evals // population - 1)
         opt_res = scipy.optimize.differential_evolution(
             objective_function,
             bounds,
@@ -1135,22 +1182,46 @@ def run_automated_fit(
             maxiter=de_maxiter,
             popsize=popsize,
             integrality=integrality,
-            polish=False
+            polish=False,
+            seed=getattr(args, 'seed', None)
         )
+        best_x = np.asarray(opt_res.x, dtype=float)
     else:
+        # Nelder-Mead / Powell work in scaled coordinates u = (x - x0) / scale, with scale the bound
+        # range (or |x0|, or 1): all parameters are O(1), so --xatol is relative and tiny-valued
+        # parameters (e.g. SLDs ~1e-6) are handled like any other.
+        x0_arr = np.asarray(x0, dtype=float)
+        scale = np.array([
+            (high - low) if (low is not None and high is not None) else (abs(v) if v != 0 else 1.0)
+            for v, (low, high) in zip(x0_arr, bounds)
+        ])
+        to_x = lambda u: x0_arr + scale * np.asarray(u)
+        u_bounds = [((low - v) / sc_ if low is not None else None, (high - v) / sc_ if high is not None else None)
+                    for v, sc_, (low, high) in zip(x0_arr, scale, bounds)]
+        has_bounds = any(b is not None for pair in u_bounds for b in pair)
         opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
-        opt_options = {'maxiter': args.max_evals}
+        opt_options = {'maxiter': args.max_evals, 'maxfev': args.max_evals}
         if opt_method == 'nelder-mead':
-            opt_options['maxfev'] = args.max_evals
             opt_options['xatol'] = args.xatol
             opt_options['fatol'] = args.fatol
-        elif opt_method == 'powell':
+            # initial simplex: 10% of the scale per parameter, at least one unit for integer parameters
+            steps = [max(0.1, 1.0 / sc_) if is_integer(name) else 0.1 for name, sc_ in zip(param_names, scale)]
+            simplex = [np.zeros(len(param_names))]
+            for i, step in enumerate(steps):
+                vertex = np.zeros(len(param_names))
+                lo, hi = u_bounds[i]
+                vertex[i] = step if (hi is None or step <= hi) else -step
+                simplex.append(vertex)
+            opt_options['initial_simplex'] = np.array(simplex)
+        else:
             opt_options['xtol'] = args.xatol
             opt_options['ftol'] = args.fatol
 
         opt_res = scipy.optimize.minimize(
-            objective_function, x0, method=opt_method, options=opt_options
+            lambda u: objective_function(to_x(u)), np.zeros(len(param_names)), method=opt_method,
+            options=opt_options, bounds=u_bounds if has_bounds else None
         )
+        best_x = to_x(opt_res.x)
 
     total_runtime = time.time() - start_total_time
     total_evals = max(1, eval_counter[0])
@@ -1162,13 +1233,9 @@ def run_automated_fit(
         f"Best Loss ({args.loss_function}): {opt_res.fun:.4f}",
         "Optimal Parameters:"
     ]
-    best_params = dict(zip(param_names, opt_res.x))
+    best_params = dict(zip(param_names, best_x))
     for k, v in best_params.items():
-        base_name = k[3:] if k.startswith(('s1_', 's2_')) else k
-        if k in fit_integers or base_name in fit_integers:
-            val_str = str(int(np.round(v)))
-        else:
-            val_str = f"{v:.4f}"
+        val_str = str(int(np.round(v))) if is_integer(k) else format_fit_value(v)
         fit_results_lines.append(f"  {k} = {val_str}")
 
     fit_results_lines.extend([
@@ -1180,7 +1247,7 @@ def run_automated_fit(
 
     extra_summary_text = "\n".join(fit_results_lines)
 
-    save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text)
+    save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
     if args.gif:
         create_fit_evolution_gif(args.output_dir, is_joint=is_joint_fit)
@@ -1238,7 +1305,7 @@ def run_parameter_scan(
         iter_start_time = time.time()
         current_count = idx + 1
         print(f"\n[{current_count}/{total_evals}] Running simulation with: {grid_point}")
-        reduced_chi2, log_residual, record, _ = run_simulation_evaluation(
+        metrics, record, _ = run_simulation_evaluation(
             grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
             label_prefix="sim", save_simulation_output=True, mcpl_metadata=mcpl_metadata
         )
@@ -1249,7 +1316,7 @@ def run_parameter_scan(
         remaining = total_evals - current_count
         eta = avg_iter_time * max(0, remaining)
 
-        print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         records.append(record)
         save_summary_csv(records, args.output_dir, "scan_summary.csv")
 
@@ -1264,7 +1331,7 @@ def run_parameter_scan(
     ]
     extra_summary_text = "\n".join(runtime_summary_lines)
 
-    save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text)
+    save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
 def main() -> None:
     """
@@ -1299,7 +1366,7 @@ def main() -> None:
 
     particles, particle_type, mcpl_metadata = load_and_precondition_particles(args)
 
-    if args.fit:
+    if args.fit or args.fit2 or args.fit_common:
         run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)
     else:
         run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)

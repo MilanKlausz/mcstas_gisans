@@ -1,24 +1,12 @@
 """
-End-to-end regression test for mg_fit's own masking + fitness pipeline
-(masking.get_mask/apply_mask -> fit.calculate_fitness), which none of the
-other regression tests actually exercise: test_d22_regression.py reimplements
-its own separate get_mask()/calculate_fitness() rather than using the real
-ones from masking.py/fit.py.
+End-to-end regression test for mg_fit's masking + fitness pipeline
+(masking.get_mask/apply_mask -> fit.calculate_fitness) on real D22 data.
 
-Runs a single simulation (--max_evals 1 with Nelder-Mead evaluates exactly
-one point: the initial guess) against real D22 measurement data, masking out
-the specular peak the same way the run_fit*.bash examples do, and checks the
-resulting reduced_chi2 is a sane, small number (only possible if the mask
-correctly excludes the specular peak -- an unmasked comparison would be
-dominated by the specular peak's orders-of-magnitude-higher intensity and
-give a vastly larger reduced_chi2).
-
-This is used as the baseline for verifying a masking.py/fit.py scipp-based
-masking refactor doesn't change observable behavior. Note: reduced_chi2 is
-not exactly reproducible run to run -- BornAgain's outgoing-direction
-sampling has an unseeded per-particle random jitter (see run.py's
-get_simulation rand_y/rand_z) -- so the threshold here is deliberately loose
-(empirically, single-evaluation runs on this dataset landed between 2 and 4).
+test_specular_box_mask_excludes_the_specular_peak checks the mask itself (the brightest
+measured pixel -- the specular reflection -- must be excluded, and most pixels must stay).
+test_single_eval_fit_with_specular_mask runs one mg_fit evaluation (--max_evals 1 with
+Nelder-Mead evaluates exactly the initial guess) with a fixed --seed, so the result is
+deterministic, and checks that all loss metrics are reported and sane.
 """
 import os
 import subprocess
@@ -54,6 +42,7 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
         "--optimizer", "nelder-mead",
         "--max_evals", "1",
         "--output_dir", str(tmp_path),
+        "--seed", "7",
     ]
 
     res = subprocess.run(cmd, capture_output=True, text=True)
@@ -67,17 +56,37 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
     summary_path = os.path.join(str(tmp_path), "fit_summary.csv")
     assert os.path.exists(summary_path), "fit_summary.csv was not created"
 
-    reduced_chi2 = None
+    best = {}
     for line in res.stdout.splitlines():
-        if line.startswith("Best Loss (reduced_chi2):"):
-            reduced_chi2 = float(line.split(":")[1].strip())
-    assert reduced_chi2 is not None, f"Could not find 'Best Loss (reduced_chi2)' in output:\n{res.stdout}"
+        if line.startswith("Best Loss ("):
+            name, value = line[len("Best Loss ("):].split("):")
+            best[name] = float(value)
+    assert list(best) == ["poisson_deviance"], f"Expected the default Poisson deviance loss:\n{res.stdout}"
+    deviance = best["poisson_deviance"]
+    print(f"Single-evaluation masked Poisson deviance per pixel: {deviance}")
+    # deterministic with the fixed seed (3.39 with BornAgain 21.2); a wrong geometry or mask
+    # (e.g. the specular peak not excluded, or simulation and data shifted) gives much larger values
+    assert 2.0 < deviance < 6.0
 
-    print(f"Single-evaluation masked reduced_chi2: {reduced_chi2}")
-    assert reduced_chi2 < 15.0, (
-        f"reduced_chi2 ({reduced_chi2}) is much larger than expected for a masked comparison "
-        "against a decent starting guess -- the specular-peak mask may not be excluding it correctly."
-    )
+
+def test_specular_box_mask_excludes_the_specular_peak(monkeypatch):
+    import numpy as np
+    import sys
+    import mcstas_gisans.fit as fit
+    from mcstas_gisans.run_cli import parse_args
+    argv = ["mg_fit", "--nxs", "data/paper/d22_measurement/073174.nxs", "-i", "d22", "--wavelength_selected", "6.0",
+            "--alpha", "0.24", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290030", "-0.015917",
+            "--mask_exclude_q_box", "-0.035", "0.035", "0.072", "0.102", "--mask_view"]
+    monkeypatch.setattr(sys, "argv", argv)
+    args = parse_args(fit.create_fit_parser())
+    hist_nxs, _, y_edges, z_edges, mask, hist_raw, _ = fit.prepare_experimental_data(args)
+    peak = np.unravel_index(np.argmax(hist_raw), hist_raw.shape)
+    assert np.isnan(hist_nxs[peak]), "the specular peak must be masked"
+    # the peak is where it should be: Qz = 2 k sin(alpha) = 0.0877 1/nm at 6 A, 0.24 deg
+    qz_centres = 0.5 * (z_edges[:-1] + z_edges[1:])
+    assert abs(qz_centres[peak[1]] - 2 * (2 * np.pi / 0.6) * np.sin(np.deg2rad(0.24))) < 2 * np.diff(z_edges).mean()
+    kept = np.isfinite(hist_nxs).sum()
+    assert 0.9 * hist_raw.size < kept < hist_raw.size
 
 
 if __name__ == "__main__":

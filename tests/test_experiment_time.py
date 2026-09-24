@@ -24,7 +24,8 @@ def test_deterministic_scaling_matches_manual_calculation(synthetic_hist):
     scaled_hist, scaled_error = upscale_simple(hist, hist_error, experiment_time, background, poisson_sampling=False)
 
     expected_hist = hist * experiment_time + background
-    expected_error = np.sqrt((hist_error * experiment_time) ** 2 + expected_hist)
+    # only the Monte Carlo uncertainty, scaled; the counting noise is handled by the fit loss
+    expected_error = hist_error * experiment_time
     assert np.allclose(scaled_hist, expected_hist)
     assert np.allclose(scaled_error, expected_error)
 
@@ -74,4 +75,7 @@ def test_poisson_sampling_matches_expected_lambda_on_average():
     sampled_hist, _ = upscale_simple(
         hist, hist_error, experiment_time, background, poisson_sampling=True, rng=np.random.default_rng(99)
     )
-    assert sampled_hist.mean() == pytest.approx(expected_lambda, rel=0.02)
+    # 5 standard errors of the mean (sqrt(lambda/n) ~ 0.12), and Poisson variance = lambda
+    assert sampled_hist.mean() == pytest.approx(expected_lambda, abs=5 * np.sqrt(expected_lambda / n))
+    assert sampled_hist.var() == pytest.approx(expected_lambda, rel=0.05)
+    assert sampled_hist.dtype == float

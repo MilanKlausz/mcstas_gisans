@@ -14,9 +14,8 @@ def create_fit_parser():
                             help='Parameter name followed by values to scan, e.g., --scan radius 10 12 15')
     scan_group.add_argument('--nxs', type=str, nargs='+', required=True, help='Path(s) to experimental NeXus file(s) to match. If multiple files are given (e.g. segmented measurements), their counts are summed; --experiment_time should then be the cumulative experiment time across all given files.')
     scan_group.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
-    scan_group.add_argument('--experiment_time', type=float, default=None, help='Virtual experiment time in seconds for upscaling the simulation. If --nxs specifies multiple files, this should be their cumulative experiment time. If the NeXus file(s) report their own measurement duration, it is compared against this value and a warning (not an error) is printed on a mismatch.')
+    scan_group.add_argument('--experiment_time', type=float, default=None, help='Measurement time in seconds: the simulated rates are scaled to expected counts over this time before comparison with the measured counts (required for scans and fits). If --nxs specifies multiple files, this should be their cumulative experiment time. If the NeXus file(s) report their own measurement duration, it is compared against this value and a warning (not an error) is printed on a mismatch.')
     scan_group.add_argument('--background', type=float, default=0.0, help='Flat background level added during upscaling.')
-    scan_group.add_argument('--poisson_sampling', action='store_true', help='Enable random Poisson noise sampling on the simulated data. (Off by default during scans/fits to ensure deterministic, smooth objective function evaluation for optimizer convergence.)')
     scan_group.add_argument('--output_dir', type=str, default='scan_results', help='Directory to save scan results.')
 
     scan_plot_group = parser.add_argument_group('Plotting options for scan results')
@@ -54,12 +53,12 @@ def create_fit_parser():
                            help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
     fit_group.add_argument('--max_evals', type=int, default=10,
                            help='Maximum number of objective function evaluations for the optimizer (default: 10).')
-    fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
-                           help='Metric to minimize during optimization (default: reduced_chi2).')
+    fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=['poisson_deviance', 'reduced_chi2', 'log_residual'],
+                           help='Metric to minimize (default: poisson_deviance). poisson_deviance: Poisson likelihood-ratio statistic per pixel, 2/n*sum[m - N + N*ln(N/m)] (m: expected simulated counts incl. background, N: measured counts); unbiased also at low counts, about 1 for a perfect model at high counts; ignores the Monte Carlo uncertainty of the simulation (a warning is printed if that is not small). reduced_chi2: 1/n*sum[(N - m)^2 / (m + sigma_MC^2)], includes the Monte Carlo uncertainty but is biased at low counts. log_residual: mean squared difference of log10 intensities over pixels where both are positive.')
     fit_group.add_argument('--xatol', type=float, default=0.01,
-                           help='Absolute parameter convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
+                           help='Parameter convergence tolerance (Nelder-Mead/Powell), relative to each parameter\'s scale: its bound range if bounded, otherwise |initial value| (default: 0.01, i.e. 1%%).')
     fit_group.add_argument('--fatol', type=float, default=0.05,
-                           help='Absolute loss function convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.05 matching MC Poisson noise floor).')
+                           help='Absolute loss convergence tolerance (Nelder-Mead/Powell) (default: 0.05).')
     fit_group.add_argument('--gif', action='store_true',
                            help='Generate animated GIF showing the evolution of the fitting process.')
 
@@ -110,7 +109,7 @@ def parse_fit_arguments(fit_args):
 
     Supported formats per parameter:
       * ``--fit name x0``
-      * ``--fit name min max``
+      * ``--fit name min max``   (x0 = midpoint)
       * ``--fit name x0 min max``
 
     Returns
@@ -118,31 +117,34 @@ def parse_fit_arguments(fit_args):
     tuple
         param_names: list of parameter names
         x0_list: list of initial values (float)
-        bounds_list: list of (min_val, max_val) tuples or None
+        bounds_list: list of (min_val, max_val) tuples ((None, None) if unbounded)
     """
     param_names = []
     x0_list = []
     bounds_list = []
 
     for item in fit_args:
-        if len(item) < 2:
-            raise ValueError(f"Fit parameter must specify at least name and initial value: {item}")
+        if len(item) < 2 or len(item) > 4:
+            raise ValueError(f"A fit parameter must be given as 'name x0', 'name min max' or 'name x0 min max', got: {item}")
         name = item[0]
+        if name in param_names:
+            raise ValueError(f"Fit parameter '{name}' is given more than once.")
         param_names.append(name)
+        values = [float(v) for v in item[1:]]
 
-        if len(item) == 2:
-            x0 = float(item[1])
-            bounds = (None, None)
-        elif len(item) == 3:
-            b_min = float(item[1])
-            b_max = float(item[2])
-            x0 = (b_min + b_max) / 2.0
-            bounds = (b_min, b_max)
+        if len(values) == 1:
+            x0, bounds = values[0], (None, None)
+        elif len(values) == 2:
+            bounds = (values[0], values[1])
+            x0 = (values[0] + values[1]) / 2.0
         else:
-            x0 = float(item[1])
-            b_min = float(item[2])
-            b_max = float(item[3])
-            bounds = (b_min, b_max)
+            x0, bounds = values[0], (values[1], values[2])
+
+        if bounds[0] is not None:
+            if not bounds[0] < bounds[1]:
+                raise ValueError(f"Fit parameter '{name}': the lower bound ({bounds[0]}) must be smaller than the upper bound ({bounds[1]}).")
+            if not bounds[0] <= x0 <= bounds[1]:
+                raise ValueError(f"Fit parameter '{name}': the initial value {x0} is outside the bounds [{bounds[0]}, {bounds[1]}].")
 
         x0_list.append(x0)
         bounds_list.append(bounds)

@@ -41,14 +41,14 @@ def upscale_simple(hist, hist_error, experiment_time, background, poisson_sampli
         #sample Poisson distribution for each bin with lambda='simulated counts'
         if rng is None:
             rng = np.random.default_rng()
-        hist = rng.poisson(lam=da.values)
+        hist = rng.poisson(lam=da.values).astype(float)
         hist_error = np.sqrt(hist)
     else:
-        # For optimization/fitting: use the deterministic expected value and combine
-        # the scaled Monte Carlo simulation error with the expected Poisson uncertainty.
-        # Variance = (MC error)^2 + Expected Poisson variance (which is equal to the mean 'hist')
+        # For fitting: the deterministic expected counts and ONLY their Monte Carlo
+        # uncertainty (scaled to the experiment time). The Poisson counting noise belongs
+        # to the measurement and is accounted for by the loss function.
         hist = da.values
-        hist_error = np.sqrt(da.variances + hist)
+        hist_error = np.sqrt(da.variances)
 
     return hist, hist_error
 

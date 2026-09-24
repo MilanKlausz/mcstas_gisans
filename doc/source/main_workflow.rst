@@ -96,7 +96,7 @@ Upscaling to Experiment Time
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Because Monte Carlo simulations output normalized rates (e.g., neutrons per second), the ``mg_plot`` script provides the ``--experiment_time`` argument.
 - The normalized simulated intensities are multiplied by the requested experiment time.
-- To realistically simulate detector counting noise, random integer sampling from a **Poisson distribution** is applied to each pixel bin, matching the statistical variance of the real measurement. In ``mg_plot`` this always happens whenever ``--experiment_time`` is given (there is no option to disable it there); in ``mg_fit``, by contrast, it is *off* by default and only enabled with ``--poisson_sampling``, precisely so the objective function stays smooth for the optimizer (see the fitting section below).
+- To realistically simulate detector counting noise, random integer sampling from a **Poisson distribution** is applied to each pixel bin, matching the statistical variance of the real measurement. In ``mg_plot`` this always happens whenever ``--experiment_time`` is given (there is no option to disable it there); ``mg_fit`` never applies it: fits compare the measured counts with the deterministic expected counts, and the counting statistics are part of the loss function (see the fitting section below).
 - A flat background (``--background``) can also be added for visualization parity.
 
 Visualizations
@@ -108,7 +108,7 @@ The script can generate:
 4. Parameter Scans and Automated Fitting (``mg_fit``)
 ------------------------------------------------------
 
-Instead of manually guessing sample parameters (like particle radius, lattice spacing, or defect abundance) and re-running ``mg_run`` and ``mg_plot`` by hand, users can invoke the ``mg_fit`` workflow. It builds directly on top of ``mg_run`` (it shares and extends the same CLI options — instrument, sample model, MCPL filtering, masking, etc.) and adds experimental comparison, masking, scanning and optimization on top. Exactly one of ``--scan``, ``--fit``, ``--fit2`` or ``--fit_common`` must be given (unless only ``--mask_view`` is requested, see below).
+Instead of manually guessing sample parameters (like particle radius, lattice spacing, or defect abundance) and re-running ``mg_run`` and ``mg_plot`` by hand, users can invoke the ``mg_fit`` workflow. It builds directly on top of ``mg_run`` (it shares and extends the same CLI options — instrument, sample model, MCPL filtering, masking, etc.) and adds experimental comparison, masking, scanning and optimization on top. Either ``--scan``, or any combination of ``--fit``, ``--fit2`` and ``--fit_common`` must be given (unless only ``--mask_view`` is requested, see below); ``--scan`` cannot be combined with the fit options. ``--experiment_time`` is required: the simulated rates are scaled to the expected counts over the measurement time before they are compared with the measured counts.
 
 Experimental data (``--nxs``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -126,9 +126,19 @@ Mode 2: Automated fitting (``--fit``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 - The script takes a parameterized sample model and the (summed) experimental NeXus data.
 - It uses SciPy optimizers selected with ``--optimizer``: **Nelder-Mead** (default) or **Powell** for local/derivative-free search, or **Differential Evolution** for global exploration (which requires finite bounds on every fitted parameter).
-- During each iteration, a full BornAgain simulation is executed, and a loss metric — ``reduced_chi2`` (default) or ``log_residual``, selected with ``--loss_function`` — is calculated over the unmasked detector region.
-- The optimizer stops once its convergence tolerances (``--xatol``, ``--fatol``) are met or the evaluation budget (``--max_evals``) is exhausted; it does not necessarily reach a perfect match. Use ``--fit_integer`` to constrain specific parameters (e.g. a discrete layer count) to integer values during optimization, and ``--gif`` to render an animation of the fit's progress.
-- Poisson noise sampling (``--poisson_sampling``) is off by default during scans and fits, since random per-evaluation noise would make the objective function non-smooth and hinder convergence.
+- During each iteration, a full BornAgain simulation is executed and compared with the measurement over the unmasked detector region (see *Loss functions* below). The simulation is deterministic within a fit: the expected counts are used (no Poisson sampling), and every evaluation uses the same random seed (``--seed``), so differences between evaluations reflect the parameter changes only.
+- The optimizer stops once its convergence tolerances are met or the evaluation budget (``--max_evals``, respected by all optimizers) is exhausted; it does not necessarily reach a perfect match. Nelder-Mead and Powell work in scaled parameters (each parameter divided by its bound range, or by its initial value if unbounded), so ``--xatol`` is relative (default 1% of the scale) and parameters of very different magnitude (e.g. an SLD of 1e-6 and a radius of 50) are handled alike; the bounds are passed to the optimizer. The initial value must lie within the bounds.
+- Use ``--fit_integer`` to constrain specific parameters (e.g. a discrete layer count) to integer values (Nelder-Mead starts with a step of at least one unit for them), and ``--gif`` to render an animation of the fit's progress.
+
+Loss functions (``--loss_function``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+With :math:`N_i` the measured counts and :math:`m_i` the simulated expected counts (including ``--background``) with Monte Carlo variance :math:`\sigma_i^2` in the :math:`n` unmasked pixels:
+
+- ``poisson_deviance`` (default): the per-pixel deviance :math:`\frac{2}{n}\sum_i[\ln P(N_i|N_i) - \ln P(N_i|m_i,\sigma_i^2)]` of a Poisson likelihood in which the finite simulation statistics are included (the expectation is gamma distributed with mean :math:`m_i` and variance :math:`\sigma_i^2`, making :math:`N_i` negative-binomially distributed; cf. Argüelles, Schneider & Yuan, JHEP 06 (2019) 030). Without Monte Carlo uncertainty it is the Poisson deviance :math:`\frac{2}{n}\sum_i[m_i - N_i + N_i\ln(N_i/m_i)]`. It gives unbiased parameters also at low counts. For a perfect model it is about 1 per pixel (at high counts :math:`1 + \ln(1+\sigma^2/m)`).
+- ``reduced_chi2``: :math:`\frac{1}{n}\sum_i (N_i - m_i)^2/(m_i + \sigma_i^2)`. About 1 for a perfect model at high counts, but biased at low counts (a few counts per pixel).
+- ``log_residual``: the mean squared difference of :math:`\log_{10}` intensities over the pixels where both are positive.
+
+All three are reported for every evaluation (``fit_summary.csv``/``scan_summary.csv``, sorted by the selected loss). If the Monte Carlo variance of the simulation exceeds the counting variance in more than 5% of the pixels, a warning suggests increasing the simulated statistics. Regions the sample model does not describe (the specular peak, the transmitted/direct beam) must be masked, otherwise they dominate any loss.
 
 **Usage Example:**
 To run an automated fit, you must specify your starting parameters, step bounds, and experimental data.
@@ -136,10 +146,10 @@ To run an automated fit, you must specify your starting parameters, step bounds,
 .. code-block:: bash
 
    mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 \
-     --model my_custom_sample --wavelength_selected 6.0 \
+     --model my_custom_sample --wavelength_selected 6.0 --experiment_time 10800 \
      --fit radius 50 100 \
      --fit height 20 50 \
-     --mask_exclude_q_box -0.05 0.05 -0.02 0.02
+     --mask_qz_min_cut 0.14 --mask_exclude_q_box -0.05 0.05 0.072 0.102
 
 Segmented measurement example (multiple ``--nxs`` files, summed, with the matching cumulative experiment time):
 

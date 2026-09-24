@@ -28,7 +28,7 @@ If the automated fitting stops early or returns an unphysical result:
 
 - **Masking:** Ensure that the specular reflection and the direct beam are correctly masked using ``--mask_exclude_q_box`` (or ``--mask_qy_min_cut``/``--mask_qy_max_cut``/``--mask_qz_min_cut``/``--mask_qz_max_cut``). The optimizer will often fail if it tries to fit the overwhelmingly bright specular peak instead of the GISANS scattering features.
 - **Fit Bounds:** Check your ``--fit`` bounds. If they are too tight, the optimizer cannot explore the space (e.g. ``--fit radius 5 20`` allows radius to vary between 5 and 20).
-- **Poisson Sampling:** Do NOT use ``--poisson_sampling`` during ``mg_fit``. Random noise prevents the objective function from converging smoothly.
+- **Randomness:** ``mg_fit`` compares the measurement with the deterministic expected counts (no Poisson sampling) and uses the same random seed for every evaluation, so the objective function does not fluctuate between evaluations. Choose ``--fatol`` according to the remaining Monte Carlo noise of the simulation.
 
 Multiple ``--nxs`` Files Don't Match (``mg_fit``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

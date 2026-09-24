@@ -11,11 +11,13 @@
       calculate_fitness
       convert_val
       create_fit_evolution_gif
+      format_fit_value
       format_time
       load_and_precondition_particles
       main
       make_secondary_args
       parse_joint_fit_arguments
+      poisson_deviance_with_mc
       prepare_experimental_data
       run_automated_fit
       run_parameter_scan
