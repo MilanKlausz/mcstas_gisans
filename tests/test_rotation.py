@@ -69,7 +69,9 @@ def test_transform_to_bornagain_coordinate_system(orientation, alpha):
     transformed_sys, _ = transform_to_bornagain_coordinate_system(particles, alpha, orientation, 0.0)
     unpacked_sys = transformed_sys[0]
     
-    _, tx, ty, tz, tvx, tvy, tvz, _, _, tpolx, tpoly, tpolz = unpacked_sys
+    tp, tx, ty, tz, tvx, tvy, tvz, tw, tt, tpolx, tpoly, tpolz = unpacked_sys
+    # weight, wavelength and time are not coordinates: passed through unchanged
+    assert (tp, tw, tt) == (orig[0], orig[7], orig[8])
 
     # First apply sample orientation transform to get intermediate state
     transform_0 = CoordinateTransform(0.0, orientation)
@@ -116,3 +118,19 @@ def test_declination_no_rotation():
     assert np.isclose(unpacked[4], vz)
     assert np.isclose(unpacked[5], vx)
     assert np.isclose(unpacked[6], vy)
+
+
+@pytest.mark.parametrize("orientation", [0, 1, 2])
+@pytest.mark.parametrize("alpha", [0.24, 1.0, 5.0])
+@pytest.mark.parametrize("beam_angle", [0.0, 0.44])
+def test_beam_meets_the_sample_at_the_grazing_angle(orientation, alpha, beam_angle):
+    """Independent of the implementation: a beam travelling along the nominal axis, tilted by
+    beam_angle towards the sample normal, arrives at the sample (BornAgain frame: surface z=0,
+    beam along +x) descending at exactly alpha, with no sideways component."""
+    b = np.deg2rad(beam_angle)
+    normal = {0: np.array([-1.0, 0, 0]), 1: np.array([0, 1.0, 0]), 2: np.array([1.0, 0, 0])}[orientation]
+    v_nexus = 700.0 * (np.cos(b) * np.array([0, 0, 1.0]) + np.sin(b) * normal)
+    particles = np.array([[1.0, 0, 0, 0, *v_nexus, 6.0, 0.01]])
+    transformed, _ = transform_to_bornagain_coordinate_system(particles, alpha, orientation, beam_angle)
+    v = transformed[0, 4:7]
+    np.testing.assert_allclose(v / np.linalg.norm(v), [np.cos(np.deg2rad(alpha)), 0, -np.sin(np.deg2rad(alpha))], atol=1e-12)

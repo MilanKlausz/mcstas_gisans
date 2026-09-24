@@ -33,11 +33,6 @@ def test_save_simulation_results_metadata():
         inst.sample_detector_distance = 10.0
         inst.wavelength_selected = 6.0
         
-        mock_scipp_da = sc.DataArray(
-            data=sc.array(dims=['detector_id'], values=np.zeros(4)),
-            coords={'detector_id': sc.array(dims=['detector_id'], values=np.arange(4))}
-        )
-        inst.create_scipp_container.return_value = mock_scipp_da
         
         # Mock Sample
         sample_mock = MagicMock()
@@ -60,8 +55,8 @@ def test_save_simulation_results_metadata():
         # Mock parsed CLI args
         from argparse import Namespace
         args = Namespace()
-        args.sample = "test_sample_name"
-        args.sample_args = {"param1": 10}
+        args.model = "test_sample_name"
+        args.sample_arguments = "param1=10"
         args.filename = "test_mcpl.mcpl"
         
         # Mock MCPL properties extracted from reader
@@ -104,7 +99,7 @@ def test_save_simulation_results_metadata():
         # 3. Verify sample metadata values
         sample_meta = dataset['sample']
         assert sample_meta['name'].value == 'test_sample_name'
-        assert json.loads(sample_meta['arguments_json'].value) == {"param1": 10}
+        assert json.loads(sample_meta['arguments_json'].value) == "param1=10"
         assert len(sample_meta['script_content'].value) > 0
         assert "def test_save_simulation_results_metadata():" in sample_meta['script_content'].value
         
@@ -123,7 +118,7 @@ def test_save_simulation_results_metadata():
         assert 'timestamp' in prov_meta
         
         args_dict = json.loads(prov_meta['cli_args_json'].value)
-        assert args_dict['sample'] == "test_sample_name"
+        assert args_dict['model'] == "test_sample_name"
         
         # 6. Verify core data integration
         data = dataset['data']
@@ -216,3 +211,7 @@ def test_save_simulation_results_tof_metadata_and_variance():
         assert np.allclose(summed.values, [6.0, 3.0])
         # Variance must be sum(weight**2), not sum(weight): 2**2+4**2=20, 3**2=9.
         assert np.allclose(summed.variances, [20.0, 9.0])
+        # every event keeps its own time of flight, in seconds, in its pixel
+        assert data.bins.coords['tof'].unit == sc.Unit('s')
+        assert sorted(data['detector_id', 0].values.coords['tof'].values) == [100.0, 150.0]
+        assert list(data['detector_id', 1].values.coords['tof'].values) == [200.0]

@@ -64,9 +64,9 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
     assert list(best) == ["poisson_deviance"], f"Expected the default Poisson deviance loss:\n{res.stdout}"
     deviance = best["poisson_deviance"]
     print(f"Single-evaluation masked Poisson deviance per pixel: {deviance}")
-    # deterministic with the fixed seed (3.39 with BornAgain 21.2); a wrong geometry or mask
-    # (e.g. the specular peak not excluded, or simulation and data shifted) gives much larger values
-    assert 2.0 < deviance < 6.0
+    # deterministic with the fixed seed (BornAgain 21.2); the value is printed with 4 decimals.
+    # The physical checks (intensity scale, alignment) are in test_d22_regression.py.
+    assert deviance == pytest.approx(3.2862, abs=2e-4)
 
 
 def test_specular_box_mask_excludes_the_specular_peak(monkeypatch):

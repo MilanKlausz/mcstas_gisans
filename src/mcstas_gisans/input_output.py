@@ -216,8 +216,8 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
         sample_content = "Could not extract sample source."
 
     sample_metadata = {
-        'name': sc.scalar(getattr(args, 'sample', getattr(args, 'model', 'unknown'))),
-        'arguments_json': sc.scalar(json.dumps(getattr(args, 'sample_args', getattr(args, 'sample_arguments', '')))),
+        'name': sc.scalar(args.model),
+        'arguments_json': sc.scalar(json.dumps(args.sample_arguments)),
         'script_content': sc.scalar(sample_content)
     }
 

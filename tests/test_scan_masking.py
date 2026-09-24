@@ -30,40 +30,39 @@ def test_get_mask_exclude_and_include_box():
     outside = ~( (YY >= -0.1) & (YY <= 0.1) & (ZZ >= 0.2) & (ZZ <= 0.8) )
     assert np.all(mask[outside])
 
-@pytest.mark.parametrize("y_range, z_range, exclude_box, include_box, qy_min, qy_max, qz_min, qz_max", [
-    (101, 101, None, None, None, None, None, None), # Default no mask
-    (101, 101, [[-0.1, 0.1, 0.2, 0.8]], None, None, None, None, None), # Only exclude
-    (101, 101, None, [[-0.02, 0.02, 0.4, 0.6]], None, None, None, None), # Only include
-    (101, 101, None, None, -0.2, 0.2, 0.1, 0.9), # Simple limits
+def _expected_mask(y_edges, z_edges, exclude_box, include_box, qy_min, qy_max, qz_min, qz_max):
+    """Independent per-pixel oracle: keep unless cut or inside an exclude box; include boxes win."""
+    def inside(y, z, box):
+        return box[0] <= y <= box[1] and box[2] <= z <= box[3]
+    expected = np.ones((len(y_edges) - 1, len(z_edges) - 1), dtype=bool)
+    for i in range(len(y_edges) - 1):
+        for j in range(len(z_edges) - 1):
+            y, z = 0.5 * (y_edges[i] + y_edges[i + 1]), 0.5 * (z_edges[j] + z_edges[j + 1])
+            keep = not ((qy_min is not None and y < qy_min) or (qy_max is not None and y > qy_max)
+                        or (qz_min is not None and z < qz_min) or (qz_max is not None and z > qz_max)
+                        or any(inside(y, z, b) for b in (exclude_box or [])))
+            expected[i, j] = keep or any(inside(y, z, b) for b in (include_box or []))
+    return expected
+
+
+@pytest.mark.parametrize("exclude_box, include_box, qy_min, qy_max, qz_min, qz_max, n_kept", [
+    (None, None, None, None, None, None, 100 * 50),                     # no mask: everything kept
+    ([[-0.1, 0.1, 0.2, 0.8]], None, None, None, None, None, None),     # only exclude
+    (None, [[-0.02, 0.02, 0.4, 0.6]], None, None, None, None, 100 * 50),  # only include: nothing removed
+    (None, None, -0.2, 0.2, 0.1, 0.9, None),                            # simple cuts
+    ([[-0.1, 0.1, 0.2, 0.8]], [[-0.02, 0.02, 0.0, 0.05]], None, None, 0.1, None, None),  # include beats a cut
 ])
-def test_get_mask_variations(y_range, z_range, exclude_box, include_box, qy_min, qy_max, qz_min, qz_max):
-    y_edges = np.linspace(-0.5, 0.5, y_range)
-    z_edges = np.linspace(0.0, 1.0, z_range)
-    
-    mask = get_mask(
-        y_edges, z_edges,
-        exclude_q_box=exclude_box,
-        include_q_box=include_box,
-        qy_min_cut=qy_min,
-        qy_max_cut=qy_max,
-        qz_min_cut=qz_min,
-        qz_max_cut=qz_max
-    )
-    
-    assert mask.shape == (y_range - 1, z_range - 1)
-    
-    y_centres = (y_edges[:-1] + y_edges[1:]) / 2.0
-    z_centres = (z_edges[:-1] + z_edges[1:]) / 2.0
-    YY, ZZ = np.meshgrid(y_centres, z_centres, indexing='ij')
-    
-    if qy_min is not None:
-        assert not np.any(mask[YY < qy_min])
-    if qy_max is not None:
-        assert not np.any(mask[YY > qy_max])
-    if qz_min is not None:
-        assert not np.any(mask[ZZ < qz_min])
-    if qz_max is not None:
-        assert not np.any(mask[ZZ > qz_max])
+def test_get_mask_variations(exclude_box, include_box, qy_min, qy_max, qz_min, qz_max, n_kept):
+    y_edges = np.linspace(-0.5, 0.5, 101)
+    z_edges = np.linspace(0.0, 1.0, 51)
+    mask = get_mask(y_edges, z_edges, exclude_q_box=exclude_box, include_q_box=include_box,
+                    qy_min_cut=qy_min, qy_max_cut=qy_max, qz_min_cut=qz_min, qz_max_cut=qz_max)
+    expected = _expected_mask(y_edges, z_edges, exclude_box, include_box, qy_min, qy_max, qz_min, qz_max)
+    np.testing.assert_array_equal(mask, expected)
+    assert 0 < expected.sum() and (n_kept is None or expected.sum() == n_kept)
+    if include_box and qz_min is not None:
+        assert mask[50, 0], "a pixel inside the include box below the Qz cut must be kept"
+
 
 def test_simulate_mask_angle_range_q_box_matching():
     import os

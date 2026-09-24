@@ -1,127 +1,77 @@
-import numpy as np
+"""
+Regression test on the D22 paper data: a seeded mg_run simulation of the silica sample
+(073174, orientation 2) is compared with the measurement using the package's own mask and
+loss (mg_fit's calculate_fitness on expected counts).
+
+Besides pinning the loss values (deterministic for a given seed and BornAgain version), it
+checks properties that do not depend on the implementation:
+- the simulated intensity matches the measured one (best-fit scale factor close to 1), which
+  validates the intensity factor, the experiment-time scaling and the masked region;
+- the loss increases when the simulation is displaced by two Qz bins, i.e. the simulated and the
+  measured scattering patterns are aligned in Q.
+"""
 import subprocess
+
+import numpy as np
 import pytest
 
+from mcstas_gisans import plot
+from mcstas_gisans.experiment_time import upscale_simple
+from mcstas_gisans.fit import calculate_fitness
+from mcstas_gisans.masking import get_mask
+from mcstas_gisans.plot_cli import create_argparser
 
-def get_mask(y_edges, z_edges, mask_exclude_q_box):
-    mask = np.ones((len(y_edges) - 1, len(z_edges) - 1), dtype=bool)
-    Y, Z = np.meshgrid(y_edges[:-1], z_edges[:-1], indexing='ij')
+EXPERIMENT_TIME = 10800
+BACKGROUND = 1.6
 
-    if mask_exclude_q_box is not None:
-        y_min, y_max, z_min, z_max = mask_exclude_q_box
-        # Mask out region inside the box
-        exclude_mask = (Y >= y_min) & (Y <= y_max) & (Z >= z_min) & (Z <= z_max)
-        mask = mask & (~exclude_mask)
-    return mask
 
-def calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error):
-    valid_mask = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
-    I_exp = hist_nxs[valid_mask]
-    I_sim = hist_sim[valid_mask]
-    sigma_exp = hist_nxs_error[valid_mask]
-    sigma_sim = hist_sim_error[valid_mask]
-    
-    sigma_exp = np.where(sigma_exp > 0, sigma_exp, 1.0)
-    total_error_sq = sigma_exp**2 + sigma_sim**2
-    total_error_sq = np.where(total_error_sq > 0, total_error_sq, 1.0)
-    chi2 = np.sum(((I_exp - I_sim) ** 2) / total_error_sq)
-    reduced_chi2 = chi2 / len(I_exp) if len(I_exp) > 0 else np.nan
-    return reduced_chi2
-
-def test_d22_reduced_chi2(tmp_path):
-    # Define test parameters
-    class Args:
-        nxs = ["data/paper/d22_measurement/073174.nxs"]
-        instrument = "d22"
-        instrument_name = "d22"
-        alpha = 0.24
-        wavelength = 6.0
-        sample_orientation = 2
-        experiment_time = 10800
-        background = 1.6
-        intensity_factor = 0.2084
-        normalise_to_nxs = False
-        y_range = None
-        z_range = None
-        instrument_detector_centre_offset = [0.290852, -0.016066]
-        label = ["D22 simulation"]
-        nxs_label = ["D22 measurement"]
-        verbose = False
-        csv = False
-        bins = [256, 128]
-        
-        # Simulation specific parameters
-        model = "silica_100nm_air"
-        sample_size_x = 0.10
-        sample_size_y = 0.10
-        sample_arguments = "radius=51;interferenceRange=5;latticeParameter=114"
-        outgoing_directions = 35
-        mcpl_file = "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz"
-        savename = str(tmp_path / "test_d22_sim_output")
-        filename = [f"{savename}.h5"]
-
-    args = Args()
-
-    print("Running D22 standalone simulation for regression test...")
+def test_d22_paper_comparison(tmp_path):
+    savename = str(tmp_path / "d22_sim")
     cmd = [
-        "mg_run",
-        args.mcpl_file,
-        "--instrument", args.instrument,
-        "--intensity_factor", str(args.intensity_factor),
-        "--wavelength_selected", str(args.wavelength),
-        "--model", args.model,
-        "--sample_arguments", args.sample_arguments,
-        "--sample_size_y", str(args.sample_size_y),
-        "--sample_size_x", str(args.sample_size_x),
-        "--alpha", str(args.alpha),
-        "--outgoing_directions", str(args.outgoing_directions),
-        "--allow_sample_miss",
-        "--specular", "include_specular",
-        "--use_avg_materials",
-        "--savename", args.savename,
-        "--sample_orientation", str(args.sample_orientation),
-        "--instrument_detector_centre_offset", 
-        str(args.instrument_detector_centre_offset[0]), 
-        str(args.instrument_detector_centre_offset[1])
+        "mg_run", "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "--instrument", "d22", "--intensity_factor", "0.2084", "--wavelength_selected", "6.0",
+        "--model", "silica_100nm_air", "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
+        "--sample_size_y", "0.10", "--sample_size_x", "0.10", "--alpha", "0.24", "--outgoing_directions", "35",
+        "--allow_sample_miss", "--specular", "include_specular", "--use_avg_materials",
+        "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290852", "-0.016066",
+        "--seed", "3", "--savename", savename,
     ]
-
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         pytest.fail(f"Simulation failed:\n{res.stderr}\n{res.stdout}")
 
-    print("Simulation finished. Processing datasets for chi2...")
+    # no --experiment_time: the simulation stays a rate, scaled below without Poisson sampling
+    args = create_argparser().parse_args(['-f', f"{savename}.h5", '--nxs', 'data/paper/d22_measurement/073174.nxs'])
+    (counts, _, y_edges, z_edges, _), (rate, rate_err, y_sim, z_sim, _) = plot.get_datasets(args)
+    np.testing.assert_allclose(y_sim, y_edges)
+    np.testing.assert_allclose(z_sim, z_edges)
+    expected, expected_err = upscale_simple(rate, rate_err, EXPERIMENT_TIME, BACKGROUND, poisson_sampling=False)
 
-    import mcstas_gisans.plot as plot_module
+    # the specular reflection (Qz = 2k sin(alpha) = 0.088 1/nm) is excluded, as in mg_fit
+    mask = get_mask(y_edges, z_edges, exclude_q_box=[[-0.035, 0.035, 0.072, 0.102]])
+    assert not mask[np.unravel_index(np.argmax(counts), counts.shape)], "the brightest pixel (specular) must be masked"
 
-    datasets = plot_module.get_datasets(args)
+    def loss(sim, sim_err, shift=0):
+        sim, sim_err = np.roll(sim, shift, axis=1), np.roll(sim_err, shift, axis=1)
+        return calculate_fitness(np.where(mask, counts, np.nan), np.where(mask, sim, np.nan), np.where(mask, sim_err, np.nan))
 
-    if len(datasets) != 2:
-        pytest.fail(f"Expected 2 datasets (nxs, sim), got {len(datasets)}")
+    metrics = loss(expected, expected_err)
+    print(metrics)
+    assert metrics['poisson_deviance'] == pytest.approx(REFERENCE['poisson_deviance'], rel=1e-3)
+    assert metrics['reduced_chi2'] == pytest.approx(REFERENCE['reduced_chi2'], rel=1e-3)
 
-    nxs_data = datasets[0]
-    sim_data = datasets[1]
+    # intensity: the scale factor minimising the deviance of the signal (background fixed) is ~1
+    signal, signal_err = expected - BACKGROUND, expected_err
+    scales = np.linspace(0.5, 1.5, 41)
+    deviances = [loss(s * signal + BACKGROUND, s * signal_err)['poisson_deviance'] for s in scales]
+    best_scale = scales[int(np.argmin(deviances))]
+    print(f"best scale {best_scale}, shifted losses", [loss(expected, expected_err, s)["poisson_deviance"] for s in (-2, 2)])
+    assert 0.8 <= best_scale <= 1.25, f"simulated intensity off by a factor {best_scale}"
 
-    hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, _ = nxs_data
-    hist_sim, hist_sim_error, _, _, _ = sim_data
+    # alignment: displacing the simulation by two Qz bins makes the agreement worse
+    for shift in (-2, 2):
+        assert loss(expected, expected_err, shift)['poisson_deviance'] > metrics['poisson_deviance']
 
-    mask_exclude_q_box = [-0.035, 0.035, 0.072, 0.102]
-    mask = get_mask(y_edges_nxs, z_edges_nxs, mask_exclude_q_box)
 
-    hist_nxs_masked = np.where(mask, hist_nxs, np.nan)
-    hist_nxs_error_masked = np.where(mask, hist_nxs_error, np.nan)
-    hist_sim_masked = np.where(mask, hist_sim, np.nan)
-    hist_sim_error_masked = np.where(mask, hist_sim_error, np.nan)
-
-    r_chi2 = calculate_fitness(hist_nxs_masked, hist_nxs_error_masked, hist_sim_masked, hist_sim_error_masked)
-    print(f"Reduced Chi2 (with mask): {r_chi2}")
-    
-    r_chi2_nomask = calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error)
-    print(f"Reduced Chi2 (no mask): {r_chi2_nomask}")
-
-    # Set threshold at 2x the baseline ~48, so ~100
-    assert r_chi2 < 100.0, f"Reduced Chi2 ({r_chi2:.2f}) exceeds acceptable threshold (100.0)"
-    print("Test passed successfully!")
-
-if __name__ == "__main__":
-    import pytest
-    pytest.main([__file__])
+# seed 3, BornAgain 21.2
+REFERENCE = {'poisson_deviance': 3.28639, 'reduced_chi2': 7.32431}
