@@ -23,6 +23,9 @@ extensions = [
 ]
 
 autosummary_generate = True
+# render the members of every module page (the generated API pages only contain an automodule)
+autodoc_default_options = {'members': True, 'show-inheritance': True}
+autodoc_member_order = 'bysource'
 
 templates_path = ['_templates']
 exclude_patterns = []

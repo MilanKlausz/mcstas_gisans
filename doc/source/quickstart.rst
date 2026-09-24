@@ -21,7 +21,7 @@ Then, install the package via the conda environment defined in ``conda.yml``:
    conda env create -f conda.yml
    conda activate mcstas_gisans
 
-You must also have an active installation of McStas (version 3.4 or higher) to run the simulation steps below.
+To run the McStas simulation of step 2 you need McStas (version 3.4 or higher). To try the tools without McStas, skip step 2 and use the D22 McStas output included in the repository, ``data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz``, in step 3.
 
 2. Running the McStas Simulation
 --------------------------------
@@ -44,27 +44,27 @@ This will generate a ``resources/mcstas_models/output_dir/test_events.mcpl.gz`` 
 
 Next, we process these neutrons through the BornAgain sample physics engine using the ``mg_run`` utility. 
 
-Here we simulate a standard ``silica_100nm_D2O`` model, defining the instrument (``-i d22``), the monochromatic wavelength (``--wavelength_selected 6.0``), and restricting to 100 outgoing directions per incoming ray (``-n 100``) for speed:
+Here we simulate a standard ``silica_100nm_D2O`` model, defining the instrument (``-i d22``), the monochromatic wavelength (``--wavelength_selected 6.0``) and the number of outgoing directions (``-n 20``, the default):
 
 .. code-block:: bash
 
    mg_run resources/mcstas_models/output_dir/test_events.mcpl.gz -i d22 \
      --wavelength_selected 6.0 \
      --model silica_100nm_D2O \
-     -n 100 \
+     -n 20 \
      --savename test_q \
      --specular include_specular
 
-*(Note: In mg_run, the ``-n 100`` flag specifies how many BornAgain scattering directions to sample per incoming MCPL neutron, which is different from the McStas source neutron count!)*
+*(Note: ``-n 20`` is the number of BornAgain scattering directions per axis, so each incident MCPL neutron produces 20 × 20 = 400 outgoing rays. The run time grows with its square; it has nothing to do with the McStas source neutron count.)*
 
-This will run the DWBA calculation and automatically save the output as ``test_q.h5`` in your current directory.
+This will run the DWBA calculation and save the simulated detector image as ``test_q.h5`` in your current directory.
 
 4. Visualizing the Results
 --------------------------
 
 Finally, use the ``mg_plot`` utility to visualize the computed spatial intensity as a function of the momentum transfer :math:`(Q_y, Q_z)`. 
 
-We will upscale the Monte Carlo result to 1 hour of experimental time (``-t 3600``) and apply Poisson noise for realistic visual comparison. 
+We will upscale the simulated rate to 1 hour of measurement time (``-t 3600``), which also applies Poisson noise for a realistic picture.
 
 .. code-block:: bash
 

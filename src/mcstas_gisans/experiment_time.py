@@ -7,17 +7,23 @@ import numpy as np
 import math as m
 
 def upscale_simple(hist, hist_error, experiment_time, background, poisson_sampling=True, rng=None):
-    """Upscale simulated results by a virtual experiment time,
-    applying Poisson distribution and background to the data.
+    """Upscale simulated results by a virtual experiment time, add a flat background and
+    optionally sample Poisson-distributed counts.
 
-    Uses a scipp DataArray (variances=hist_error**2) internally so the
-    experiment_time scaling's error propagation (hist_error *= experiment_time)
-    falls out of scipp's own scalar-multiply variance propagation rather than
-    being done by hand, and so this function no longer mutates the caller's
-    hist/hist_error arrays in place (the previous `hist *= experiment_time`
-    modified the caller's array directly -- harmless with current callers,
-    which don't reuse it afterwards, but fragile/surprising in general).
+    The input arrays are not modified. The scaling is done with a scipp DataArray
+    (variances = hist_error**2), so the error is scaled by experiment_time as well.
 
+    Parameters
+    ----------
+    hist, hist_error : ndarray
+        Simulated rate [counts/s] and its Monte Carlo uncertainty.
+    experiment_time : float
+        Virtual measurement time [s].
+    background : float
+        Flat background added to every bin [counts].
+    poisson_sampling : bool
+        If True, return a Poisson-sampled pseudo-measurement with error sqrt(counts);
+        otherwise the expected counts with the scaled Monte Carlo error.
     rng : numpy.random.Generator, optional
         Source of randomness for Poisson sampling. Defaults to a fresh
         np.random.default_rng() as before; pass an explicit seeded generator

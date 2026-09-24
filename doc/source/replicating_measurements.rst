@@ -265,8 +265,9 @@ angle, orientation and detector offset as the fit itself.
      --instrument_detector_centre_offset X Y --intensity_factor 0.2107 \
      --sample_orientation 2 --experiment_time <sample measurement time> \
      --mask_exclude_q_box -0.05 0.05 -0.02 0.02 \
-     --fit radius 50 100 \
-     --fit height 20 50
+     --fit radius 51 40 60 \
+     --fit height 30 20 50
 
-See :doc:`main_workflow` (section 4) for the available optimizers, joint/dual-sample
-fitting, and other ``mg_fit`` options.
+See :doc:`fitting_guide` for choosing masks, optimizers and loss functions, judging
+the result, and a worked example on the D22 data, and :doc:`main_workflow`
+(section 4) for joint/dual-sample fitting.

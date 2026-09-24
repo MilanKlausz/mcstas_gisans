@@ -4,3 +4,5 @@ mcpl
 matplotlib
 h5py
 scipy
+scipp
+scippneutron

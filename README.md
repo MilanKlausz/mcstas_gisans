@@ -14,9 +14,10 @@ The simulation of a neutron scattering instrument up until the sample is
 carried out using a McStas model of the instrument, that ends in an MCPL_output
 component to export neutrons in an MCPL file. This MCPL file is then used as a
 source of neutrons for the subsequent GISANS simulation of a sample model using
-BornAgain through a Python script. The result of this simulation is a Qx,Qy,Qz
-histogram (and corresponding uncertainty) in an NPZ file that can be processed
-with a plotting script.
+BornAgain through a Python script. The result of this simulation is a
+simulated detector image (and corresponding uncertainty) in a Scipp HDF5 file,
+that can be converted to Q, plotted, and compared or fitted to measured NeXus
+data with the provided tools.
 
 Detailed documentation of installation and usage can be found at:
 https://milanklausz.github.io/mcstas_gisans/

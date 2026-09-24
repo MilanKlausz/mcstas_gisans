@@ -24,7 +24,7 @@ def create_argparser() -> argparse.ArgumentParser:
     )
     parser.add_argument('filename', help='Input filename. (Preferably MCPL file from the McStas MCPL_output component, but .dat file from McStas Virtual_output works as well)')
     parser.add_argument('--intensity_factor', default=1.0, type=float, help='A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
-    parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help='Instrument (from instruments.py).')
+    parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help='Instrument (defined in instrument_defaults.py).')
     parser.add_argument('-p','--parallel_processes', required=False, type=int, help='Number of processes to be used for parallel processing.')
     parser.add_argument('--no_parallel', default=False, action='store_true', help='Do not use multiprocessing (single process; useful for profiling). Results are identical to a parallel run with the same --seed.')
     parser.add_argument('--seed', type=int, default=None, help='Random seed for the Monte Carlo sampling (outgoing-direction jitter, detector resolution). Results are reproducible and independent of the number of parallel processes for a given seed. Default: a random seed, which is printed and stored in the output file. mg_fit uses the same seed for every evaluation.')
@@ -42,14 +42,14 @@ def create_argparser() -> argparse.ArgumentParser:
     bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation'], type=str.lower, help="Control specular reflection in the simulation. NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)). SPECULAR_SIMULATION: Uses a separate SpecularSimulation for the specular reflection.")
     bornagainGroup.add_argument('--bornagain_number_of_threads', type=int, default=None, help='Number of internal threads BornAgain should use. If None, uses BornAgain default.')
     
-    outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
+    outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. The simulated detector image (with Monte Carlo uncertainties) and the metadata are saved in a Scipp HDF5 (.h5) file, loadable with mg_plot.')
     outputGroup.add_argument('-s', '--savename', default='', required=False, help='Output filename (can be full path).')
     outputGroup.add_argument('--temp_read_chunk_size', type=int, default=1000000, help='Chunk size for reading temporary intermediate files at the end of the simulation (default: 1000000)')
 
     sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
     sampleGroup.add_argument('--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
     sampleGroup.add_argument('--sample_arguments', help='Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
-    sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=float, help='Orientation of the sample, by the direction of its surface normal (looking along the beam): 1 - horizontal sample, normal up (reflection goes up); 0 - vertical sample, normal pointing right (reflection goes right, towards lower raw detector x index); 2 - vertical sample, normal pointing left (reflection goes left, towards higher raw detector x index).')
+    sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=int, help='Orientation of the sample, by the direction of its surface normal (looking along the beam): 1 - horizontal sample, normal up (reflection goes up); 0 - vertical sample, normal pointing right (reflection goes right, towards lower raw detector x index); 2 - vertical sample, normal pointing left (reflection goes left, towards higher raw detector x index).')
     sampleGroup.add_argument('--sample_size_y', default=0.06, type=float, help='Size of sample perpendicular to beam (along y-axis in BornAgain geometry). [m]')
     sampleGroup.add_argument('--sample_size_x', default=0.08, type=float, help='Size of sample along the beam (along x-axis in BornAgain geometry). [m]')
     sampleGroup.add_argument('--allow_sample_miss', default=False, action='store_true', help='Allow incident neutrons to miss the sample, and be directly propagated to the detector surface. This option can be used to simulate overillumination, or direct beam simulation by also setting one of the sample sizes to zero.')
@@ -134,7 +134,7 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
     instr_params = set_instrument_parameters(args)
 
     if args.wfm and any(key not in instr_params for key in required_keys_for_wfm):
-        parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instruments.py.")
+        parser.error(f"wfm option is not enabled for the {args.instrument} instrument. Set the required instrument parameters in instrument_defaults.py.")
 
     if args.tof_filtering_figure:
         if not args.wavelength:

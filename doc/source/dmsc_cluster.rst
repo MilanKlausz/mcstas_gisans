@@ -95,8 +95,12 @@ Building the container requires a `definition (*.def*) file <https://docs.sylabs
 
    %post
 
-   # Update and install dependencies
-   pip install --root-user-action=ignore bornagain numpy scipy mcpl tqdm h5py
+   # Install mcstas_gisans with all its dependencies (BornAgain, scipp, MCPL, ...) and console
+   # scripts (mg_run, mg_plot, mg_fit, ...). Append @<branch or tag> to the URL for a specific version.
+   pip install --root-user-action=ignore bornagain==21.2
+   pip install --root-user-action=ignore "mcstas_gisans @ git+https://github.com/MilanKlausz/mcstas_gisans.git"
+
+After changing ``mcstas_gisans`` the container has to be rebuilt (or ``mcstas_gisans`` installed from a local checkout bound into the container with ``pip install --user -e``).
 
 The command to build the container (with the *bornagain_v21.1_apptainer.sif* output name) is:
 

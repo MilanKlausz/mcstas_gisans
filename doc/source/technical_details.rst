@@ -18,7 +18,7 @@ TOF-specific pre-processing (``mg_run``/``mg_fit``, TOF instruments only)
 Two optional, McStas-monitor-driven corrections are applied to the input MCPL particles before the BornAgain simulation, both handled by ``tof_filtering.py``/``preconditioning.py`` and controlled by the *MCPL filtering* and *T0 correction* argument groups of ``mg_run``/``mg_fit`` (see :doc:`cli_reference`):
 
 * **MCPL TOF filtering** (``get_tof_filtering_limits``): if a central ``--wavelength`` is given (and filtering isn't disabled with ``--no_mcpl_filtering``), the TOFLambda-vs-wavelength spectrum from the instrument's ``mcpl_monitor_name`` McStas monitor (found next to the input MCPL file) is sliced at that wavelength, a Gaussian is fitted to the resulting 1D TOF distribution, and only particles within one FWHM of the fitted mean are kept. Explicit TOF limits can be supplied directly with ``--input_tof_limits`` to skip the monitor fit. ``--tof_filtering_figure`` plots the fit and exits without simulating.
-* **T0 correction** (``apply_t0_correction``): shifts every particle's TOF by a constant offset, either a fixed value (``--t0_fixed``) or one derived by fitting the same kind of Gaussian to the instrument's ``t0_monitor_name`` (or, in WFM mode, ``wfm_t0_monitor_name``) monitor. This compensates for the time the wavelength-defining chopper system needs before neutrons of the selected wavelength actually leave the source. Disable with ``--no_t0_correction``; visualize with ``--t0_correction_figure``.
+* **T0 correction** (``apply_t0_correction``): subtracts a constant t0 from the TOF of every particle, either a fixed value (``--t0_fixed``, e.g. calculated from chopper settings) or the mean (weighted average, not a fit) of the TOF spectrum in the wavelength bin containing ``--wavelength`` of the instrument's ``t0_monitor_name`` McStas monitor placed at the source position. See :ref:`t0_correction_section` below. Disable with ``--no_t0_correction``; visualise with ``--t0_correction_figure``.
 
 2. Coordinate Systems & Transformations
 ---------------------------------------
@@ -59,7 +59,7 @@ The 1D Q axes used for plotting and Q-defined masks are evaluated exactly along 
 
 .. _instrument_defaults_schema:
 
-3. Instrument Configuration Reference (``instrument_defaults.py``)
+4. Instrument Configuration Reference (``instrument_defaults.py``)
 --------------------------------------------------------------------
 
 Every instrument known to ``mcstas_gisans`` (selected via ``-i``/``--instrument`` on ``mg_run``/``mg_plot``/``mg_fit``, or ``--instrument`` on ``mg_beam_centre_correction``) is a plain Python dict entry in the ``instrument_defaults`` dictionary at the top of ``src/mcstas_gisans/instrument_defaults.py``. Adding support for a new instrument means adding a new key there (and, optionally, McStas monitors so the automated TOF filtering/T0 correction described above can work).
@@ -87,7 +87,52 @@ Optional keys:
 
 See :doc:`mcstas_preparation` for how to instrument a McStas model with the monitors these keys refer to.
 
-4. Core Tools and Modules
+3. Simulation of each neutron
+-----------------------------
+
+Coordinate transformation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+McStas uses the NeXus coordinate system (z along the beam, x horizontal pointing left as seen from the source, y up). In BornAgain the average sample surface defines the *xy* plane, always called "horizontal" regardless of the orientation of the sample in the laboratory, and the mean incident beam lies in the *xz* plane, arriving from the quadrant x<0, z>0. With the *MCPL_output* component placed at the sample position (see :doc:`mcstas_preparation`), the particles are already expressed relative to a sample at the origin, so only rotations are needed: first the sample orientation (a rotation around the beam axis for vertical samples), then the incident angle (a rotation in the plane of incidence). Since the incident angle is an input of the transformation, simulating other incident angles does not require re-running McStas (unless other instrument settings are needed).
+
+.. image:: _static/images/image2.png
+   :width: 45%
+.. image:: _static/images/image4.png
+   :width: 45%
+
+*Coordinate systems: (left) the* `NeXus coordinate system <https://manual.nexusformat.org/design.html#the-nexus-coordinate-system>`__ *used in McStas, as viewed from the detector; (right) the geometric conventions in BornAgain* [`Source <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6998781/figure/fig4/>`__].
+
+Propagation to the sample surface
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Particles are propagated in a straight line to the sample surface (z = 0 in the BornAgain frame, :math:`t = -z/v_z`). Particles outside the ``--sample_size_x`` × ``--sample_size_y`` area are discarded before the BornAgain simulation, unless ``--allow_sample_miss`` is given: then they are left where they are and propagated to the detector without scattering (transmission without refraction, with gravity). This allows simulating over-illumination, or a direct beam by also setting one of the sample sizes to zero.
+
+.. _t0_correction_section:
+
+T0 correction (TOF instruments)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The T0 correction accounts for the pulse width of the source. It is only needed for the data reduction: BornAgain uses the true wavelength of each particle for the neutron–sample interaction, while the reduction derives the wavelength from the TOF and the flight path, as in a real measurement. Without the correction, the TOF of every neutron would be overestimated by its emission time within the pulse. Subtracting the mean emission time of neutrons of the wavelength of interest shifts the TOF reference from the start of the pulse to its "centre": roughly half of the neutrons get a slightly underestimated and half a slightly overestimated TOF, so the uncertainty caused by the pulse width is included just as in a real TOF measurement.
+
+.. figure:: _static/images/image3.png
+   :alt: Demonstration of defining t0 automatically
+   :align: center
+   :width: 75%
+
+   Defining t0 from a TOF–wavelength McStas monitor at the source position (top): the wavelength bin containing the wavelength of interest (6.0 Å) is selected and t0 is the weighted average of its TOF spectrum (bottom).
+
+.. _wfm_mode_section:
+
+In Wavelength Frame Multiplication mode (``--wfm``) the mean is taken only over the sub-pulse containing the selected wavelength (sub-pulse limits are currently hardcoded for SAGA), from the ``wfm_t0_monitor_name`` monitor, and the flight path used to calculate the wavelength is shortened by ``wfm_virtual_source_distance``, because the corrected TOF refers to the virtual source.
+
+Outgoing directions
+~~~~~~~~~~~~~~~~~~~
+
+For each incident neutron a BornAgain simulation is run with a spherical detector of ``--outgoing_directions_horizontal`` × ``--outgoing_directions_vertical`` bins (``-n`` sets both) covering ``--angle_range`` (by default derived from the detector size and distance). The wavelength is that of the particle and the beam intensity its statistical weight. BornAgain evaluates the cross section at the bin centres; for each neutron the whole grid is shifted by a random amount of up to half a bin, so that the outgoing rays of all neutrons sample the angle range uniformly instead of always pointing at the same directions. This is the same Monte Carlo integral as BornAgain's own Monte Carlo integration option, but here the intensity is carried by rays in different directions, which matters because the rays are propagated further to the detector.
+
+Each incident neutron therefore produces one outgoing ray per bin, with the weight of the incident neutron times the probability of scattering into that bin (the differential cross section times the solid angle of the bin). The rays are propagated from the scattering point to the detector plane with gravity (unless ``--no_gravity``). The hit position is smeared with the detector resolution (Gaussian with the given FWHM; it should only describe the detection process — conversion, charge spread, electronics — since the pixelation is applied separately) and assigned to a pixel. Q is then calculated from the pixel, as for a measurement (:ref:`q_convention`). The Monte Carlo randomness (grid shift, resolution smearing) is seeded per particle from ``--seed``, so results are reproducible and independent of the number of processes.
+
+5. Core Tools and Modules
 -------------------------
 
 With the modularization of the codebase, specific tasks are handled by dedicated scripts under ``src/mcstas_gisans/``:
@@ -98,14 +143,14 @@ With the modularization of the codebase, specific tasks are handled by dedicated
 * **tof_filtering.py**: Derives MCPL TOF acceptance limits from a McStas monitor fit, see above.
 * **masking.py**: Builds the boolean Q-space masks used by ``mg_fit`` (``--mask_*`` options) and the ``--mask_view`` visualization.
 * **fit.py (mg_fit)**: Runs parameter scans and automated fitting/optimization; see :doc:`main_workflow`.
-* **beam_centre_correction.py**: Solves for the detector ``direct_beam_centre_offset`` that centres a direct-beam NeXus measurement at :math:`(Q_y, Q_z) = (0, 0)`.
+* **beam_centre_correction.py**: Finds the detector ``direct_beam_centre_offset`` from a direct-beam NeXus measurement (the measured direct beam is then at :math:`Q = 0`), and optionally cross-checks it with a simulated direct beam and measures the incident angle from the specular spot (see :doc:`replicating_measurements`).
 
-5. Testing
+6. Testing
 ----------
 
-The codebase includes a suite of regression tests (e.g. ``test_d22_regression.py``) that run full simulations and assert that the computed ``reduced_chi2`` against reference datasets remains stable, alongside unit tests for individual modules. (``test_d22_microgel_regression_local.py`` runs a similar check but depends on data files that are not committed to the repository, so it only runs on machines that have them locally.)
+Run the tests with ``pytest`` from the repository root (the regression tests call ``mg_run``/``mg_fit``, which must be on the ``PATH``). Besides unit tests of the individual modules, ``tests/test_physics_invariants.py`` checks physical properties that do not depend on the implementation, for all sample orientations: gravity pulls neutrons down in the laboratory, the unscattered beam is at :math:`Q = 0` and the specular reflection at :math:`Q_z = 2k\sin\alpha`, detector images and simulated hits use the same orientation convention. The regression tests (``test_d22_regression.py``, ``test_fit_masked_single_eval.py``) run seeded simulations of the D22 paper data and check the loss against the measurement.
 
-6. BornAgain Compatibility
+7. BornAgain Compatibility
 ---------------------------
 
 The core ``mcstas_gisans`` framework is compatible with **BornAgain 21.2, 22.2, 23.0 and 24.1**.

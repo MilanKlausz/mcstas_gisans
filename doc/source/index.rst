@@ -21,6 +21,7 @@ This framework facilitates the modelling and analysis of GISANS (Grazing Inciden
    mcstas_preparation
    main_workflow
    replicating_measurements
+   fitting_guide
    custom_sample
    dmsc_cluster
 

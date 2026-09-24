@@ -15,12 +15,14 @@ If you see ``ModuleNotFoundError: No module named 'bornagain'`` or ``'scipp'``, 
 
    conda activate mcstas_gisans
 
-NeXus Alignment Fails (``mg_beam_centre_correction``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If the optimization fails to find a center for the NeXus direct beam:
+Wrong Beam Centre (``mg_beam_centre_correction``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The beam centre is the intensity centroid within ``--beam_radius`` (default 50 mm) of the brightest pixel. If the result looks wrong:
 
-- **Saturated Detectors:** The NeXus file might have saturated pixels at the direct beam center. Check the NeXus data visually.
-- **Initial Guess:** The default center of mass calculation might be thrown off by background noise. ``mg_beam_centre_correction`` does not currently expose an ``--initial_guess`` CLI option; if the optimizer converges to the wrong feature, inspect and, if needed, pre-mask the NeXus data before running the correction.
+- Check that the file is a **direct beam** measurement (no sample, or the sample moved out of the beam). A sample measurement gives the centroid of the direct beam and the specular spot together.
+- **Saturated or attenuated detector:** dead time or saturation distorts the beam profile; check the NeXus data visually.
+- Draw the measured beam next to a simulated one with ``--mcpl <direct beam MCPL file> --figure show`` (see :doc:`replicating_measurements`). A large residual between the two points at the McStas beam or the given ``--beam_angle``/``--wavelength``.
+- Increase ``--beam_radius`` for a wide beam, decrease it if another feature is close to the beam.
 
 Fit Does Not Converge (``mg_fit``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -45,13 +47,16 @@ If your NeXus file(s) report their own measurement duration (checked via the sta
 Wavelength Parse Errors
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-- If you see ``argparse.ArgumentError: argument --wavelength_selected: not allowed with argument --wavelength``:
-  - Use ``--wavelength_selected`` for monochromatic/continuous sources (e.g., D22).
-  - Use ``--wavelength`` for TOF sources (e.g., SAGA, LOKI).
+If you see ``The --wavelength parameter should not be used for non-TOF instruments`` (or the reverse):
+
+- Use ``--wavelength_selected`` for monochromatic/continuous sources (e.g., D22).
+- Use ``--wavelength`` for TOF sources (e.g., SAGA, LOKI).
 
 No Particles Hitting the Sample
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you get a warning that 0 particles hit the sample surface:
+If ``mg_run``/``mg_fit`` stop with ``no incident particles are left to simulate (none hit the sample)``:
+
+- Check ``--alpha`` (a negative or zero incident angle means the beam does not hit the sample surface from above) and the sample size (``--sample_size_x``/``--sample_size_y``). For a direct beam simulation use ``--allow_sample_miss``.
 
 - Verify that your McStas ``MCPL_output`` component is positioned exactly at the sample center (origin). In your ``.instr`` file, look for a snippet like this:
 

@@ -37,3 +37,6 @@ Utilities
    mcstas_gisans.parameters
    mcstas_gisans.experiment_time
    mcstas_gisans.hardware
+   mcstas_gisans.instrument_defaults
+   mcstas_gisans.fit_monitor
+   mcstas_gisans.plotting_utils

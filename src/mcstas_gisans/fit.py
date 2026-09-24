@@ -145,14 +145,16 @@ def calculate_fitness(
     Returns
     -------
     dict
-        poisson_deviance : mean per-pixel deviance of poisson_deviance_with_mc (Poisson
-            likelihood, with the Monte Carlo uncertainty of the simulation folded in).
-            ~1 for a perfect model; unbiased also at low counts.
-        reduced_chi2 : 1/n * sum[(N - m)^2 / (m + sigma_MC^2)] (Pearson chi^2 with the model's
-            Poisson variance plus the Monte Carlo variance; biased at low counts).
-        log_residual : mean of (log10 N - log10 m)^2 over pixels where both are positive.
-        mc_to_poisson_variance : 95th percentile of sigma_MC^2 / m over the pixels, i.e. how
-            large the Monte Carlo variance of the simulation is compared to the counting variance.
+        With the keys:
+
+        - ``poisson_deviance``: mean per-pixel deviance of poisson_deviance_with_mc (Poisson
+          likelihood, with the Monte Carlo uncertainty of the simulation folded in).
+          ~1 for a perfect model; unbiased also at low counts.
+        - ``reduced_chi2``: 1/n * sum[(N - m)^2 / (m + sigma_MC^2)] (Pearson chi^2 with the
+          model's Poisson variance plus the Monte Carlo variance; biased at low counts).
+        - ``log_residual``: mean of (log10 N - log10 m)^2 over pixels where both are positive.
+        - ``mc_to_poisson_variance``: 95th percentile of sigma_MC^2 / m over the pixels, i.e. how
+          large the Monte Carlo variance of the simulation is compared to the counting variance.
     """
     keep = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
     n_valid = int(np.sum(keep))
@@ -678,6 +680,7 @@ def widen_angle_range_for_simulation(angle_range: List[float], particles: np.nda
     Widen the outgoing-angle range [horiz_min, horiz_max, vert_min, vert_max] (deg, BornAgain
     frame) that encloses the unmasked pixels as seen from the sample centre, so that every
     simulated neutron that can reach those pixels is simulated:
+
     - horizontal: the outgoing horizontal angles are sampled relative to each neutron's incident
       horizontal direction (the largest absolute ``phi_i`` of the particles), and scattering happens anywhere across
       the sample width;

@@ -21,11 +21,16 @@ dependencies = [
   "scipp",
   "scippneutron",
   "h5py",
+  "matplotlib",
+  "scipy",
 ]
 [project.optional-dependencies]
-plot = ['matplotlib']
-fit = ['matplotlib', 'scipy']
-all = ['matplotlib', 'scipy']
+# matplotlib and scipy are required (mg_plot, TOF T0 correction, fitting); the extras are kept
+# so that existing 'pip install .[all]' commands keep working
+plot = []
+fit = []
+all = []
+docs = ['sphinx', 'sphinx-rtd-theme', 'sphinx-argparse']
 
 [project.urls]
 Documentation = "https://docs.google.com/document/d/1F2jcDX6HxPHbGj8gAOs3vDfk9sReR1T5VZ3dW_6vVhM/edit?usp=sharing"

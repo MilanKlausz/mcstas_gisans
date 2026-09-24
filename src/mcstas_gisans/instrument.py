@@ -110,7 +110,7 @@ class Instrument:
         (selected wavelength, or derived from the time of flight), the incident angle and the
         detector geometry. The scattered neutron left the sample in its launch direction,
         i.e. towards the detection point raised against gravity by the drop accumulated over
-        the (straight-line) flight path:  u_out ~ P - 1/2 g t^2,  t = |P| / v(lambda).
+        the (straight-line) flight path:  u_out ~ P - 1/2 g t^2,  t = dist(P) / v(lambda).
         Q = k (u_out - u_in) with u_in the straight incident direction at the sample.
         With a detector offset defined relative to the undeflected beam axis, the unscattered
         beam therefore maps to Q = 0 at every wavelength.

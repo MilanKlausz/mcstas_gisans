@@ -11,6 +11,20 @@ from importlib import import_module, util
 BUILTIN_SAMPLE_DIR = 'bornagain_samples'
 
 class Sample:
+    """
+    Sample geometry and BornAgain sample model.
+
+    Parameters
+    ----------
+    size_y, size_x : float
+        Sample size [m] along the BornAgain y (in-plane, perpendicular to the beam) and x (along the
+        beam) axes.
+    sim_module_name : str
+        Name of a built-in model in ``bornagain_samples`` or path to a Python file defining
+        ``get_sample(**kwargs)``.
+    sample_arguments : str or None
+        ``'name=value;name=value'`` keyword arguments passed to ``get_sample``.
+    """
     def __init__(self, size_y, size_x, sim_module_name, sample_arguments):
         self.sim_module_name = sim_module_name
         self.get_module = self._resolve_sample_source()
