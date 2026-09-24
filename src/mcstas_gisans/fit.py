@@ -14,7 +14,7 @@ import argparse
 import numpy as np
 from typing import Any, Dict, List, Tuple, Optional, Union
 
-from .run_cli import create_argparser as create_run_parser, parse_args as parse_run_args
+from .run_cli import parse_args as parse_run_args
 from .input_output import get_particles
 from .preconditioning import precondition
 from .parameters import pack_parameters
@@ -691,7 +691,7 @@ def widen_angle_range_for_simulation(angle_range: List[float], particles: np.nda
     h_min, h_max, v_min, v_max = angle_range
     L = instrument.sample_detector_distance
     det = instrument.detector
-    vx, vy, vz, wavelength = particles[:, 4], particles[:, 5], particles[:, 6], particles[:, 7]
+    vx, vy, wavelength = particles[:, 4], particles[:, 5], particles[:, 7]
     phi_i_max = float(np.rad2deg(np.max(np.abs(np.arctan2(vy, vx))))) if len(particles) else 0.0
     resolution = float(np.rad2deg(3 * max(det.sigma_x_nexus, det.sigma_y_nexus) / L))
     footprint_h = float(np.rad2deg(0.5 * sample_size_y / L))

@@ -4,13 +4,13 @@
 Main plotting script to create 2D/1D Q plots from simulation results
 """
 
+import os
 import sys
-import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Any, Dict
 
-from .plotting_utils import plot_q_1d, log_plot_2d, create_2d_histogram, extract_range_to_1d, show_or_save
+from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, show_or_save
 from .experiment_time import upscale_simple
 from .input_output import load_scipp_file
 
@@ -188,7 +188,7 @@ def _load_nexus_datasets(args: Any, reference: Optional[Tuple[Dict[str, Any], Di
     orientation = int(args.nxs_sample_orientation) if getattr(args, 'nxs_sample_orientation', None) is not None else settings['sample_orientation']
     nxs_instrument = Instrument(nxs_params, settings['alpha'], settings['wavelength'], orientation)
 
-    nxs_labels = args.nxs_label if args.nxs_label else args.nxs  # default to filename if no label provided
+    nxs_labels = args.nxs_label if args.nxs_label else [os.path.basename(f) for f in args.nxs]  # default to the file name
     for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
         hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
         warn_if_duration_mismatch([nxs_filename], getattr(args, 'experiment_time', None), label=nxs_filename)
@@ -324,7 +324,8 @@ def _plot_differences(args: Any,
                       z_plot_range: List[float], 
                       line_colors: List[str]) -> None:
     """
-    Plot differences between two datasets.
+    Plot differences between the second and the first dataset (e.g. simulation vs measurement)
+    in the extra panel after the dataset panels, and on a secondary axis of the 1D plot.
 
     Parameters
     ----------
@@ -379,13 +380,14 @@ def _plot_differences(args: Any,
                 ax_rel.set_ylim(-20, 20)
         ax_rel.legend(loc=0)
 
-        plot_2d_axes = axes_top[2]
-        line_color = line_colors[2]
-        hist_0, hist_error_0, _, _, _ = datasets[0]
+        plot_2d_axes = axes_top[len(datasets)]  # the extra panel after the dataset panels
+        hist_0, hist_error_0, y_edges_0, z_edges_0, _ = datasets[0]
         hist = datasets[1][0]
         hist_error = datasets[1][1]
         y_edges = datasets[1][2]
         z_edges = datasets[1][3]
+        if hist.shape != hist_0.shape or not (np.allclose(y_edges, y_edges_0) and np.allclose(z_edges, z_edges_0)):
+            sys.exit("--plot_differences: the first two datasets have different Q binning and cannot be compared pixel by pixel.")
 
         with np.errstate(divide='ignore', invalid='ignore'):
             if args.plot_differences == 1:
@@ -459,6 +461,8 @@ def main() -> None:
     plt.rcParams.update({'font.size': args.font_size})
 
     datasets = get_datasets(args)
+    if args.plot_differences > 0 and (not args.overlay or len(datasets) < 2):
+        sys.exit("--plot_differences needs --overlay and at least two datasets (the second is compared with the first).")
     match_horizontal_axes, ax1, ax2, axes_top, axes_bottom, plot_output, axes_multi2d = _setup_main_plot(args, datasets)
 
     if args.intensity_min is not None:
@@ -474,7 +478,7 @@ def main() -> None:
         all_1d_errors = []
         for dataset_index, dataset in enumerate(datasets):
             plot_2d_axes = axes_top[dataset_index]
-            line_color = line_colors[dataset_index]
+            line_color = line_colors[dataset_index % len(line_colors)]
             hist, hist_error, y_edges, z_edges, label = dataset
 
             common_maximum = max_value if args.individual_colorbars is False else None
@@ -519,17 +523,19 @@ def main() -> None:
 
             show_or_save(plot_output, args.savename)
         else:
-            for hist, hist_error, y_edges, z_edges, label in datasets:
+            for dataset_index, (hist, hist_error, y_edges, z_edges, label) in enumerate(datasets):
+                # separate figures: one file per dataset, instead of overwriting the same file
+                savename = args.savename if len(datasets) == 1 or args.dual_plot else f"{args.savename}_{dataset_index}"
                 y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges[0], y_edges[-1]]
                 z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges[0], z_edges[-1]]
-                log_plot_2d(hist, y_edges, z_edges, '', ax=ax1, intensity_min=intensity_min, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, match_horizontal_axes=match_horizontal_axes, output=plot_output)
+                log_plot_2d(hist, y_edges, z_edges, '', ax=ax1, intensity_min=intensity_min, y_range=y_plot_range, z_range=z_plot_range, savename=savename, match_horizontal_axes=match_horizontal_axes, output=plot_output)
 
                 qz_min_index_exp = np.digitize(args.q_min, z_edges) - 1
                 qz_max_index_exp = np.digitize(args.q_max, z_edges) - 1
                 values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index_exp, qz_max_index_exp])
                 title_text = f" Qz=[{z_limits[0]:.4f}1/nm, {z_limits[1]:.4f}1/nm]"
                 horizontal_axis_label = 'Qy [1/nm]'
-                plot_q_1d(values, errors, y_bins, horizontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=args.savename, output=plot_output)
+                plot_q_1d(values, errors, y_bins, horizontal_axis_label, color='blue', title_text=title_text, label=label, ax=ax2, limits=y_plot_range, savename=savename, output=plot_output)
 
                 if ax1 is not None:
                     for z_limit in z_limits:  # the summed Qz range

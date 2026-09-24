@@ -32,8 +32,6 @@ class Instrument:
         Sample inclination angle in radians.
     wavelength_selected : Optional[float]
         Selected wavelength for the instrument (Angstrom).
-    incident_direction : ndarray
-        The 3D vector of incident neutron direction in BornAgain frame.
     is_tof_instrument : bool
         Whether the instrument operates in Time-of-Flight mode.
     wavenumber_fixed : float
@@ -78,8 +76,6 @@ class Instrument:
         self.no_gravity = no_gravity
         self.alpha_inc = float(np.deg2rad(alpha_inc_deg))
         self.wavelength_selected = wavelength_selected
-
-        self.incident_direction = self.calculate_incident_direction(wavelength_selected)
 
         self.is_tof_instrument = bool(instr_params['tof_instrument'])
         if not self.is_tof_instrument:

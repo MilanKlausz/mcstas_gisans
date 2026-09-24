@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Tuple, Union, Callable
+from typing import Tuple, Union
 import numpy.typing as npt
 
 class CoordinateTransform:

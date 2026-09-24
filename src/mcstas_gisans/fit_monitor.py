@@ -70,8 +70,8 @@ def get_mcstas_monitor_data(dirname, monitor, wavelength_rebin, selected_wavelen
     wavelength_bin_edges = np.linspace(lambda_min, lambda_max, num=lambda_bin_number+1, endpoint=True)
     # TOF bin centres
     tof_bins = tof_min + (np.arange(tof_bin_number) + 0.5) * (tof_max - tof_min) / tof_bin_number
-    labels = [info['xlabel'].replace('[\\gms]', f'[$\mu$s]'),
-              info['ylabel'].replace('[AA]', f'[$\AA$]')]
+    labels = [info['xlabel'].replace('[\\gms]', r'[$\mu$s]'),
+              info['ylabel'].replace('[AA]', r'[$\AA$]')]
 
     if not lambda_min <= selected_wavelength <= lambda_max:
         raise ValueError(f"The wavelength {selected_wavelength} Å is outside the wavelength range "
@@ -95,9 +95,9 @@ def create_monitor_and_slice_figure(data, limits, tof_bins, selected_wavelength_
     ax1.imshow(data, origin='lower', extent=limits, aspect='auto', cmap='jet')
 
     ## Plot a single slice of the 2D data (the TOF of the neutrons of the selected wavelength)
-    ax2.plot(tof_bins, selected_wavelength_tof, marker='o', linestyle='-', label=f'Slice at {wavelength} $\AA$')
+    ax2.plot(tof_bins, selected_wavelength_tof, marker='o', linestyle='-', label=f'Slice at {wavelength} ' + r'$\AA$')
     ax2.set_xlabel(labels[0])
-    ax2.set_ylabel(f"Intensity at {wavelength} $\AA$")
+    ax2.set_ylabel(f"Intensity at {wavelength} " + r"$\AA$")
     ax2.set_xlim(limits[0], limits[1]) #tof_min, tof_max
 
     ax1.set_xlabel(labels[0])

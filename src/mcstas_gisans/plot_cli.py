@@ -2,18 +2,9 @@
 import argparse
 from .instrument_defaults import instrument_defaults
 
-def zero_to_one(x):
-    """Argparser type check function for float number in range [0.0, 1.0]"""
-    try:
-        x = float(x)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{x!r} not a floating-point literal")
-    if x < 0.0 or x > 1.0:
-        raise argparse.ArgumentTypeError(f"{x!r} not in range [0.0, 1.0]")
-    return x
 
 def create_argparser():
-    parser = argparse.ArgumentParser(description = 'Create Q plots from an .h5 file containing the derived Q values for each outgoing neutron from the BornAgain simulation.')
+    parser = argparse.ArgumentParser(description = 'Plot simulated detector images (.h5 files from mg_run) and measured NeXus data in Q.')
     parser.add_argument('-f', '--filename', nargs = '*', help = 'Input filename[s].')
     parser.add_argument('-l', '--label', nargs = '*', help = 'Label for input[s].')
     parser.add_argument('-s', '--savename', default='qPlot', required=False, help = 'Output image filename.')
@@ -22,7 +13,7 @@ def create_argparser():
     parser.add_argument('-t', '--experiment_time', default=None, type=float, help = 'Experiment time in seconds to scale the results up to. (e.g. 10800). Poisson noise is applied to the upscaled simulation. If a --nxs file reports its own measurement duration, it is compared against this value and a warning (not an error) is printed on a mismatch.')
     parser.add_argument('--background', default=0, type=float, help = 'Add Poisson background to each bin.')
     parser.add_argument('-v', '--verbose', action='store_true', help = 'Verbose output.')
-    parser.add_argument('--csv', action='store_true', help = 'Output the resulting histograms in csv format.')
+    parser.add_argument('--csv', action='store_true', help = 'Also write each simulated Q histogram in csv format, next to its input file (<input>.csv).')
     # The instrument option was moved to instrumentGroup
 
     plotParamGroup = parser.add_argument_group('Control plotting', 'Parameters and options for plotting.')
@@ -35,7 +26,7 @@ def create_argparser():
     plotParamGroup.add_argument('--q_max', default=0.10, type=float, help = 'Maximum of the vertical component of the Q range of interest.')
     plotParamGroup.add_argument('--y_plot_range', nargs=2, type=float, help = 'Plot y range.')
     plotParamGroup.add_argument('--z_plot_range', nargs=2, type=float, help = 'Plot z range.')
-    plotParamGroup.add_argument('--plot_differences', default=0, type=int, help = 'Plot some measure of difference: 0 - none, 1 - relative absolute difference, 2 - relative difference, 3 - normalised residuals')
+    plotParamGroup.add_argument('--plot_differences', default=0, type=int, help = 'With --overlay, plot a measure of the difference between the second and the first dataset (the first --nxs file, or the first simulation without --nxs): 0 - none, 1 - relative absolute difference, 2 - relative difference, 3 - normalised residuals')
 
     storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
     storedDataParamGroup.add_argument('--nxs', nargs = '*', help = 'Measured NeXus file(s) to plot, each as its own dataset.')

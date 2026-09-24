@@ -183,62 +183,6 @@ def plot_q_1d(
 
     show_or_save(output, savename + '_qSlice')
 
-def create_2d_histogram(
-    x: np.ndarray,
-    y: np.ndarray,
-    weights: np.ndarray,
-    y_bins: int = 256,
-    z_bins: int = 128,
-    y_range: Optional[List[float]] = None,
-    z_range: Optional[List[float]] = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Create a 2D histogram of weighted y-z values.
-
-    Calculates the 2D histogram of the provided data and computes the corresponding
-    statistical errors (uncertainties) based on the weights. The resulting
-    histograms are transposed relative to the standard x-y plot axes if not 
-    plotted accordingly.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Array of x-coordinates.
-    y : numpy.ndarray
-        Array of y-coordinates.
-    weights : numpy.ndarray
-        Array of weights (e.g., intensities).
-    y_bins : int, optional
-        Number of bins along the first dimension, by default 256.
-    z_bins : int, optional
-        Number of bins along the second dimension, by default 128.
-    y_range : list of float, optional
-        Limits for the first dimension, by default [-0.55, 0.55].
-    z_range : list of float, optional
-        Limits for the second dimension, by default [-0.5, 0.6].
-
-    Returns
-    -------
-    hist : numpy.ndarray
-        The 2D histogram values.
-    hist_error : numpy.ndarray
-        The calculated uncertainties for the 2D histogram.
-    y_edges : numpy.ndarray
-        The bin edges along the first dimension.
-    z_edges : numpy.ndarray
-        The bin edges along the second dimension.
-    """
-    if y_range is None: y_range = [-0.55, 0.55]
-    if z_range is None: z_range = [-0.5, 0.6]
-    
-    # Generate the main 2D histogram
-    hist, y_edges, z_edges = np.histogram2d(x, y, weights=weights, bins=[y_bins, z_bins], range=[y_range, z_range])
-    
-    # Calculate the histogram of squared weights to compute uncertainties
-    hist_weight2, _, _ = np.histogram2d(x, y, weights=weights**2, bins=[y_bins, z_bins], range=[y_range, z_range])
-    hist_error = np.sqrt(hist_weight2)
-
-    return hist, hist_error, y_edges, z_edges
 
 def extract_range_to_1d(
     hist: np.ndarray,

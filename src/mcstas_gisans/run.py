@@ -301,7 +301,6 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
                     res = ssim.simulate()
                     refl_fraction = np.array(res.flatVector())[0]
 
-                    weight_specular_sim = [np.array([p * refl_fraction])]
                     idx_x_refl, idx_y_refl, valid_refl, sd_tof_refl = _calculate_nexus_hits(
                         instrument, x, y, z, t, np.array([vx]), np.array([vy]), np.array([-vz])
                     )

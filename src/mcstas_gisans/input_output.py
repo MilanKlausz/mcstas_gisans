@@ -91,22 +91,6 @@ def get_particles(filename: str, intensity_factor: float, tof_limits: List[float
     return particles, particle_type, mcpl_metadata
 
 
-def save_scipp_file(savename: str, scipp_da: Any) -> None:
-    """
-    Save a Scipp DataArray into an HDF5 file.
-
-    Parameters
-    ----------
-    savename : str
-        The target filename. If it doesn't end with '.h5', the extension is appended.
-    scipp_da : Any
-        The Scipp DataArray object to be saved.
-    """
-    import scipp as sc
-    filename = savename if savename.endswith('.h5') else f"{savename}.h5"
-    sc.io.hdf5.save_hdf5(scipp_da, filename)
-    print(f"Created {filename} (Scipp format)")
-
 
 def load_scipp_file(filename: str) -> Any:
     """

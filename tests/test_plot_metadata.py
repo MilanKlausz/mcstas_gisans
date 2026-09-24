@@ -116,3 +116,19 @@ def test_normalise_to_nxs_with_poisson_upscaling_does_not_crash(tmp_path):
                                         '--normalise_to_nxs', '-t', '60']))
     nxs_sum = datasets[0][0].sum()
     assert datasets[1][0].sum() == pytest.approx(nxs_sum)
+
+
+def test_difference_plot_uses_the_extra_panel_with_three_datasets():
+    """With three datasets the difference map goes to the fourth (extra) panel, not over the third dataset."""
+    import matplotlib
+    matplotlib.use('Agg')
+    from argparse import Namespace
+    rng = np.random.default_rng(0)
+    y_edges, z_edges = np.linspace(-1, 1, 11), np.linspace(0, 1, 6)
+    datasets = [(rng.random((10, 5)) + 1, np.ones((10, 5)), y_edges, z_edges, f"d{i}") for i in range(3)]
+    axes_top, axes_bottom = plot.get_overlay_plot_axes(len(datasets) + 1)
+    values = [d[0].sum(axis=1) for d in datasets]
+    plot._plot_differences(Namespace(plot_differences=2), 1, datasets, values, values, axes_top, axes_bottom,
+                           0.5 * (y_edges[1:] + y_edges[:-1]), [-1, 1], [0, 1], ['b', 'g', 'r'])
+    assert len(axes_top[3].collections) == 1
+    assert len(axes_top[2].collections) == 0

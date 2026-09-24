@@ -3,7 +3,7 @@ Detector masking utilities and visualization
 """
 
 import numpy as np
-from typing import Optional, Tuple, List, Union, Any
+from typing import Optional, Tuple, List, Union
 
 def get_mask(y_edges: np.ndarray, 
              z_edges: np.ndarray, 

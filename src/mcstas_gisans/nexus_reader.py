@@ -6,8 +6,6 @@ Read data from measurements at D22(ILL) from nxs files (hard-coded)
 import h5py
 import numpy as np
 
-from .instrument import Instrument
-from .instrument_defaults import instrument_defaults
 
 # Hard-coded HDF5 paths tried (in order) for the detector data when no
 # explicit --nxs_data_path is given.

@@ -9,8 +9,6 @@ def pack_parameters(args, particle_type):
     no_gravity = args.no_gravity if particle_type != 'photon' else True
     instrument = Instrument(instr_params, args.alpha, args.wavelength_selected, args.sample_orientation, args.wfm, no_gravity)
 
-    wavelength = args.wavelength_selected if args.wavelength_selected else args.wavelength
-
     default_angle_range = list(instrument.get_detector_angle_maximum())
     angle_range = list(args.angle_range) if args.angle_range else default_angle_range
     if getattr(args, 'verbose', False):

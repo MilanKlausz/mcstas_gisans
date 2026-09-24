@@ -116,7 +116,7 @@ def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_s
         print(f"    WARNING: {event_number - sample_hit_event_number} out of {event_number} incident particles missed the sample!({sum_weight_in-sum_weight_sample_hit} out of {sum_weight_in} in terms of sum particle weight)")
 
         if not allow_sample_miss:
-            print(f"    WARNING: Incident particles missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.")
+            print("    WARNING: Incident particles missing the sample are not propagated to the detectors! This can be changed with the --allow_sample_miss option.")
     return events_on_sample_surface
 
 def apply_t0_correction(particles, args):
