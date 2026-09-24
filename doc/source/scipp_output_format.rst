@@ -36,9 +36,9 @@ A ``sc.DataGroup`` containing all relevant, standardized scalar metadata describ
 
 * ``name`` (scalar): The identifier of the instrument (e.g., 'd22', 'skadi').
 * ``is_tof_instrument`` (scalar bool): Indicates if the instrument operates in TOF mode.
-* ``detector_centre_offset_x`` / ``detector_centre_offset_y`` (scalar, meters): The physical misalignment corrections applied to map the beam center to the Nexus grid.
+* ``detector_centre_offset_x`` / ``detector_centre_offset_y`` (scalar, meters): The detector centre position relative to the undeflected beam axis through the sample (NeXus frame).
 * ``alpha_inc_deg`` (scalar, degrees): The incident angle of the beam.
-* ``beam_angle`` (scalar, degrees): The beam declination angle relative to the nominal beam axis (either provided via ``--instrument_beam_angle``, or otherwise calculated automatically from the average particle velocities in the input file).
+* ``beam_angle`` (scalar, degrees): The beam angle used for the simulation (``--instrument_beam_angle`` or the instrument default, otherwise 0): the angle of the incident beam above the nominal beam axis, towards the sample surface normal.
 * ``sample_orientation`` / ``sample_position`` / ``source_position``: Geometric alignment constants.
 * ``wavelength_selected`` (scalar, Angstroms): The fixed monochromatic wavelength (Present **only** for non-TOF instruments; for TOF, wavelength is calculated dynamically per-bin or stored in the provenance CLI args).
 

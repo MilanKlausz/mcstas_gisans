@@ -30,8 +30,28 @@ The framework is careful to keep two distinct coordinate systems consistent, imp
 
 Incoming particles are transformed NeXus → BornAgain before the DWBA calculation (``preconditioning.py``), and outgoing scattered rays are transformed back BornAgain → NeXus before detector-hit projection. Two effects are folded into this transform:
 
-* **Sample orientation** (``--sample_orientation``, one of ``0``/``1``/``2``): a rotation of the sample around the beam axis, letting the same physical sample model represent a vertical scattering geometry (beam hitting from the left or right) as well as the default horizontal geometry, by remapping which NeXus axis becomes "horizontal" and which becomes "vertical" in the BornAgain frame.
-* **Sample inclination** (``-a``/``--alpha``, the incident grazing angle) plus the **beam declination angle** (``beam_angle``, either given explicitly or computed automatically from the mean particle velocities, see :doc:`scipp_output_format`): a rotation in the vertical-longitudinal plane so that the incoming beam meets the sample at exactly the intended grazing angle in the BornAgain frame, even if the physical beam in the McStas/NeXus frame is not perfectly horizontal.
+* **Sample orientation** (``--sample_orientation``, one of ``0``/``1``/``2``): a rotation of the sample around the beam axis, so that the same sample model can describe a vertical sample (surface normal pointing right, ``0``, or left, ``2``) as well as the default horizontal one (``1``). The mapping of both vectors (particles, gravity, detector offset) and raw detector images is derived from this single transformation, so the two can never disagree.
+* **Sample inclination** (``-a``/``--alpha``, the incident grazing angle) plus the **beam angle** (``--instrument_beam_angle``, default 0): a rotation in the plane of incidence so that the incoming beam meets the sample at exactly the intended grazing angle in the BornAgain frame. The beam angle is the angle of the incident beam above the nominal beam axis, positive towards the sample surface normal (opposite sign to the former "beam declination angle"). It must describe the mean direction of the simulated (MCPL) beam at the sample; ``mg_run`` prints an estimate from the MCPL particle velocities and warns if it disagrees with the value used. In the reduction of measured data it cancels (the detector offset and Q use the same value).
+
+.. _q_convention:
+
+Q convention and gravity
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Gravity is handled in two places:
+
+* **Simulation** (``mg_run``): every scattered ray is propagated ballistically from the sample to the detector plane (flight time from the longitudinal velocity, position lowered by :math:`\tfrac12 g t^2`), so the simulated detector image contains the true gravity drop of each neutron.
+* **Q calculation** (reduction of measured and simulated detector images, ``mg_plot``/``mg_fit``, and TOF events): only quantities known in a real measurement are used — the detection pixel, the wavelength (the selected wavelength for monochromatic instruments, or the wavelength derived from the time of flight and the nominal flight path for TOF instruments), the incident angle and the detector geometry. The convention is the one of Mantid (``Q1D``/``Qxy`` with gravity) and scippneutron/esssans: the incident direction is the straight beam axis at the sample, and the outgoing direction is the *launch* direction of the neutron, i.e. the direction to the detection point raised by the gravity drop accumulated over the flight path at that wavelength:
+
+  .. math::
+
+     \mathbf{Q} = k\left(\hat{\mathbf u}_\mathrm{out} - \hat{\mathbf u}_\mathrm{in}\right),\qquad
+     \hat{\mathbf u}_\mathrm{out} \propto \mathbf P + \tfrac12 g\,t^2\,\hat{\mathbf y},\qquad
+     t = |\mathbf P| / v(\lambda),\qquad k = 2\pi/\lambda .
+
+Combined with a detector offset defined relative to the undeflected beam axis (``mg_beam_centre_correction``), the unscattered beam maps to :math:`Q = 0` at every wavelength, and the specular reflection to :math:`Q_z = 2k\sin\alpha`. For a monochromatic instrument this agrees to first order with the ILL convention (GRASP; Mantid ``SANSILLReduction``), where :math:`Q = 0` is the centroid of the measured direct beam and no gravity correction is applied. These properties are checked by ``tests/test_physics_invariants.py``.
+
+The 1D Q axes used for plotting and Q-defined masks are evaluated exactly along the two detector lines through the landing point of the unscattered beam; treating them as separable is a (second-order) approximation far from these lines.
 
 **Plotting convention**: independent of the above, ``mg_plot`` always draws :math:`Q_y` on the horizontal plot axis and :math:`Q_z` on the vertical plot axis.
 
@@ -55,7 +75,7 @@ Optional keys:
 * ``detector`` (dict): overrides the module-level ``default_detector`` for this instrument. If given, must define all of:
 
   * ``size`` — ``[size_x, size_y]`` in meters.
-  * ``direct_beam_centre_offset`` — ``[offset_x, offset_y]`` in meters; the detector's physical misalignment relative to where the direct beam would nominally hit, as computed by ``mg_beam_centre_correction``.
+  * ``direct_beam_centre_offset`` — ``[offset_x, offset_y]`` in meters; the position of the detector centre relative to the undeflected beam axis through the sample (NeXus frame), as computed by ``mg_beam_centre_correction``. Independent of the sample orientation.
   * ``pixels`` — ``[pixels_x, pixels_y]`` pixel counts.
   * ``resolution`` — ``[res_x, res_y]`` detector position resolution, FWHM in meters (``0.0`` disables resolution smearing on that axis).
 
@@ -63,7 +83,7 @@ Optional keys:
 * ``mcpl_monitor_name`` (str): name of a McStas *TOFLambda_monitor* placed at the sample position, used for MCPL TOF filtering (see :ref:`sample_position_monitors`).
 * ``t0_monitor_name`` (str): name of a McStas *TOFLambda_monitor* placed at the source position, used for T0 correction (see :ref:`source_position_monitors`). Overridable with ``--instrument_t0_monitor_name``.
 * ``wfm_t0_monitor_name`` and ``wfm_virtual_source_distance`` (str, float [m]): together enable Wavelength Frame Multiplication (``--wfm``) mode; see :ref:`virtual_source_position_monitors`. Both are required for ``--wfm`` to be accepted for an instrument (checked against ``required_keys_for_wfm``). Overridable with ``--instrument_wfm_t0_monitor_name``/``--instrument_wfm_virtual_source_distance``.
-* ``beam_angle`` (float, deg): a fixed default beam declination angle for the instrument; normally left unset so it is calculated automatically per simulation (see above). Overridable with ``--instrument_beam_angle``.
+* ``beam_angle`` (float, deg): a default beam angle for the instrument (see above; 0 if unset). Overridable with ``--instrument_beam_angle``.
 
 See :doc:`mcstas_preparation` for how to instrument a McStas model with the monitors these keys refer to.
 

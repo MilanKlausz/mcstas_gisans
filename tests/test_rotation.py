@@ -36,13 +36,16 @@ def test_sample_orientation_transform(orientation):
     assert np.isclose(tvx, vz)
     assert np.isclose(tpolx, polz)
 
+    # Orientation convention: the sample surface normal (BornAgain z) points along
+    # -x_nexus (0), +y_nexus (1) or +x_nexus (2); the remaining in-plane axis follows from
+    # a proper rotation about the beam axis.
     if orientation == 0:
-        assert np.isclose(ty, -y)
-        assert np.isclose(tz, x)
-        assert np.isclose(tvy, -vy)
-        assert np.isclose(tvz, vx)
-        assert np.isclose(tpoly, -poly)
-        assert np.isclose(tpolz, polx)
+        assert np.isclose(ty, y)
+        assert np.isclose(tz, -x)
+        assert np.isclose(tvy, vy)
+        assert np.isclose(tvz, -vx)
+        assert np.isclose(tpoly, poly)
+        assert np.isclose(tpolz, -polx)
     elif orientation == 1:
         assert np.isclose(ty, x)
         assert np.isclose(tz, y)
@@ -51,12 +54,12 @@ def test_sample_orientation_transform(orientation):
         assert np.isclose(tpoly, polx)
         assert np.isclose(tpolz, poly)
     elif orientation == 2:
-        assert np.isclose(ty, y)
-        assert np.isclose(tz, -x)
-        assert np.isclose(tvy, vy)
-        assert np.isclose(tvz, -vx)
-        assert np.isclose(tpoly, poly)
-        assert np.isclose(tpolz, -polx)
+        assert np.isclose(ty, -y)
+        assert np.isclose(tz, x)
+        assert np.isclose(tvy, -vy)
+        assert np.isclose(tvz, vx)
+        assert np.isclose(tpoly, -poly)
+        assert np.isclose(tpolz, polx)
 
 @pytest.mark.parametrize("orientation", [0, 1, 2])
 @pytest.mark.parametrize("alpha", [-1.5, 0.0, 0.24, 1.0, 5.0])

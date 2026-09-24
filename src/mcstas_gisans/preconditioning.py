@@ -21,23 +21,14 @@ BEAM_ANGLE_MISMATCH_WARNING_DEG = 0.05
 
 def calculate_beam_angle(vx_nexus, vy_nexus, vz_nexus, p, sample_orientation):
     """
-    Calculate the beam declination angle from the average particle velocities in the NeXus frame.
-    NeXus: X=horizontal left, Y=vertical up, Z=longitudinal forward.
+    Estimate the beam angle [deg] from the weight-averaged particle velocity: the angle of
+    the mean beam direction above the nominal beam axis, measured in the plane of incidence
+    towards the sample surface normal (i.e. the same definition as --instrument_beam_angle,
+    for every sample orientation). Uses the shared CoordinateTransform (no inclination).
     """
-    avg_vx = np.average(vx_nexus, weights=p)
-    avg_vy = np.average(vy_nexus, weights=p)
-    avg_vz = np.average(vz_nexus, weights=p)
-
-    if sample_orientation == 1:
-        # Horizontal sample: declination is in the Y-Z plane (vertical plane)
-        angle_rad = np.arctan2(avg_vy, avg_vz)
-    elif sample_orientation in [0, 2]:
-        # Vertical sample: declination is in the X-Z plane (horizontal plane)
-        angle_rad = np.arctan2(avg_vx, avg_vz)
-    else:
-        raise ValueError(f"Unknown sample orientation: {sample_orientation}")
-
-    return float(np.rad2deg(angle_rad))
+    avg_v = [np.average(v, weights=p) for v in (vx_nexus, vy_nexus, vz_nexus)]
+    x_ba, _, z_ba = CoordinateTransform(0.0, sample_orientation).nexus_to_bornagain(*avg_v)
+    return float(np.rad2deg(np.arctan2(z_ba, x_ba)))
 
 def transform_to_bornagain_coordinate_system(particles, alpha_inc_deg, sample_orientation, beam_angle, nexus_y_shift=0.0):
     """Apply coordinate transformation to express particle parameters in a

@@ -43,9 +43,10 @@ Before comparing simulated scattering with experimental NeXus measurements, it i
 
 The ``mg_beam_centre_correction`` utility is used to align the instrument based on an **Experimental Direct Beam NeXus File**. 
 
-- The script mathematically shifts the experimental direct beam on the detector grid using SciPy optimization (`scipy.optimize.root`) until its exact center-of-mass is located perfectly at :math:`(Q_y, Q_z) = (0, 0)`.
-- It outputs the precise rigid-body spatial offset (`[x, y]` in meters) required to achieve this alignment.
-- This computed offset must then be applied to subsequent sample simulations to ensure perfect overlap. It is applied by passing the offset flag (e.g. ``--instrument_detector_centre_offset X Y`` to ``mg_run``, or ``--nxs_instrument_detector_centre_offset X Y`` to ``mg_plot``).
+- It computes the intensity centroid of the measured direct beam and the point where the unscattered beam must land: the undeflected beam axis (tilted by ``--beam_angle``) lowered by the gravity drop at the given ``--wavelength``.
+- It outputs the detector offset ``[x, y]`` (meters, NeXus frame) that puts the measured centroid on that point: the position of the detector centre relative to the undeflected beam axis through the sample. This is a property of the detector position only, so it is the same for every sample orientation.
+- With this offset, the measured direct beam maps exactly to :math:`(Q_y, Q_z) = (0, 0)` (see :ref:`q_convention`), and a simulated direct beam lands on the measured one.
+- Pass the offset to all subsequent simulations and comparisons with ``--instrument_detector_centre_offset X Y`` (``mg_run``, ``mg_fit``, ``mg_plot``; ``mg_plot`` also reads it from the ``.h5`` metadata).
 
 Important Coordinate Units & Orientations
 -----------------------------------------
@@ -56,10 +57,13 @@ Important Coordinate Units & Orientations
 - **Spatial:** Detector sizes and center offsets are in **meters**.
 
 **Sample Orientations:**
-The framework relies on the ``--sample_orientation`` flag to map the BornAgain scattering output onto the detector frame. The codes are:
-- **0:** Vertical sample, beam hitting from the left (-90 degree rotation).
-- **1:** Horizontal sample, normal pointing up (+Y NeXus axis). This is the default.
-- **2:** Vertical sample, beam hitting from the right (+90 degree rotation).
+The framework relies on the ``--sample_orientation`` flag to map the BornAgain scattering output onto the detector frame. The codes are defined by the direction of the sample surface normal, looking along the beam:
+
+- **0:** Vertical sample, normal pointing right (-X NeXus axis); the reflected beam goes to the right (lower raw detector x index).
+- **1:** Horizontal sample, normal pointing up (+Y NeXus axis); the reflected beam goes up. This is the default.
+- **2:** Vertical sample, normal pointing left (+X NeXus axis); the reflected beam goes to the left (higher raw detector x index).
+
+The raw detector image is assumed to have its x pixel index increasing along +X (left, looking along the beam) and its y index increasing upwards.
 
 **Wavelength Inputs (TOF vs. Monochromatic):**
 - For **TOF instruments** (e.g., SAGA, LOKI, SKADI), you must pass ``--wavelength`` (used for MCPL TOF filtering and T0 calculation). Passing ``--wavelength_selected`` will raise a parser error.

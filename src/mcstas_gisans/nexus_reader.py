@@ -18,24 +18,18 @@ DEFAULT_NEXUS_DATA_PATHS = ('entry0/D22/Detector 1/data1', 'entry0/data1/MultiDe
 # ILL-specific alias observed to hold the same value in practice.
 DURATION_FIELD_CANDIDATES = ('entry0/duration', 'entry0/time')
 
-def read_nexus_data(filepath, instrument, data_path=None, scale_factor=None):
+def read_nexus_raw(filepath, data_path=None):
     """
-    Read data from measurements at D22(ILL) from nxs files.
+    Read the raw 2D detector image [ix, iy] (first frame) from a NeXus file.
 
     Parameters
     ----------
     filepath : str
         Path to the NeXus file.
-    instrument : Instrument
-        Instrument object used for detector-image rotation and Q-space conversion.
     data_path : str, optional
         Explicit HDF5 path to the detector data inside the NeXus file. If not
         given, DEFAULT_NEXUS_DATA_PATHS are tried in order.
-    scale_factor : float, optional
-        Multiplicative factor applied to the raw detector counts.
     """
-
-    # Open the NeXus file
     with h5py.File(filepath, 'r') as file:
         if data_path is not None:
             if data_path not in file:
@@ -48,17 +42,37 @@ def read_nexus_data(filepath, instrument, data_path=None, scale_factor=None):
                     break
             else:
                 raise KeyError(f"Could not find detector data in NeXus file {filepath} at any of the default paths {DEFAULT_NEXUS_DATA_PATHS}. Use --nxs_data_path to specify the correct HDF5 path.")
-    hist = detector_data[:,:,0]
+    return np.asarray(detector_data[:, :, 0], dtype=np.float64)
+
+
+def read_nexus_data(filepath, instrument, data_path=None, scale_factor=None):
+    """
+    Read a measured detector image from a NeXus file, rotated into the BornAgain
+    sample frame, with its Poisson errors and Q-space pixel edges.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the NeXus file.
+    instrument : Instrument
+        Instrument object used for detector-image rotation and Q-space conversion.
+    data_path : str, optional
+        Explicit HDF5 path to the detector data inside the NeXus file. If not
+        given, DEFAULT_NEXUS_DATA_PATHS are tried in order.
+    scale_factor : float, optional
+        Multiplicative factor applied to the raw detector counts (and their errors).
+    """
+    hist = read_nexus_raw(filepath, data_path)
+    hist_error = np.sqrt(hist)
     if scale_factor is not None:
         hist = hist * scale_factor
-    hist_error = np.sqrt(hist)
+        hist_error = hist_error * scale_factor
 
     # Rotate the NeXus detector image to match the BornAgain sample frame
     hist = instrument.detector.coords.rotate_detector_image(hist)
     hist_error = instrument.detector.coords.rotate_detector_image(hist_error)
 
     q_y, q_z = instrument.get_q_pixel_limits()
-
 
     return hist, hist_error, q_y, q_z
 

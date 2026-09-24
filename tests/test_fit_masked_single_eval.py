@@ -45,7 +45,7 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
         "--specular", "include_specular",
         "--use_avg_materials",
         "--sample_orientation", "2",
-        "--instrument_detector_centre_offset", "-0.290202", "0.009179",
+        "--instrument_detector_centre_offset", "0.290030", "-0.015917",
         "--nxs", "data/paper/d22_measurement/073174.nxs",
         "--experiment_time", "10800",
         "--background", "1.6",

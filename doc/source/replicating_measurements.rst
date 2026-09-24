@@ -36,38 +36,44 @@ the detector).
 
 Real instruments are rarely perfectly aligned: the direct beam does not
 necessarily hit the pixel that the nominal instrument geometry predicts. The
-``mg_beam_centre_correction`` utility computes the rigid detector offset needed
-to correct for this, from the direct beam **NeXus measurement** alone (no
-simulation is required for this step):
+``mg_beam_centre_correction`` utility computes the detector offset from the
+direct beam **NeXus measurement** alone (no simulation is required for this
+step):
 
 .. code-block:: bash
 
-   mg_beam_centre_correction path/to/direct_beam.nxs --instrument d22 --sample_orientation 2
+   mg_beam_centre_correction path/to/direct_beam.nxs --instrument d22 --wavelength 6.0
 
-This requires:
+The offset is the position of the detector centre relative to the undeflected
+beam axis through the sample. It is computed in real space: the tool takes the
+intensity centroid of the measured direct beam and places it where the
+unscattered beam must land — the beam axis (tilted by ``--beam_angle``)
+lowered by the gravity drop at ``--wavelength``. It therefore requires:
 
 - the target instrument (``--instrument``, default ``d22``) to already be
   described in ``instrument_defaults.py``,
-- the correct ``--sample_orientation`` for how the measurement was taken (see
-  :doc:`main_workflow` for the orientation codes), and
-- the beam's declination angle, if the incident beam is not horizontal — pass
-  it explicitly with ``--beam_angle`` (in degrees). Unlike ``mg_run`` (see step
-  4 below), this tool works from detector pixel counts alone and has no
-  velocity information from which to derive this angle automatically, so it
-  must be known and supplied if non-zero.
+- the wavelength of the direct-beam measurement (``--wavelength``, default
+  6.0 Å; it enters only through the gravity drop), and
+- the beam angle, if the incident beam is not along the nominal axis
+  (``--beam_angle`` in degrees, positive towards the sample surface normal, in
+  the plane of incidence of the ``--sample_orientation`` used; opposite sign to
+  the former ``--beam_declination``). Use the same value in ``mg_run``.
 
-The tool prints the required offset, e.g.:
+The offset does not depend on the sample orientation, so one direct-beam
+measurement serves horizontal and vertical samples alike. The tool prints it,
+e.g.:
 
 .. code-block:: text
 
    Calculated centre_offset [m]:  [X, Y]
 
+(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290030, -0.015917]``;
+the 0.29 m matches the recorded 300 mm sideways detector translation).
+
 Keep this ``[X, Y]`` value — it is reused, unchanged, in steps 3 and 4 below as
-``--instrument_detector_centre_offset X Y`` to ``mg_run``. It corrects the
-*simulated* detector's assumed geometry to match where the real, physically
-misaligned detector actually is, so that Q-space labeling agrees between
-simulation and measurement without needing any further correction on the
-measurement side.
+``--instrument_detector_centre_offset X Y``. With it, the measured direct beam
+is exactly at Q = 0 and a simulated direct beam lands on the measured one (see
+:ref:`q_convention` in :doc:`technical_details`).
 
 2. Direct beam simulation and the intensity factor
 -----------------------------------------------------
@@ -140,7 +146,7 @@ See ``examples/paper/README.md`` for the full worked commands.
 
 .. note::
    For **TOF instruments**, ``mg_run`` filters the MCPL file by TOF before
-   applying ``--intensity_factor`` (see ``--tof_min``/``--tof_max``), so
+   applying ``--intensity_factor`` (``--wavelength`` / ``--input_tof_limits``), so
    ``pymcpltool``'s whole-file ``sum(weights)`` is only an approximation of the
    quantity actually normalized. The formula above is exact for non-TOF
    instruments (e.g. D22) where no such filtering applies; for TOF instruments,
@@ -188,13 +194,13 @@ Like ``mg_beam_centre_correction``, ``mg_run`` defaults the beam angle to
 ``0.0`` (or whatever is configured for the instrument in
 ``instrument_defaults.py``) unless overridden with ``--instrument_beam_angle``
 — use the same value here as in step 1, for consistency with the detector
-offset calculated there. ``mg_run`` separately prints an independent estimate
-of the beam angle from the average transverse velocity of the loaded MCPL
-particles, purely as a sanity check: it is never used as the actual value, but
-a printed ``WARNING`` if it disagrees with the value actually used by more
-than 0.05°, is worth investigating — it usually means a forgotten/wrong
-``--instrument_beam_angle``, or an MCPL file that does not match the intended
-measurement.
+offset calculated there. The beam angle must describe the mean direction of the
+simulated (MCPL) beam at the sample. ``mg_run`` prints an independent estimate
+of it from the MCPL particle velocities, purely as a sanity check: it is never
+used as the actual value, but a printed ``WARNING`` (disagreement with the value
+actually used by more than 0.05°) is worth investigating — it usually means a
+forgotten/wrong ``--instrument_beam_angle``, or an MCPL file that does not
+match the intended measurement.
 
 5. Unknown sample parameters: fitting instead of a single comparison
 -------------------------------------------------------------------------
@@ -216,15 +222,19 @@ without running any simulation:
 
 .. code-block:: bash
 
-   mg_fit sample.mcpl.gz --nxs sample.nxs --instrument d22 \
+   mg_fit --nxs sample.nxs --instrument d22 --wavelength_selected 6.0 \
+     --alpha 0.4 --sample_orientation 2 --instrument_detector_centre_offset X Y \
      --mask_exclude_q_box -0.05 0.05 -0.02 0.02 --mask_view
+
+The mask is defined in Q, so the preview needs the same wavelength, incident
+angle, orientation and detector offset as the fit itself.
 
 5b. Run the fit
 ~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-   mg_fit sample.mcpl.gz --nxs sample.nxs --instrument d22 \
+   mg_fit sample.mcpl.gz --nxs sample.nxs --instrument d22 --wavelength_selected 6.0 \
      --model my_sample_model --alpha 0.4 \
      --instrument_detector_centre_offset X Y --intensity_factor 0.2107 \
      --sample_orientation 2 --experiment_time <sample measurement time> \

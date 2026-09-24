@@ -51,10 +51,6 @@ class Detector:
         Number of pixels along BornAgain Y-axis.
     pixels_z_bornagain : int
         Number of pixels along BornAgain Z-axis.
-    resolution_y_bornagain : float
-        Detector resolution along BornAgain Y-axis (FWHM, m).
-    resolution_z_bornagain : float
-        Detector resolution along BornAgain Z-axis (FWHM, m).
     direct_beam_centre_offset_y_bornagain : float
         Offset of the direct beam center along BornAgain Y-axis (m).
     direct_beam_centre_offset_z_bornagain : float
@@ -71,10 +67,10 @@ class Detector:
         Maximum boundary of the detector along BornAgain Y-axis (m).
     max_edge_z_bornagain : float
         Maximum boundary of the detector along BornAgain Z-axis (m).
-    sigma_y_bornagain : float
-        Standard deviation for smearing along BornAgain Y-axis (m).
-    sigma_z_bornagain : float
-        Standard deviation for smearing along BornAgain Z-axis (m).
+    sigma_x_nexus : float
+        Standard deviation of the detector position resolution along NeXus X (m).
+    sigma_y_nexus : float
+        Standard deviation of the detector position resolution along NeXus Y (m).
     no_gravity : bool
         Flag indicating whether gravity should be ignored.
     gravity_acceleration_vector : ndarray
@@ -129,9 +125,6 @@ class Detector:
         py_bornagain, pz_bornagain = self.coords.apply_sample_orientation_transform(pixels_nexus[0], pixels_nexus[1])
         self.pixels_y_bornagain, self.pixels_z_bornagain = abs(int(py_bornagain)), abs(int(pz_bornagain))
 
-        ry_bornagain, rz_bornagain = self.coords.apply_sample_orientation_transform(res_nexus[0], res_nexus[1])
-        self.resolution_y_bornagain, self.resolution_z_bornagain = abs(float(ry_bornagain)), abs(float(rz_bornagain))
-
         oy_bornagain, oz_bornagain = self.coords.apply_sample_orientation_transform(offset_nexus[0], offset_nexus[1])
         self.direct_beam_centre_offset_y_bornagain, self.direct_beam_centre_offset_z_bornagain = float(oy_bornagain), float(oz_bornagain)
 
@@ -141,8 +134,9 @@ class Detector:
         self.min_edge_z_bornagain = self.direct_beam_centre_offset_z_bornagain - 0.5 * self.size_z_bornagain
         self.max_edge_y_bornagain = self.direct_beam_centre_offset_y_bornagain + 0.5 * self.size_y_bornagain
         self.max_edge_z_bornagain = self.direct_beam_centre_offset_z_bornagain + 0.5 * self.size_z_bornagain
-        self.sigma_y_bornagain = self.resolution_y_bornagain / 2.355
-        self.sigma_z_bornagain = self.resolution_z_bornagain / 2.355
+        # detector resolution is a property of the detector itself: smear in the NeXus (lab) frame
+        self.sigma_x_nexus = float(res_nexus[0]) / 2.355
+        self.sigma_y_nexus = float(res_nexus[1]) / 2.355
 
         self.no_gravity = no_gravity
         if not no_gravity:
@@ -169,28 +163,24 @@ class Detector:
         return np.array([gx, gy, gz], dtype=np.float64)
 
     def apply_position_smearing(
-        self, y_bornagain: Union[float, npt.NDArray], z_bornagain: Union[float, npt.NDArray]
+        self, x_nexus: Union[float, npt.NDArray], y_nexus: Union[float, npt.NDArray]
     ) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
         """
-        Apply Gaussian smearing to coordinates in BornAgain frame.
+        Apply the Gaussian detector position resolution in the NeXus (lab) frame.
 
         Parameters
         ----------
-        y_bornagain : float or ndarray
-            Y-coordinates in BornAgain frame.
-        z_bornagain : float or ndarray
-            Z-coordinates in BornAgain frame.
+        x_nexus, y_nexus : float or ndarray
+            Detection positions in the NeXus frame (m).
 
         Returns
         -------
         Tuple[float or ndarray, float or ndarray]
-            Smeared (y, z) coordinates.
+            Smeared (x, y) positions.
         """
-        y_shape = np.shape(y_bornagain)
-        z_shape = np.shape(z_bornagain)
-        y_smeared = np.random.normal(y_bornagain, self.sigma_y_bornagain, size=y_shape)
-        z_smeared = np.random.normal(z_bornagain, self.sigma_z_bornagain, size=z_shape)
-        return y_smeared, z_smeared
+        x_smeared = np.random.normal(x_nexus, self.sigma_x_nexus, size=np.shape(x_nexus))
+        y_smeared = np.random.normal(y_nexus, self.sigma_y_nexus, size=np.shape(y_nexus))
+        return x_smeared, y_smeared
 
     def get_pixel_indices_from_position(
         self, x_nexus: Union[float, npt.NDArray], y_nexus: Union[float, npt.NDArray]
@@ -223,72 +213,26 @@ class Detector:
         z_intersection_bornagain: Union[float, npt.NDArray]
     ) -> Tuple[Union[int, npt.NDArray], Union[int, npt.NDArray], Union[bool, npt.NDArray]]:
         """
-        Calculate physical detector pixel indices in raw NeXus frame for intersection coordinates.
-        Operations are vectorized across outgoing rays.
+        Calculate physical detector pixel indices in the raw NeXus frame for detector-plane
+        intersection points given in the BornAgain frame. The points are transformed back to
+        the NeXus frame with the same CoordinateTransform used everywhere else, smeared by
+        the detector resolution, and binned into pixels.
 
         Parameters
         ----------
-        x_intersection_bornagain : float or ndarray
-            X-coordinate of intersection in BornAgain frame.
-        y_intersection_bornagain : float or ndarray
-            Y-coordinate of intersection in BornAgain frame.
-        z_intersection_bornagain : float or ndarray
-            Z-coordinate of intersection in BornAgain frame.
+        x_intersection_bornagain, y_intersection_bornagain, z_intersection_bornagain : float or ndarray
+            Intersection coordinates in the BornAgain frame.
 
         Returns
         -------
         Tuple[int or ndarray, int or ndarray, bool or ndarray]
             (idx_x_nexus, idx_y_nexus, valid_mask)
         """
-        _, z_int_un = self.coords.apply_inverse_inclination_angle_transformation(
-            x_intersection_bornagain, z_intersection_bornagain
+        x_nexus, y_nexus, _ = self.coords.bornagain_to_nexus(
+            x_intersection_bornagain, y_intersection_bornagain, z_intersection_bornagain
         )
-        y_smeared, z_smeared_un = self.apply_position_smearing(y_intersection_bornagain, z_int_un)
-
-        idx_y_bornagain = np.floor((y_smeared - self.min_edge_y_bornagain) / self.pixel_size_y_bornagain).astype(int)
-        idx_z_bornagain = np.floor((z_smeared_un - self.min_edge_z_bornagain) / self.pixel_size_z_bornagain).astype(int)
-        
-        valid_mask = (
-            (idx_y_bornagain >= 0) & (idx_y_bornagain < self.pixels_y_bornagain) &
-            (idx_z_bornagain >= 0) & (idx_z_bornagain < self.pixels_z_bornagain)
-        )
-
-        match self.sample_orientation:
-            case 0:
-                idx_x_nexus = self.pixels_x_nexus - 1 - idx_z_bornagain
-                idx_y_nexus = idx_y_bornagain
-            case 1:
-                idx_x_nexus = idx_y_bornagain
-                idx_y_nexus = idx_z_bornagain
-            case 2:
-                idx_x_nexus = idx_z_bornagain
-                idx_y_nexus = self.pixels_y_nexus - 1 - idx_y_bornagain
-            case _:
-                raise ValueError(f"Unknown sample orientation: {self.sample_orientation}")
-
-        return idx_x_nexus, idx_y_nexus, valid_mask
-
-    def get_pixel_centre_from_position(
-        self, y_bornagain: Union[float, npt.NDArray], z_bornagain: Union[float, npt.NDArray]
-    ) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
-        """
-        Find the centre of the pixel corresponding to the y, z coordinates in BornAgain frame.
-
-        Parameters
-        ----------
-        y_bornagain : float or ndarray
-            Y-coordinate in BornAgain frame.
-        z_bornagain : float or ndarray
-            Z-coordinate in BornAgain frame.
-
-        Returns
-        -------
-        Tuple[float or ndarray, float or ndarray]
-            Pixel center (y, z) coordinates.
-        """
-        y_pixel_centre = np.floor((y_bornagain - self.min_edge_y_bornagain) / self.pixel_size_y_bornagain) * self.pixel_size_y_bornagain + 0.5 * self.pixel_size_y_bornagain + self.min_edge_y_bornagain
-        z_pixel_centre = np.floor((z_bornagain - self.min_edge_z_bornagain) / self.pixel_size_z_bornagain) * self.pixel_size_z_bornagain + 0.5 * self.pixel_size_z_bornagain + self.min_edge_z_bornagain
-        return y_pixel_centre, z_pixel_centre
+        x_smeared, y_smeared = self.apply_position_smearing(x_nexus, y_nexus)
+        return self.get_pixel_indices_from_position(x_smeared, y_smeared)
 
     def calculate_gravity_drop(self, t_propagate: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray], Union[float, npt.NDArray]]:
         """
@@ -357,38 +301,6 @@ class Detector:
             z_int += z_drop
 
         return t_propagate, x_int, y_int, z_int
-
-    def calculate_detection_coordinate(
-        self,
-        x_intersection_bornagain: Union[float, npt.NDArray],
-        y_intersection_bornagain: Union[float, npt.NDArray],
-        z_intersection_bornagain: Union[float, npt.NDArray]
-    ) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray], Union[float, npt.NDArray]]:
-        """
-        Get the coordinate of the detection event taking into account detector resolution.
-
-        Parameters
-        ----------
-        x_intersection_bornagain : float or ndarray
-            X-coordinate of theoretical intersection.
-        y_intersection_bornagain : float or ndarray
-            Y-coordinate of theoretical intersection.
-        z_intersection_bornagain : float or ndarray
-            Z-coordinate of theoretical intersection.
-
-        Returns
-        -------
-        Tuple[float or ndarray, float or ndarray, float or ndarray]
-            Smeared detection coordinates (x, y, z).
-        """
-        x_int_un, z_int_un = self.coords.apply_inverse_inclination_angle_transformation(
-            x_intersection_bornagain, z_intersection_bornagain
-        )
-        y_det, z_det_un = self.apply_position_smearing(y_intersection_bornagain, z_int_un)
-        y_pix, z_pix_un = self.get_pixel_centre_from_position(y_det, z_det_un)
-        x_pix, z_pix = self.coords.apply_inclination_angle_transformation(x_int_un, z_pix_un)
-
-        return x_pix, y_pix, z_pix
 
     def calculate_angles_from_spatial_bounds(
         self,

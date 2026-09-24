@@ -14,10 +14,14 @@ class CoordinateTransform:
     sample_inclination : float
         The inclination angle of the sample in radians.
     sample_orientation : int
-        The orientation of the sample:
-        0 = Vertical sample, beam from left (-90 deg rotation)
-        1 = Horizontal sample (no rotation)
-        2 = Vertical sample, beam from right (+90 deg rotation)
+        The orientation of the sample, defined by the direction of its surface
+        normal (the BornAgain z axis) in the NeXus frame (x = horizontal, pointing
+        left when looking along the beam; y = up; z = along the beam):
+        0 = Vertical sample, surface normal along -x (reflected beam goes right)
+        1 = Horizontal sample, surface normal along +y (reflected beam goes up)
+        2 = Vertical sample, surface normal along +x (reflected beam goes left)
+        The raw detector image is assumed to have pixel index ix increasing
+        along +x and iy increasing along +y.
     inverse_sample_inclination_rotation_matrix : ndarray
         2x2 rotation matrix for inverse sample inclination.
     sample_inclination_rotation_matrix : ndarray
@@ -67,28 +71,34 @@ class CoordinateTransform:
             case _:
                 raise ValueError(f"Unknown sample orientation: {sample_orientation}")
 
+    # (x_nexus, y_nexus) -> (y_bornagain, z_bornagain) of the uninclined sample frame.
+    # Orientation 0: normal (z_BA) = -x_nexus, y_BA = +y_nexus (up).
     def _transform_sample_orient_0(self, x_nexus: Union[float, npt.NDArray], y_nexus: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
-        return -y_nexus, x_nexus
+        return y_nexus, -x_nexus
 
     def _transform_sample_orient_1(self, x_nexus: Union[float, npt.NDArray], y_nexus: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
         return x_nexus, y_nexus
 
+    # Orientation 2: normal (z_BA) = +x_nexus, y_BA = -y_nexus (down).
     def _transform_sample_orient_2(self, x_nexus: Union[float, npt.NDArray], y_nexus: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
-        return y_nexus, -x_nexus
+        return -y_nexus, x_nexus
 
     def _inverse_sample_orient_0(self, x_uninclined: Union[float, npt.NDArray], y_uninclined: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
-        return y_uninclined, -x_uninclined
+        return -y_uninclined, x_uninclined
 
     def _inverse_sample_orient_1(self, x_uninclined: Union[float, npt.NDArray], y_uninclined: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
         return x_uninclined, y_uninclined
 
     def _inverse_sample_orient_2(self, x_uninclined: Union[float, npt.NDArray], y_uninclined: Union[float, npt.NDArray]) -> Tuple[Union[float, npt.NDArray], Union[float, npt.NDArray]]:
-        return -y_uninclined, x_uninclined
+        return y_uninclined, -x_uninclined
 
     def rotate_detector_image(self, hist_nexus: npt.NDArray) -> npt.NDArray:
         """
-        Rotates a 2D NeXus detector image matrix (horizontal x vertical) to match the
-        (uninclined) BornAgain sample frame.
+        Rotate a 2D raw detector image indexed [ix, iy] (ix along +x_nexus, iy along
+        +y_nexus) into the uninclined BornAgain sample frame, indexed [iy_BA, iz_BA].
+
+        The axis mapping is derived from apply_sample_orientation_transform, so the
+        image rotation can never disagree with the vector transformation.
 
         Parameters
         ----------
@@ -100,15 +110,19 @@ class CoordinateTransform:
         ndarray
             Rotated image array.
         """
-        match self.sample_orientation:
-            case 0:
-                return np.rot90(hist_nexus, -1)
-            case 1:
-                return hist_nexus
-            case 2:
-                return np.rot90(hist_nexus, 1)
-            case _:
-                raise ValueError(f"Unknown sample orientation: {self.sample_orientation}")
+        ex_y, ex_z = self.apply_sample_orientation_transform(1, 0)
+        ey_y, ey_z = self.apply_sample_orientation_transform(0, 1)
+        if ex_y != 0:  # raw x -> BornAgain y, raw y -> BornAgain z
+            image = hist_nexus
+            flip_axis0, flip_axis1 = ex_y < 0, ey_z < 0
+        else:  # raw x -> BornAgain z, raw y -> BornAgain y
+            image = hist_nexus.T
+            flip_axis0, flip_axis1 = ey_y < 0, ex_z < 0
+        if flip_axis0:
+            image = image[::-1, :]
+        if flip_axis1:
+            image = image[:, ::-1]
+        return np.ascontiguousarray(image)
 
     def apply_inclination_angle_transformation(
         self, x_uninclined: Union[float, npt.NDArray], z_uninclined: Union[float, npt.NDArray]

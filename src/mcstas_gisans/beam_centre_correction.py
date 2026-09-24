@@ -1,120 +1,96 @@
 """
-Module to calculate the required detector centre_offset for NeXus measurements
-so that the beam centre aligns with (qy, qz) = (0, 0) in Q-space.
+Find the detector centre offset from a measured direct-beam NeXus file.
+
+The offset is the position of the detector centre relative to the undeflected nominal
+beam axis through the sample (NeXus frame, metres). It is a property of the detector
+position only, so it does not depend on the sample orientation. It is computed directly
+in real space: the unscattered beam lands at the point where the undeflected beam axis
+(tilted by the beam angle) hits the detector plane, lowered by the gravity drop at the
+given wavelength; the offset places the measured intensity centroid on that point.
+Together with the Q convention of Instrument.calculate_q_from_nexus_positions this puts
+the measured direct beam exactly at Q = 0.
 """
 
 import sys
 import copy
 import numpy as np
-from scipy.optimize import root
 
-from .nexus_reader import read_nexus_data
+from .nexus_reader import read_nexus_raw
 from .instrument import Instrument
-from .instrument_defaults import instrument_defaults
+from .instrument_defaults import instrument_defaults, default_detector
 
-def find_required_centre_offset(filepath, initial_guess=None, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False, nxs_data_path=None):
+
+def find_required_centre_offset(filepath, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False, nxs_data_path=None):
     """
-    Find the required centre_offset values for the detector so that the beam centre
-    measured in a NeXus file is positioned at (qy, qz) = (0, 0) in Q-space.
+    Detector centre offset [x, y] (m, NeXus frame) that reproduces a measured direct beam.
 
     Parameters
     ----------
     filepath : str
-        Path to the NeXus file.
-    initial_guess : list or np.ndarray, optional
-        Initial guess for the centre_offset [x, y] in meters.
-        If None, the default centre_offset for the selected instrument is used.
+        Path to the NeXus file of the direct-beam measurement.
     beam_angle : float, optional
-        Override beam declination angle in degrees.
+        Beam angle in degrees (angle of the incident beam above the nominal axis in the
+        plane of incidence, towards the sample surface normal). Default: the instrument's
+        configured 'beam_angle', or 0.0.
     wavelength : float, optional
-        Wavelength in Angstroms (default: 6.0).
+        Wavelength of the direct-beam measurement in Angstrom (default: 6.0). Only enters
+        through the gravity drop.
     sample_orientation : int, optional
-        Sample orientation: 0 (vertical, beam from left), 1 (horizontal), 2 (vertical, beam from right). (default: 1).
+        Sample orientation (0, 1, 2). Only defines the plane in which the beam angle acts.
     instrument_name : str, optional
         The name of the instrument key in instrument_defaults (default: 'd22').
     verbose : bool, optional
-        If True, print detailed optimization progress.
+        Print the intermediate quantities.
     nxs_data_path : str, optional
-        Explicit HDF5 path to the detector data inside the NeXus file. If None,
-        the default paths in nexus_reader.py are tried automatically.
+        Explicit HDF5 path to the detector data inside the NeXus file.
 
     Returns
     -------
     centre_offset : np.ndarray
-        The calculated centre_offset [x, y] in meters.
+        The detector centre offset [x, y] in metres.
     """
-    original_beam_angle = None
-    if beam_angle is not None and instrument_name in instrument_defaults:
-        original_beam_angle = instrument_defaults[instrument_name].get('beam_angle')
-        instrument_defaults[instrument_name]['beam_angle'] = beam_angle
+    if instrument_name not in instrument_defaults:
+        raise ValueError(f"Unknown instrument '{instrument_name}'. Available: {list(instrument_defaults)}")
+    params = copy.deepcopy(instrument_defaults[instrument_name])
+    params.setdefault('detector', copy.deepcopy(default_detector))
+    params['detector']['direct_beam_centre_offset'] = [0.0, 0.0]
+    if beam_angle is not None:
+        params['beam_angle'] = beam_angle
+    instrument = Instrument(params, 0.0, wavelength, sample_orientation)
+    det = instrument.detector
 
-    try:
-        alpha_inc_deg = 0.0 #for direct beam measurements, the incident angle is 0 degrees
+    raw = read_nexus_raw(filepath, nxs_data_path)
+    if raw.shape != (det.pixels_x_nexus, det.pixels_y_nexus):
+        raise ValueError(f"Detector image shape {raw.shape} does not match the '{instrument_name}' detector "
+                         f"({det.pixels_x_nexus}, {det.pixels_y_nexus}).")
+    total = raw.sum()
+    if total <= 0:
+        raise ValueError(f"No counts in the detector image of {filepath}.")
 
-        if initial_guess is None:
-            initial_guess = instrument_defaults.get(instrument_name, {}).get('detector', {}).get('direct_beam_centre_offset', [0.0, 0.0])
+    x_rel = (np.arange(det.pixels_x_nexus) + 0.5) * det.pixel_size_x_nexus - 0.5 * det.size_x_nexus
+    y_rel = (np.arange(det.pixels_y_nexus) + 0.5) * det.pixel_size_y_nexus - 0.5 * det.size_y_nexus
+    centroid = np.array([(raw.sum(axis=1) * x_rel).sum(), (raw.sum(axis=0) * y_rel).sum()]) / total
 
-        dummy_params = copy.deepcopy(instrument_defaults[instrument_name])
-        dummy_params['detector']['direct_beam_centre_offset'] = list(initial_guess)
-        dummy_instrument = Instrument(dummy_params, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
+    landing = instrument.direct_beam_landing_point_nexus(wavelength)
+    offset = landing[:2] - centroid
 
-        hist, _, _, _ = read_nexus_data(filepath, dummy_instrument, data_path=nxs_data_path)
-
-        if verbose:
-            print(f"\n--- Starting Beam Centre Minimisation ---")
-            print(f"Filepath: {filepath}")
-            print(f"Initial Guess: {initial_guess}")
-
-        def residual(direct_beam_centre_offset):
-            # Copy defaults to avoid modifying global settings in place
-            params = copy.deepcopy(instrument_defaults[instrument_name])
-            params['detector']['direct_beam_centre_offset'] = list(direct_beam_centre_offset)
-
-            instrument = Instrument(params, alpha_inc_deg, wavelength, sample_orientation=sample_orientation)
-            q_y, q_z = instrument.get_q_pixel_limits()
-
-            # Calculate bin centres
-            y_centres = (q_y[:-1] + q_y[1:]) / 2.0
-            z_centres = (q_z[:-1] + q_z[1:]) / 2.0
-
-            # Calculate weight distributions
-            y_intensity = np.sum(hist, axis=1)
-            z_intensity = np.sum(hist, axis=0)
-            total_intensity = np.sum(hist)
-
-            if total_intensity <= 0:
-                raise ValueError("Total intensity of the NeXus dataset is zero or negative.")
-
-            y_centre = np.sum(y_centres * y_intensity) / total_intensity
-            z_centre = np.sum(z_centres * z_intensity) / total_intensity
-
-            if verbose:
-                print(f"  Eval offset: [{direct_beam_centre_offset[0]:.6f}, {direct_beam_centre_offset[1]:.6f}] -> Q-centre: ({y_centre:.6f}, {z_centre:.6f})")
-            return np.array([y_centre, z_centre])
-
-        res = root(residual, initial_guess)
-        print(f"Optimization Success: {res.success}")
-        print(f"Optimization Message: {res.message}")
-
-        if not res.success:
-            raise RuntimeError(f"Optimization failed to find required direct_beam_centre_offset: {res.message}")
-
-        return res.x
-    finally:
-        if original_beam_angle is not None:
-            instrument_defaults[instrument_name]['beam_angle'] = original_beam_angle
+    if verbose:
+        print(f"Direct-beam centroid relative to the detector centre [m]: [{centroid[0]:.6f}, {centroid[1]:.6f}]")
+        print(f"Predicted landing point of the unscattered beam [m]:      [{landing[0]:.6f}, {landing[1]:.6f}]"
+              f" (beam angle {instrument.beam_angle} deg, wavelength {wavelength} Å)")
+    return offset
 
 
 def create_argparser():
     import argparse
     parser = argparse.ArgumentParser(description="Find required detector centre_offset for a given NeXus data file.")
     parser.add_argument('filepath', type=str, help="Path to the NeXus data file.")
-    parser.add_argument('--wavelength', type=float, default=6.0, help="Wavelength in Angstroms (default: 6.0).")
-    parser.add_argument('--sample_orientation', type=int, default=1, help="Sample orientation (default: 1).")
-    parser.add_argument('--instrument', type=str, default='d22', help="Instrument name in instrument_defaults (default: 'd22').")
-    parser.add_argument('--beam_angle', type=float, default=None, help="Override beam declination angle in degrees (default: loaded from instrument defaults).")
+    parser.add_argument('--wavelength', type=float, default=6.0, help="Wavelength of the direct-beam measurement in Angstrom; enters through the gravity drop (default: 6.0).")
+    parser.add_argument('--sample_orientation', type=int, default=1, choices=[0, 1, 2], help="Sample orientation (0, 1, 2); defines the plane in which the beam angle acts (default: 1).")
+    parser.add_argument('--instrument', type=str.lower, default='d22', choices=list(instrument_defaults.keys()), help="Instrument name in instrument_defaults (default: 'd22').")
+    parser.add_argument('--beam_angle', type=float, default=None, help="Beam angle in degrees: angle of the incident beam above the nominal beam axis, in the plane of incidence, positive towards the sample surface normal (default: the instrument's configured value, or 0). Note: opposite sign to the former --beam_declination.")
     parser.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the NeXus file, e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
-    parser.add_argument('--verbose', action='store_true', help="Print detailed optimization progress.")
+    parser.add_argument('--verbose', action='store_true', help="Print the direct-beam centroid and the predicted landing point.")
     return parser
 
 def main():

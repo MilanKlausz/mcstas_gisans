@@ -39,50 +39,7 @@ DIRECT_BEAM_FILE = "data/paper/d22_measurement/073162.nxs"
 # A2 = orientation 0/2 pixel mapping rotated 180 degrees relative to CoordinateTransform.
 # Strict xfail: once a bug is fixed the test XPASSes and fails the suite, forcing this
 # list to be emptied together with the fix.
-KNOWN_FAILURES = {
-    'test_beam_centre_closed_loop[0-12.0]',
-    'test_beam_centre_closed_loop[0-6.0]',
-    'test_beam_centre_closed_loop[1-12.0]',
-    'test_beam_centre_closed_loop[1-6.0]',
-    'test_beam_centre_closed_loop[2-12.0]',
-    'test_beam_centre_closed_loop[2-6.0]',
-    'test_direct_beam_maps_to_q_zero_non_tof[0-12.0]',
-    'test_direct_beam_maps_to_q_zero_non_tof[0-6.0]',
-    'test_direct_beam_maps_to_q_zero_non_tof[1-12.0]',
-    'test_direct_beam_maps_to_q_zero_non_tof[1-6.0]',
-    'test_direct_beam_maps_to_q_zero_non_tof[2-12.0]',
-    'test_direct_beam_maps_to_q_zero_non_tof[2-6.0]',
-    'test_direct_beam_maps_to_q_zero_tof[0-12.0]',
-    'test_direct_beam_maps_to_q_zero_tof[0-3.0]',
-    'test_direct_beam_maps_to_q_zero_tof[0-6.0]',
-    'test_direct_beam_maps_to_q_zero_tof[2-12.0]',
-    'test_direct_beam_maps_to_q_zero_tof[2-3.0]',
-    'test_direct_beam_maps_to_q_zero_tof[2-6.0]',
-    'test_gravity_pulls_neutrons_down_in_lab_frame[0]',
-    'test_gravity_pulls_neutrons_down_in_lab_frame[2]',
-    'test_offset_is_independent_of_sample_orientation',
-    'test_offset_wavelength_dependence_equals_gravity_drop[0]',
-    'test_offset_wavelength_dependence_equals_gravity_drop[1]',
-    'test_offset_wavelength_dependence_equals_gravity_drop[2]',
-    'test_raw_pixel_matches_lab_frame_intersection[0-0.0]',
-    'test_raw_pixel_matches_lab_frame_intersection[0-0.4]',
-    'test_raw_pixel_matches_lab_frame_intersection[2-0.0]',
-    'test_raw_pixel_matches_lab_frame_intersection[2-0.4]',
-    'test_rotate_detector_image_matches_coordinate_transform[0]',
-    'test_rotate_detector_image_matches_coordinate_transform[2]',
-    'test_specular_maps_to_expected_qz_non_tof[0-12.0]',
-    'test_specular_maps_to_expected_qz_non_tof[0-6.0]',
-    'test_specular_maps_to_expected_qz_non_tof[1-12.0]',
-    'test_specular_maps_to_expected_qz_non_tof[1-6.0]',
-    'test_specular_maps_to_expected_qz_non_tof[2-12.0]',
-    'test_specular_maps_to_expected_qz_non_tof[2-6.0]',
-    'test_specular_maps_to_expected_qz_tof[0-12.0]',
-    'test_specular_maps_to_expected_qz_tof[0-3.0]',
-    'test_specular_maps_to_expected_qz_tof[0-6.0]',
-    'test_specular_maps_to_expected_qz_tof[2-12.0]',
-    'test_specular_maps_to_expected_qz_tof[2-3.0]',
-    'test_specular_maps_to_expected_qz_tof[2-6.0]',
-}
+KNOWN_FAILURES = set()
 
 
 @pytest.fixture(autouse=True)

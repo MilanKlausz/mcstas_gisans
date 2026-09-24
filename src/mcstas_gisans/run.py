@@ -24,6 +24,17 @@ from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
+def _grid_jitter(angle_range: List[float], n_horizontal: int, n_vertical: int, rand_y: float, rand_z: float) -> Tuple[float, float]:
+    """
+    Random shift [deg] of the whole outgoing-direction grid for one incident neutron.
+    rand_y, rand_z are uniform in [-1, 1]; the shift is up to half a bin width, so the
+    jittered bin centres sample the angle range uniformly and never leave it.
+    """
+    horiz_min, horiz_max, vert_min, vert_max = angle_range
+    half_bin_phi = 0.5 * (horiz_max - horiz_min) / n_horizontal
+    half_bin_alpha = 0.5 * (vert_max - vert_min) / n_vertical
+    return rand_z * half_bin_phi, rand_y * half_bin_alpha
+
 def get_simulation(
     sample: Any,
     outgoing_directions_horizontal: int,
@@ -47,11 +58,7 @@ def get_simulation(
 
     horiz_min, horiz_max, vert_min, vert_max = angle_range
 
-    step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
-    step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
-
-    rand_deg_phi = rand_z * step_phi
-    rand_deg_alpha = rand_y * step_alpha
+    rand_deg_phi, rand_deg_alpha = _grid_jitter(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z)
 
     detector = ba.SphericalDetector(
         outgoing_directions_horizontal, (horiz_min + rand_deg_phi)*deg, (horiz_max + rand_deg_phi)*deg,
@@ -127,14 +134,14 @@ def _execute_bornagain_simulation(
     pout = get_result_intensities(res)
 
     horiz_min, horiz_max, vert_min, vert_max = angle_range
-    step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
-    step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
+    rand_deg_phi, rand_deg_alpha = _grid_jitter(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z)
 
-    rand_deg_phi = rand_z * step_phi
-    rand_deg_alpha = rand_y * step_alpha
-
-    alpha_f = np.linspace(vert_max, vert_min, outgoing_directions_vertical) + rand_deg_alpha
-    phi_f = np.linspace(horiz_min, horiz_max, outgoing_directions_horizontal) + rand_deg_phi
+    # BornAgain's SphericalDetector(n, min, max) treats min/max as bin EDGES; each intensity
+    # belongs to its bin centre. Rows are ordered from the highest alpha_f downwards.
+    bin_phi = (horiz_max - horiz_min) / outgoing_directions_horizontal
+    bin_alpha = (vert_max - vert_min) / outgoing_directions_vertical
+    alpha_f = np.linspace(vert_max - bin_alpha / 2, vert_min + bin_alpha / 2, outgoing_directions_vertical) + rand_deg_alpha
+    phi_f = np.linspace(horiz_min + bin_phi / 2, horiz_max - bin_phi / 2, outgoing_directions_horizontal) + rand_deg_phi
     
     weights = pout.T.flatten()
     return weights, alpha_f, phi_f

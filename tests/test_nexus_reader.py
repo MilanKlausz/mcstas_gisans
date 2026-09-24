@@ -19,7 +19,8 @@ def test_read_nexus_data_scaling():
 
     # Assert scaling is applied correctly
     assert np.allclose(hist_scaled, hist * factor)
-    assert np.allclose(hist_error_scaled, np.sqrt(hist * factor))
+    # scaling counts by f scales their Poisson error by f
+    assert np.allclose(hist_error_scaled, factor * np.sqrt(hist))
     assert np.allclose(q_y_scaled, q_y)
     assert np.allclose(q_z_scaled, q_z)
 

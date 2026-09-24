@@ -10,5 +10,6 @@
    
       read_nexus_data
       read_nexus_duration
+      read_nexus_raw
       warn_if_duration_mismatch
    
