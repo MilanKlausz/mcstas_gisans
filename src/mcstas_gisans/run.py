@@ -10,7 +10,6 @@ particle, and saves the result for further analysis or plotting.
 import os
 import sys
 import tempfile
-import traceback
 import multiprocessing
 from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
@@ -210,10 +209,24 @@ def _update_tof_buffer(
 
     return buffer_idx
 
-def process_particles(particles: Any, params: Dict[str, Any], queue: Optional[multiprocessing.Queue] = None) -> Dict[str, Any]:
+def seed_particle_rng(random_seed: Optional[int], particle_index: int) -> None:
+    """
+    Seed numpy's global random generator for one incident particle from the run seed and the
+    particle's global index. The random numbers used for a particle (outgoing-direction grid
+    jitter, detector resolution smearing) then do not depend on how the particles are split
+    between processes, so results are reproducible and identical for any number of processes.
+    """
+    if random_seed is not None:
+        np.random.seed(np.random.SeedSequence([random_seed, particle_index]).generate_state(4))
+
+
+def process_particles(particles: Any, params: Dict[str, Any], start_index: int = 0) -> Dict[str, Any]:
     """
     Carry out the BornAgain simulation and subsequent processing for a batch of incident particles.
+    start_index is the global index of the first particle of the batch (for per-particle seeding).
     """
+    f_temp = None
+    h5_temp_path = None
     try:
         sample = params['sample']
         sample_module = sample.get_module()
@@ -227,16 +240,16 @@ def process_particles(particles: Any, params: Dict[str, Any], queue: Optional[mu
         event_buffer = None
         buffer_idx = 0
         buffer_capacity = 1_000_000
-        h5_temp_path = None
-        f_temp = None
+        random_seed = params.get('random_seed')
 
         if not is_tof:
             pixel_hist = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
             pixel_hist_weights_squared = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
         else:
             import h5py
-            pid = multiprocessing.current_process().pid or os.getpid()
-            h5_temp_path = os.path.join(tempfile.gettempdir(), f"mcstas_gisans_events_{pid}.h5")
+            # unique file per call: a pool worker may process more than one batch
+            fd, h5_temp_path = tempfile.mkstemp(prefix='mcstas_gisans_events_', suffix='.h5')
+            os.close(fd)
 
             event_buffer = {
                 'detector_id': np.zeros(buffer_capacity, dtype=np.int32),
@@ -256,6 +269,7 @@ def process_particles(particles: Any, params: Dict[str, Any], queue: Optional[mu
                     print(f'{id:10}/{len(particles)}')
                     sys.stdout.flush()
                 
+            seed_particle_rng(random_seed, start_index + id)
             p, x, y, z, vx, vy, vz, wavelength, t, *polarization = particle
             alpha_i = np.rad2deg(np.arctan(-vz/vx))
             phi_i = np.rad2deg(np.arctan(vy/vx))
@@ -344,58 +358,40 @@ def process_particles(particles: Any, params: Dict[str, Any], queue: Optional[mu
                 dset[old_size:] = event_buffer[col][:buffer_idx]
             buffer_idx = 0
 
-        result = {
+        if f_temp is not None:
+            f_temp.close()
+            f_temp = None
+        return {
             'pixelHist': pixel_hist,
             'pixelHistWeightsSquared': pixel_hist_weights_squared,
             'temp_h5_path': h5_temp_path
         }
-
-        if queue:
-            queue.put(result)
-        else:
-            return result
-
-    except Exception as e:
-        err_log_path = os.path.join(tempfile.gettempdir(), 'mcstas_worker_err.log')
-        with open(err_log_path, 'a') as f:
-            traceback.print_exc(file=f)
-        raise e
-    finally:
-        if params['instrument'].is_tof_instrument and f_temp is not None:
-            try:
-                f_temp.close()
-            except:
-                pass
+    except Exception:
+        # the exception propagates to the caller (multiprocessing re-raises it in the parent);
+        # remove this batch's partial temporary file
+        if f_temp is not None:
+            f_temp.close()
+        if h5_temp_path is not None and os.path.exists(h5_temp_path):
+            os.remove(h5_temp_path)
+        raise
 
 def process_particles_parallelly(particles: Any, params: Dict[str, Any], process_number: int) -> Dict[str, Any]:
     """
     Spawn parallel processes to carry out the BornAgain simulation and subsequent
     calculation of the incident particles.
     """
+    process_number = max(1, min(int(process_number), len(particles)))
     print(f"Number of parallel processes: {process_number} (number of physical CPU cores: {get_available_cores()})")
+    if process_number == 1:
+        result = process_particles(particles, params)
+        if params['instrument'].is_tof_instrument:
+            result['temp_h5_paths'] = [result.pop('temp_h5_path')]
+        return result
 
-    err_log_path = os.path.join(tempfile.gettempdir(), 'mcstas_worker_err.log')
-    if os.path.exists(err_log_path):
-        try:
-            os.remove(err_log_path)
-        except OSError:
-            pass
-
-    particle_number = len(particles)
-    chunk_size = particle_number // process_number
-    chunks = []
-    for i in range(process_number):
-        start = i * chunk_size
-        end = (i + 1) * chunk_size if i < process_number - 1 else particle_number
-        chunks.append(particles[start:end])
-
+    starts = np.linspace(0, len(particles), process_number + 1).astype(int)
+    tasks = [(particles[starts[i]:starts[i + 1]], params, int(starts[i])) for i in range(process_number)]
     with multiprocessing.Pool(processes=process_number) as pool:
-        results = pool.starmap(process_particles, [(chunk, params) for chunk in chunks])
-
-    if os.path.exists(err_log_path) and os.path.getsize(err_log_path) > 0:
-        with open(err_log_path, 'r') as f:
-            err_content = f.read()
-        raise RuntimeError(f"One or more parallel workers failed with a traceback:\n{err_content}")
+        results = pool.starmap(process_particles, tasks)
 
     is_tof = params['instrument'].is_tof_instrument
     pixel_hist = np.zeros((params['instrument'].detector.pixels_x_nexus, params['instrument'].detector.pixels_y_nexus))
@@ -443,8 +439,10 @@ def main() -> None:
 
     if args.no_parallel:
         result = process_particles(particles, params)
+        if params['instrument'].is_tof_instrument:
+            result['temp_h5_paths'] = [result.pop('temp_h5_path')]
     else:
-        process_number = args.parallel_processes if args.parallel_processes else (get_available_cores() - 1)
+        process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
         result = process_particles_parallelly(particles, params, process_number)
 
     save_simulation_results_as_scipp(savename, params, result, args, mcpl_metadata, getattr(args, 'temp_read_chunk_size', 1000000))

@@ -257,6 +257,7 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
     provenance_metadata = {
         'cli_command': sc.scalar(" ".join(sys.argv)),
         'cli_args_json': sc.scalar(json.dumps(vars(args))),
+        'random_seed': sc.scalar(str(getattr(args, 'seed', None))),
         'bornagain_version': sc.scalar(str(getattr(bornagain, 'version', 'unknown'))),
         'mcstas_gisans_version': sc.scalar(mg_version),
         'mcpl_version': sc.scalar(mcpl.__version__),

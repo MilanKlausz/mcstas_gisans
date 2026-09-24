@@ -1,6 +1,7 @@
 """
 Tests for the run script
 """
+import numpy as np
 import pytest
 import subprocess
 import sys
@@ -117,48 +118,13 @@ def test_analyzer_input_validation(monkeypatch, bad_args):
     with pytest.raises(SystemExit):
         parse_args(parser)
 
-def test_process_particles_parallel_matches_sequential():
-    """
-    process_particles_parallelly splits particles into N chunks, runs
-    process_particles on each in a separate worker process, and sums the
-    resulting pixelHist/pixelHistWeightsSquared. Verify that summation
-    actually happens correctly (no chunk dropped or double-counted) by
-    comparing against a single-process run on the same particles.
-
-    This can't assert exact equality: each particle's outgoing-direction
-    sampling grid gets an unseeded random jitter (see get_simulation's
-    rand_y/rand_z), which differs between the sequential run (one RNG
-    stream) and the parallel run (one independent RNG stream per worker
-    process). Empirically, summed pixelHist (total intensity) is a stable
-    aggregate that doesn't get biased by this jitter (15 trials at 2000
-    particles: max 2.25% relative difference, mostly well under 1%), so a
-    loose relative tolerance on it still meaningfully catches aggregation
-    bugs (e.g. a dropped or double-counted chunk would show up as a
-    ~30%+/~100% deviation). pixelHistWeightsSquared is a much noisier,
-    heavy-tailed statistic -- a handful of high-weight particles dominate
-    the sum of squares, and which pixel they land in shifts between runs,
-    so the same 15 trials saw deviations up to 34%. It's checked only for
-    non-zero-ness and rough order-of-magnitude agreement here, not a tight
-    tolerance, since no fixed tight threshold would be both non-flaky and
-    meaningful for that statistic on a subset this size.
-    """
+def _prepare_run(argv):
     from mcstas_gisans.run_cli import create_argparser, parse_args
     from mcstas_gisans.parameters import pack_parameters
-    from mcstas_gisans.run import process_particles, process_particles_parallelly
     from mcstas_gisans.input_output import get_particles
     from mcstas_gisans.preconditioning import precondition
     from mcstas_gisans.tof_filtering import get_tof_filtering_limits
 
-    argv = [
-        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
-        "-i", "d22", "--wavelength_selected", "6.0",
-        "--model", "silica_100nm_air",
-        "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
-        "--sample_size_y", "0.10", "--sample_size_x", "0.10",
-        "--alpha", "0.24", "--outgoing_directions", "10",
-        "--allow_sample_miss", "--use_avg_materials",
-        "--savename", "unused",
-    ]
     parser = create_argparser()
     prev_argv = sys.argv
     sys.argv = ["run"] + argv
@@ -166,37 +132,75 @@ def test_process_particles_parallel_matches_sequential():
         args = parse_args(parser)
     finally:
         sys.argv = prev_argv
-
     tof_limits = get_tof_filtering_limits(args)
     particles, particle_type, _ = get_particles(
         args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization
     )
-    particles = precondition(particles, args)[:2000]
-    params = pack_parameters(args, particle_type)
+    particles = precondition(particles, args)
+    return particles, pack_parameters(args, particle_type)
 
+
+COMMON_ARGV = [
+    "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+    "--model", "silica_100nm_air",
+    "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
+    "--sample_size_y", "0.10", "--sample_size_x", "0.10",
+    "--alpha", "0.24", "--outgoing_directions", "8",
+    "--allow_sample_miss", "--use_avg_materials",
+    "--savename", "unused", "--seed", "12345",
+]
+
+
+@pytest.mark.parametrize("process_number", [3, 7])
+def test_parallel_run_is_identical_to_sequential_with_same_seed(process_number):
+    """
+    With a fixed --seed every particle gets the same random numbers (grid jitter, detector
+    smearing) regardless of the chunking, so a parallel run must reproduce the sequential
+    run exactly -- a dropped, duplicated or mis-merged chunk cannot hide behind noise.
+    The particle count is deliberately not divisible by the process number.
+    """
+    from mcstas_gisans.run import process_particles, process_particles_parallelly
+    particles, params = _prepare_run(COMMON_ARGV + ["-i", "d22", "--wavelength_selected", "6.0"])
+    particles = particles[:301]
     sequential = process_particles(particles, params)
-    parallel = process_particles_parallelly(particles, params, process_number=3)
+    parallel = process_particles_parallelly(particles, params, process_number=process_number)
+    assert sequential['pixelHist'].sum() > 0
+    np.testing.assert_allclose(parallel['pixelHist'], sequential['pixelHist'], rtol=1e-12, atol=0)
+    np.testing.assert_allclose(parallel['pixelHistWeightsSquared'], sequential['pixelHistWeightsSquared'], rtol=1e-12, atol=0)
 
-    seq_total = sequential['pixelHist'].sum()
-    par_total = parallel['pixelHist'].sum()
-    assert seq_total > 0 and par_total > 0
 
-    relative_diff = abs(seq_total - par_total) / seq_total
-    assert relative_diff < 0.15, (
-        f"Parallel ({par_total:.4f}) and sequential ({seq_total:.4f}) total intensities differ by "
-        f"{relative_diff*100:.2f}% -- expected close agreement, possible chunk aggregation bug."
-    )
+def _read_events(paths):
+    import h5py
+    cols = {c: [] for c in ('detector_id', 'tof', 'weight')}
+    for path in paths:
+        with h5py.File(path, 'r') as f:
+            for c in cols:
+                cols[c].append(f[c][:])
+        os.remove(path)
+    events = np.rec.fromarrays([np.concatenate(cols[c]) for c in cols], names=list(cols))
+    return np.sort(events, order=['detector_id', 'tof', 'weight'])
 
-    # Weight-squared sum is heavy-tailed (see docstring) -- only a loose
-    # order-of-magnitude sanity check, not a tight tolerance.
-    seq_var_total = sequential['pixelHistWeightsSquared'].sum()
-    par_var_total = parallel['pixelHistWeightsSquared'].sum()
-    assert seq_var_total > 0 and par_var_total > 0
-    var_ratio = par_var_total / seq_var_total
-    assert 0.2 < var_ratio < 5.0, (
-        f"Parallel ({par_var_total:.4f}) and sequential ({seq_var_total:.4f}) total weight-squared sums are not "
-        f"within a reasonable factor of each other, ratio={var_ratio:.3f} -- possible chunk aggregation bug."
-    )
+
+def test_parallel_tof_events_are_identical_to_sequential_with_same_seed():
+    """
+    TOF: every worker batch must write its own temporary event file (a pool worker may run
+    several batches); the merged event list must equal the sequential one exactly. More
+    processes than particles exercises empty batches and worker reuse.
+    """
+    from mcstas_gisans.run import process_particles, process_particles_parallelly
+    particles, params = _prepare_run(COMMON_ARGV + ["-i", "skadi", "--no_mcpl_filtering", "--no_t0_correction"])
+    particles = particles[:40]
+    sequential = process_particles(particles, params)
+    parallel = process_particles_parallelly(particles, params, process_number=8)
+    paths = parallel['temp_h5_paths']
+    assert len(paths) == len(set(paths)), "temporary event files must be unique per batch"
+    seq_events = _read_events([sequential['temp_h5_path']])
+    par_events = _read_events(paths)
+    assert len(seq_events) > 0
+    assert len(par_events) == len(seq_events)
+    np.testing.assert_array_equal(par_events['detector_id'], seq_events['detector_id'])
+    np.testing.assert_array_equal(par_events['tof'], seq_events['tof'])
+    np.testing.assert_array_equal(par_events['weight'], seq_events['weight'])
 
 
 if __name__ == "__main__":

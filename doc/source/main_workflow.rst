@@ -25,6 +25,8 @@ For every incoming neutron event, BornAgain calculates the scattering probabilit
 
 BornAgain itself can internally multithread each of these per-neutron DWBA calculations. This is controlled with ``--bornagain_number_of_threads`` (default: let BornAgain choose), independently of ``-p``/``--parallel_processes``, which controls how many *neutrons* are processed concurrently by separate worker processes. When running many parallel processes yourself (e.g. on a shared cluster node), set ``--bornagain_number_of_threads 1`` to avoid oversubscribing CPU cores.
 
+The Monte Carlo sampling (the random jitter of the outgoing-direction grid for each incident neutron, and the detector resolution smearing) is seeded per incident neutron from ``--seed`` and the neutron's index. A run is therefore reproducible, and its result does not depend on the number of parallel processes. Without ``--seed`` a random seed is drawn, printed, and stored in the output file (``provenance/random_seed``). ``mg_fit`` uses the same seed for every evaluation, so that differences between evaluations reflect the parameter changes rather than random sampling noise.
+
 Detector Propagation
 ~~~~~~~~~~~~~~~~~~~~
 The outgoing scattered rays are propagated mathematically from the BornAgain sample origin to the detector surface. 

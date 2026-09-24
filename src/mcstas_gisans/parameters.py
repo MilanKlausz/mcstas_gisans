@@ -42,4 +42,5 @@ def pack_parameters(args, particle_type):
         'wfm': bool(args.wfm),
         'analyzer_transmission': args.analyzer_transmission,
         'bornagain_number_of_threads': args.bornagain_number_of_threads,
+        'random_seed': getattr(args, 'seed', None),
     }

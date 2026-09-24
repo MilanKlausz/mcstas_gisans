@@ -13,13 +13,13 @@ import time
 import argparse
 import numpy as np
 from typing import Any, Dict, List, Tuple, Optional, Union
-from multiprocessing import cpu_count
 
 from .run_cli import create_argparser as create_run_parser, parse_args as parse_run_args
 from .input_output import get_particles
 from .preconditioning import precondition
 from .parameters import pack_parameters
 from .run import process_particles, process_particles_parallelly
+from .hardware import get_available_cores
 from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
 from .experiment_time import upscale_simple
 from .masking import get_mask, apply_mask, save_view_masks_plot
@@ -702,7 +702,7 @@ def run_simulation_evaluation(
     if args.no_parallel:
         result = process_particles(particles, params)
     else:
-        process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+        process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
         result = process_particles_parallelly(particles, params, process_number)
 
     instrument = params['instrument']

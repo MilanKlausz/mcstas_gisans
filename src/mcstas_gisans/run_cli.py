@@ -26,7 +26,8 @@ def create_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--intensity_factor', default=1.0, type=float, help='A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
     parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help='Instrument (from instruments.py).')
     parser.add_argument('-p','--parallel_processes', required=False, type=int, help='Number of processes to be used for parallel processing.')
-    parser.add_argument('--no_parallel', default=False, action='store_true', help='Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
+    parser.add_argument('--no_parallel', default=False, action='store_true', help='Do not use multiprocessing (single process; useful for profiling). Results are identical to a parallel run with the same --seed.')
+    parser.add_argument('--seed', type=int, default=None, help='Random seed for the Monte Carlo sampling (outgoing-direction jitter, detector resolution). Results are reproducible and independent of the number of parallel processes for a given seed. Default: a random seed, which is printed and stored in the output file. mg_fit uses the same seed for every evaluation.')
     parser.add_argument('--wavelength_selected', type=float, help='Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
     parser.add_argument('--no_gravity', default=False, action='store_true', help='Do not take into account gravity.')
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help='Enable verbose logging.')
@@ -117,6 +118,13 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
         args.outgoing_directions = DEFAULT_OUTGOING_DIRECTIONS
     elif not has_outgoing_directions:
         args.outgoing_directions = None
+
+    if args.parallel_processes is not None and args.parallel_processes < 1:
+        parser.error("--parallel_processes must be at least 1.")
+    if args.seed is None:
+        import numpy as np
+        args.seed = int(np.random.SeedSequence().entropy % 2**63)
+    print(f"Random seed: {args.seed}")
 
     # Resolve the instrument parameters (defaults + CLI overrides) once: args.instrument_params
     instr_params = set_instrument_parameters(args)
