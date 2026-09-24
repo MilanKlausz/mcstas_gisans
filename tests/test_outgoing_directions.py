@@ -68,3 +68,21 @@ def test_outgoing_directions_validation_both_required():
             parse_args(parser)
     finally:
         sys.argv = sys_argv_backup
+
+@pytest.mark.parametrize("rand_y, rand_z", [(0.0, 0.0), (1.0, -1.0), (-0.3, 0.7)])
+def test_rays_use_the_directions_bornagain_evaluates(rand_y, rand_z):
+  """The ray directions must be the bin centres of the BornAgain detector (with the same shift)."""
+  import numpy as np
+  import bornagain as ba
+  from bornagain import deg
+  from mcstas_gisans.run import get_outgoing_grid, get_simulation
+  angle_range = [-1.0, 1.5, -0.2, 2.0]
+  n_h, n_v = 7, 5
+  sim = get_simulation(ba.MultiLayer(), n_h, n_v, angle_range, 6.0, 0.24, 1.0, rand_y, rand_z, None, None, 1.0, 0.5)
+  detector = sim.detector()
+  (_, phi, alpha) = get_outgoing_grid(angle_range, n_h, n_v, rand_y, rand_z)
+  np.testing.assert_allclose(phi, np.array(detector.axis(0).binCenters()) / deg, atol=1e-12)
+  np.testing.assert_allclose(alpha[::-1], np.array(detector.axis(1).binCenters()) / deg, atol=1e-12)
+  # the shifted grid never leaves the angle range
+  assert angle_range[0] <= phi.min() and phi.max() <= angle_range[1]
+  assert angle_range[2] <= alpha.min() and alpha.max() <= angle_range[3]

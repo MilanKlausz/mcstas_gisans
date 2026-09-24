@@ -19,6 +19,25 @@ from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
 from .parameters import pack_parameters
 
+def get_outgoing_grid(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z):
+  """
+  Outgoing-direction grid of one incident neutron. BornAgain's SphericalDetector(n, min, max)
+  evaluates the intensity at the bin centres, so the rays must use exactly these directions.
+  The whole grid is shifted by rand_z/rand_y (uniform in [-1, 1]) times half a bin width, so that
+  the grids of all neutrons sample the angle range uniformly.
+  Returns the detector ranges [horiz_min, horiz_max, vert_min, vert_max] (deg) of the shifted grid,
+  and the bin-centre angles phi (increasing) and alpha (decreasing, matching the result array).
+  """
+  horiz_min, horiz_max, vert_min, vert_max = angle_range
+  bin_phi = (horiz_max - horiz_min) / outgoing_directions_horizontal
+  bin_alpha = (vert_max - vert_min) / outgoing_directions_vertical
+  shift_phi = 0.5 * rand_z * bin_phi
+  shift_alpha = 0.5 * rand_y * bin_alpha
+  detector_range = [horiz_min + shift_phi, horiz_max + shift_phi, vert_min + shift_alpha, vert_max + shift_alpha]
+  phi_centres = horiz_min + shift_phi + (np.arange(outgoing_directions_horizontal) + 0.5) * bin_phi
+  alpha_centres = vert_min + shift_alpha + (np.arange(outgoing_directions_vertical)[::-1] + 0.5) * bin_alpha
+  return detector_range, phi_centres, alpha_centres
+
 def get_simulation(sample, outgoing_directions_horizontal, outgoing_directions_vertical, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization, analyzer_direction, analyzer_efficiency, analyzer_transmission):
   """
   Create a simulation with outgoing_directions_horizontal and _vertical pixels covering the 4-element angle_range
@@ -28,18 +47,13 @@ def get_simulation(sample, outgoing_directions_horizontal, outgoing_directions_v
   """
   beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
-  horiz_min, horiz_max, vert_min, vert_max = angle_range
-
-  step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
-  step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
-
-  rand_deg_phi = rand_z * step_phi
-  rand_deg_alpha = rand_y * step_alpha
+  (horiz_min, horiz_max, vert_min, vert_max), _, _ = get_outgoing_grid(
+      angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z)
 
   # Define detector
   detector = ba.SphericalDetector(
-      outgoing_directions_horizontal, (horiz_min + rand_deg_phi)*deg, (horiz_max + rand_deg_phi)*deg,
-      outgoing_directions_vertical, (vert_min + rand_deg_alpha)*deg, (vert_max + rand_deg_alpha)*deg
+      outgoing_directions_horizontal, horiz_min*deg, horiz_max*deg,
+      outgoing_directions_vertical, vert_min*deg, vert_max*deg
   )
   if polarization:
     beam.setPolarization(ba.R3(*polarization))
@@ -134,7 +148,7 @@ def process_particles(particles, params, queue=None):
       weights = np.array([p])
     else:
       # Calculate scattering probability for outgoing beams. The outgoing direction grid is evenly spaced within the
-      # sampled angle range, but random angle offset of the whole grid in both
+      # sampled angle range, but a random offset (up to half a bin) of the whole grid in both
       # directions is applied for better sampling of the outgoing directions
       rand_y = 2*np.random.random()-1
       rand_z = 2*np.random.random()-1
@@ -150,15 +164,10 @@ def process_particles(particles, params, queue=None):
       pout = get_result_intensities(res)
 
       # calculate the components of the velocity vector for all outgoing directions
-      horiz_min, horiz_max, vert_min, vert_max = angle_range
-      step_phi = (horiz_max - horiz_min) / (outgoing_directions_horizontal - 1) if outgoing_directions_horizontal > 1 else 0.0
-      step_alpha = (vert_max - vert_min) / (outgoing_directions_vertical - 1) if outgoing_directions_vertical > 1 else 0.0
-
-      rand_deg_phi = rand_z * step_phi
-      rand_deg_alpha = rand_y * step_alpha
-
-      alpha_f = np.linspace(vert_max, vert_min, outgoing_directions_vertical) + rand_deg_alpha
-      phi_f = phi_i + np.linspace(horiz_min, horiz_max, outgoing_directions_horizontal) + rand_deg_phi
+      # the bin centres at which BornAgain evaluated the intensities
+      _, phi_centres, alpha_f = get_outgoing_grid(
+          angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z)
+      phi_f = phi_i + phi_centres
       alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_f))
       VX_grid = v * np.cos(alpha_grid) * np.sin(phi_grid) #this is Y in BA coord system) (horizontal - to the left)
       VY_grid = v * np.sin(alpha_grid)                    #this is Z in BA coord system) (horizontal - up)
