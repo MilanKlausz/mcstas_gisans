@@ -8,8 +8,9 @@ particle, and saves the result for further analysis or plotting.
 """
 
 import numpy as np
-from multiprocessing import cpu_count, Queue
+from multiprocessing import Queue
 import multiprocessing
+from .hardware import get_available_cores
 
 import bornagain as ba
 from bornagain import deg, angstrom
@@ -220,7 +221,7 @@ def process_particles_parallelly(particles, params, process_number):
   Spawn parallel processes to carry out the BornAgain simulation and subsequent
   calculation of the incident particles.
   """
-  print(f"Number of parallel processes: {process_number} (number of CPU cores: {cpu_count()})")
+  print(f"Number of parallel processes: {process_number} (number of physical CPU cores: {get_available_cores()})")
 
   processes = []
   results = []
@@ -284,7 +285,7 @@ def main():
   if args.no_parallel: #not using parallel processing, iterating over each particle sequentially, mainly intended for profiling
     result = process_particles(particles, params)
   else:
-    process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+    process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
     result = process_particles_parallelly(particles, params, process_number)
 
   ### Create Output ###

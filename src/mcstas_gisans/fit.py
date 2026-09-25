@@ -11,7 +11,6 @@ import csv
 import itertools
 import time
 import numpy as np
-from multiprocessing import cpu_count
 
 from .run_cli import create_argparser as create_run_parser, parse_args as parse_run_args
 from .input_output import get_particles, save_q_histogram_file
@@ -21,6 +20,7 @@ from .run import process_particles, process_particles_parallelly
 from .read_d22 import read_nexus_data
 from .experiment_time import upscale_simple
 from .masking import get_mask, apply_mask, save_view_masks_plot
+from .hardware import get_available_cores
 
 LOSS_FUNCTIONS = ('poisson_deviance', 'reduced_chi2', 'log_residual')
 
@@ -598,7 +598,7 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
   if args.no_parallel:
     result = process_particles(particles, params)
   else:
-    process_number = args.parallel_processes if args.parallel_processes else (cpu_count() - 2)
+    process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
     result = process_particles_parallelly(particles, params, process_number)
 
   q_hist = result['qHist']
