@@ -149,3 +149,57 @@ def test_joint_fit_execution(monkeypatch):
     assert isinstance(called_points2[0]["latticeParameter"], int)
     assert called_points1[0]["latticeParameter"] == 114.0
     assert called_points2[0]["latticeParameter"] == 120.0
+
+@pytest.mark.parametrize("max_evals, popsize", [(40, 2), (100, 3), (7, 2)])
+def test_differential_evolution_respects_the_evaluation_budget(monkeypatch, max_evals, popsize):
+    """DE evaluates (maxiter + 1) populations; the total must not exceed --max_evals (except that
+    the initial population is always evaluated)."""
+    rng = np.random.default_rng(0)
+    evaluations = []
+    def mock_run_simulation_evaluation(grid_point, *args, **kwargs):
+        evaluations.append(grid_point)
+        loss = (grid_point["radius"] - 47.0) ** 2 + rng.normal(0, 1.0)  # noisy: never converges early
+        return {"poisson_deviance": loss, "reduced_chi2": loss, "log_residual": loss, "mc_to_poisson_variance": 0.0}, {**grid_point}, {}
+    monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
+    monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
+
+    class DummyArgs:
+        fit = [["radius", "50.0", "40.0", "60.0"], ["height", "10.0", "5.0", "20.0"]]
+        fit_integer = None
+        optimizer = "differential-evolution"
+        poisson_sampling = False
+        loss_function = "poisson_deviance"
+        xatol = 0.01
+        fatol = 1e-9
+        gif = False
+    args = DummyArgs()
+    args.max_evals, args.popsize = max_evals, popsize
+    args.output_dir = "dummy_output"
+    run_automated_fit(args, particles=[], particle_type="neutron", hist_nxs=None, hist_nxs_error=None, y_edges_nxs=None, z_edges_nxs=None, mask=None)
+    population = max(5, popsize * 2)
+    assert len(evaluations) == max(population, (max_evals // population) * population)
+
+
+def test_differential_evolution_stops_when_the_population_loss_spread_is_below_fatol(monkeypatch):
+    """A flat loss: the population's loss spread is 0 < --fatol, so DE stops after the first generation."""
+    evaluations = []
+    def mock_run_simulation_evaluation(grid_point, *args, **kwargs):
+        evaluations.append(grid_point)
+        return {"poisson_deviance": 1.0, "reduced_chi2": 1.0, "log_residual": 1.0, "mc_to_poisson_variance": 0.0}, {**grid_point}, {}
+    monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
+    monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
+
+    class DummyArgs:
+        fit = [["radius", "50.0", "40.0", "60.0"], ["height", "10.0", "5.0", "20.0"]]
+        fit_integer = None
+        optimizer = "differential-evolution"
+        popsize = 3
+        poisson_sampling = False
+        max_evals = 600
+        loss_function = "poisson_deviance"
+        xatol = 0.01
+        fatol = 0.05
+        output_dir = "dummy_output"
+        gif = False
+    run_automated_fit(DummyArgs(), particles=[], particle_type="neutron", hist_nxs=None, hist_nxs_error=None, y_edges_nxs=None, z_edges_nxs=None, mask=None)
+    assert len(evaluations) < 600

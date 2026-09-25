@@ -100,9 +100,9 @@ def create_fit_parser():
   fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=list(LOSS_FUNCTIONS),
                          help='Metric to minimize (default: poisson_deviance). poisson_deviance: per-pixel deviance of a Poisson likelihood with the Monte Carlo uncertainty of the simulation folded in (without it: 2/n*sum[m - N + N*ln(N/m)], m: expected simulated counts incl. background, N: measured counts); unbiased also at low counts, about 1 for a perfect model. reduced_chi2: 1/n*sum[(N - m)^2 / (m + sigma_MC^2)], biased at low counts. log_residual: mean squared difference of log10 intensities over pixels where both are positive.')
   fit_group.add_argument('--xatol', type=float, default=0.01,
-                         help='Absolute parameter convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
+                         help='Absolute parameter convergence tolerance for Nelder-Mead and Powell (not used by Differential Evolution). (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
   fit_group.add_argument('--fatol', type=float, default=0.05,
-                         help='Absolute loss function convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.05 matching MC Poisson noise floor).')
+                         help='Absolute loss convergence tolerance. Nelder-Mead/Powell: change of the loss; Differential Evolution: spread (standard deviation) of the losses of the population. (Suggested for Monte Carlo simulations: 0.05, matching the noise floor.)')
   fit_group.add_argument('--gif', action='store_true',
                          help='Generate animated GIF showing the evolution of the fitting process.')
 
@@ -914,16 +914,27 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
 
   if args.optimizer.lower() == 'differential-evolution':
     integrality = [name in fit_integers or (name[3:] if name.startswith(('s1_', 's2_')) else name) in fit_integers for name in param_names]
-    # Each generation in DE evaluates popsize * len(param_names) times (default popsize is 15).
-    # We scale maxiter so that the total evaluations respect args.max_evals.
+    # DE evaluates the initial population (popsize * N, at least 5) and then the same number per
+    # generation, so maxiter generations cost (maxiter + 1) * population evaluations.
     popsize = args.popsize
-    de_maxiter = max(1, args.max_evals // (popsize * len(param_names)))
+    population = max(5, popsize * len(param_names))
+    if args.max_evals < population:
+      print(f"WARNING: --max_evals {args.max_evals} is smaller than the initial DE population ({population}); "
+            f"only the initial population will be evaluated.")
+    de_maxiter = max(0, args.max_evals // population - 1)
+    # DE stops when the spread (standard deviation) of the losses of its population is below
+    # --fatol (absolute; tol=0 disables scipy's relative criterion). It has no parameter-space
+    # criterion, so --xatol does not apply to DE.
+    print(f"Differential Evolution: population {population}, at most {de_maxiter + 1} generations "
+          f"({(de_maxiter + 1) * population} evaluations); stops when the population's loss spread < {args.fatol}")
     opt_res = scipy.optimize.differential_evolution(
         objective_function,
         bounds,
         x0=x0,
         maxiter=de_maxiter,
         popsize=popsize,
+        tol=0.0,
+        atol=args.fatol,
         integrality=integrality,
         polish=False
     )
