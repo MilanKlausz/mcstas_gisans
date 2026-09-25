@@ -186,3 +186,16 @@ def test_joint_fit_execution(monkeypatch, tmp_path):
 def test_joint_fit_reloads_particles_for_a_different_intensity_factor(monkeypatch, tmp_path):
     _, loads = _joint_setup(monkeypatch, tmp_path, intensity_factor2=0.001)
     assert len(loads) == 1 and loads[0].intensity_factor == 0.001
+
+
+def test_differential_evolution_stops_when_the_population_loss_spread_is_below_fatol(monkeypatch, tmp_path):
+    """--fatol is DE's convergence criterion: a loss spread just above it keeps DE running, a flat loss stops it."""
+    rng = np.random.default_rng(1)
+    fit_params = [["radius", "50.0", "40.0", "60.0"], ["height", "10.0", "5.0", "20.0"]]
+    # loss ~10 with spread 0.05: above --fatol 0.01 (keep going), below scipy's default 1% of the mean (0.1)
+    noisy = _mock_evaluation(monkeypatch, loss_of_point=lambda p: 10.0 + rng.normal(0, 0.05))
+    _run(_args(tmp_path, fit=fit_params, optimizer="differential-evolution", popsize=3, max_evals=120, fatol=0.01))
+    assert len(noisy) == 120                    # the whole budget is used
+    flat = _mock_evaluation(monkeypatch, loss_of_point=lambda p: 1.0)
+    _run(_args(tmp_path, fit=fit_params, optimizer="differential-evolution", popsize=3, max_evals=120, fatol=0.01))
+    assert len(flat) < 120

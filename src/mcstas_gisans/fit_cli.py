@@ -56,9 +56,9 @@ def create_fit_parser():
     fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=['poisson_deviance', 'reduced_chi2', 'log_residual'],
                            help='Metric to minimize (default: poisson_deviance). poisson_deviance: Poisson likelihood-ratio statistic per pixel (m: expected simulated counts incl. background, N: measured counts) with the Monte Carlo uncertainty of the simulation folded in; without Monte Carlo uncertainty it is 2/n*sum[m - N + N*ln(N/m)]; unbiased also at low counts, about 1 for a perfect model at high counts (a warning is printed if the Monte Carlo variance is not small). reduced_chi2: 1/n*sum[(N - m)^2 / (m + sigma_MC^2)], includes the Monte Carlo uncertainty but is biased at low counts. log_residual: mean squared difference of log10 intensities over pixels where both are positive.')
     fit_group.add_argument('--xatol', type=float, default=0.01,
-                           help='Parameter convergence tolerance (Nelder-Mead/Powell), relative to each parameter\'s scale: its bound range if bounded, otherwise the absolute initial value (default: 0.01, i.e. 1%%).')
+                           help='Parameter convergence tolerance for Nelder-Mead and Powell (not used by Differential Evolution), relative to each parameter\'s scale: its bound range if bounded, otherwise the absolute initial value (default: 0.01, i.e. 1%%).')
     fit_group.add_argument('--fatol', type=float, default=0.05,
-                           help='Absolute loss convergence tolerance (Nelder-Mead/Powell) (default: 0.05).')
+                           help='Absolute loss convergence tolerance. Nelder-Mead/Powell: change of the loss; Differential Evolution: spread (standard deviation) of the losses of the population (default: 0.05).')
     fit_group.add_argument('--gif', action='store_true',
                            help='Generate animated GIF showing the evolution of the fitting process.')
 

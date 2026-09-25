@@ -11,6 +11,5 @@
       get_particles
       load_scipp_file
       print_tof_limits
-      save_scipp_file
       save_simulation_results_as_scipp
    

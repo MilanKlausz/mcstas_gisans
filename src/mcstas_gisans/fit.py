@@ -1217,12 +1217,19 @@ def run_automated_fit(
             print(f"WARNING: --max_evals {args.max_evals} is smaller than the initial DE population ({population}); "
                   f"the initial population alone will be evaluated.")
         de_maxiter = max(0, args.max_evals // population - 1)
+        # DE stops when the spread (standard deviation) of the losses of its population is below
+        # --fatol (absolute; tol=0 disables scipy's relative criterion). It has no parameter-space
+        # criterion, so --xatol does not apply to DE.
+        print(f"Differential Evolution: population {population}, at most {de_maxiter + 1} generations "
+              f"({(de_maxiter + 1) * population} evaluations); stops when the population's loss spread < {args.fatol}")
         opt_res = scipy.optimize.differential_evolution(
             objective_function,
             bounds,
             x0=x0,
             maxiter=de_maxiter,
             popsize=popsize,
+            tol=0.0,
+            atol=args.fatol,
             integrality=integrality,
             polish=False,
             seed=getattr(args, 'seed', None)

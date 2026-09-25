@@ -97,8 +97,11 @@ bound range, or by its initial value if unbounded), so parameters of very
 different magnitude are handled alike. They stop when the parameters change by
 less than ``--xatol`` (relative to the scale, default 1%) and the loss by less than
 ``--fatol`` (absolute, default 0.05), or after ``--max_evals`` evaluations
-(default 10, respected by all optimizers). ``--fit_integer name`` keeps a
-parameter integer (e.g. a number of layers).
+(default 10, respected by all optimizers). Differential Evolution has no
+parameter criterion: it stops when the spread (standard deviation) of the losses
+of its population is below ``--fatol``, or when ``--max_evals`` is used up, so
+``--xatol`` has no effect there. ``--fit_integer name`` keeps a parameter
+integer (e.g. a number of layers).
 
 Joint fits of two measurements (``--nxs2``) with shared (``--fit_common``) and
 separate (``--fit``/``--fit2``) parameters are described in :doc:`main_workflow`.

@@ -8,7 +8,6 @@
 
    .. autosummary::
    
-      create_2d_histogram
       extract_range_to_1d
       extract_range_to_1d_vertical
       log_plot_2d
