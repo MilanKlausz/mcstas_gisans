@@ -22,6 +22,8 @@ from .read_d22 import read_nexus_data
 from .experiment_time import upscale_simple
 from .masking import get_mask, apply_mask, save_view_masks_plot
 
+LOSS_FUNCTIONS = ('poisson_deviance', 'reduced_chi2', 'log_residual')
+
 def format_time(seconds):
   if seconds is None or seconds < 0:
     return "N/A"
@@ -95,8 +97,8 @@ def create_fit_parser():
                          help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
   fit_group.add_argument('--max_evals', type=int, default=10,
                          help='Maximum number of objective function evaluations for the optimizer (default: 10).')
-  fit_group.add_argument('--loss_function', type=str, default='reduced_chi2', choices=['reduced_chi2', 'log_residual'],
-                         help='Metric to minimize during optimization (default: reduced_chi2).')
+  fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=list(LOSS_FUNCTIONS),
+                         help='Metric to minimize (default: poisson_deviance). poisson_deviance: per-pixel deviance of a Poisson likelihood with the Monte Carlo uncertainty of the simulation folded in (without it: 2/n*sum[m - N + N*ln(N/m)], m: expected simulated counts incl. background, N: measured counts); unbiased also at low counts, about 1 for a perfect model. reduced_chi2: 1/n*sum[(N - m)^2 / (m + sigma_MC^2)], biased at low counts. log_residual: mean squared difference of log10 intensities over pixels where both are positive.')
   fit_group.add_argument('--xatol', type=float, default=0.01,
                          help='Absolute parameter convergence tolerance. (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
   fit_group.add_argument('--fatol', type=float, default=0.05,
@@ -195,34 +197,85 @@ def convert_val(value_str):
     except ValueError:
       return value_str
 
-def calculate_fitness(hist_nxs, hist_nxs_error, hist_sim, hist_sim_error):
-  """Evaluates fitness directly on the pre-masked histograms.
-  Masked regions are represented by NaN in the histograms."""
-  valid_mask = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
+def poisson_deviance_with_mc(counts, expected, mc_variance):
+  """
+  Per-pixel deviance 2 [ln P(N | N) - ln P(N | m, sigma^2)] of measured counts N against a
+  simulated expectation m with Monte Carlo variance sigma^2.
 
-  I_exp = hist_nxs[valid_mask]
-  I_sim = hist_sim[valid_mask]
-  sigma_exp = hist_nxs_error[valid_mask]
-  sigma_sim = hist_sim_error[valid_mask]
+  The finite simulation statistics are modelled by a gamma-distributed expectation (mean m,
+  variance sigma^2), which makes N negative-binomially distributed with mean m and variance
+  m + sigma^2 (effective likelihood for weighted Monte Carlo, cf. Arguelles, Schneider & Yuan,
+  JHEP 06 (2019) 030). Limits: sigma -> 0 gives the Poisson deviance 2 [m - N + N ln(N/m)]
+  (unbiased also at low counts); at high counts it approaches (N - m)^2 / (m + sigma^2).
+  P(N | N) is the saturated Poisson term, so a perfect model gives ~1 per pixel.
+  """
+  from scipy.special import gammaln, betaln, xlogy
+  counts = np.asarray(counts, dtype=float)
+  m = np.maximum(np.asarray(expected, dtype=float), 1e-12)
+  var = np.maximum(np.asarray(mc_variance, dtype=float), 0.0)
 
-  sigma_exp = np.where(sigma_exp > 0, sigma_exp, 1.0)
+  saturated = xlogy(counts, counts) - counts - gammaln(counts + 1)
+  log_p = xlogy(counts, m) - m - gammaln(counts + 1)          # Poisson
 
-  # Chi-square: weighted square deviations directly comparing absolute counts
-  total_error_sq = sigma_exp**2 + sigma_sim**2
-  total_error_sq = np.where(total_error_sq > 0, total_error_sq, 1.0)
-  chi2 = np.sum(((I_exp - I_sim) ** 2) / total_error_sq)
-  reduced_chi2 = chi2 / len(I_exp) if len(I_exp) > 0 else np.nan
+  alpha = np.divide(m * m, var, out=np.full_like(m, np.inf), where=var > 0)
+  use_nb = np.isfinite(alpha) & (alpha < 1e14)
+  if np.any(use_nb):
+    n = counts[use_nb]
+    a = alpha[use_nb]
+    r = var[use_nb] / m[use_nb]                                 # 1 / beta
+    # ln Gamma(a + n) - ln Gamma(a) = gammaln(n) - betaln(a, n) for n >= 1 (stable for large a)
+    lgamma_ratio = np.where(n > 0, gammaln(np.maximum(n, 1)) - betaln(a, np.maximum(n, 1)), 0.0)
+    log_nb = (lgamma_ratio - gammaln(n + 1)
+              - a * np.log1p(r)                                 # a ln(beta / (1 + beta))
+              - n * np.log1p(1.0 / r))                          # n ln(1 / (1 + beta))
+    log_p = log_p.copy()
+    log_p[use_nb] = log_nb
+  return 2.0 * (saturated - log_p)
 
-  # Logarithmic residual:
-  pos_mask = (I_exp > 0) & (I_sim > 0)
-  if np.any(pos_mask):
-    log_I_exp = np.log10(I_exp[pos_mask])
-    log_I_sim = np.log10(I_sim[pos_mask])
-    log_residual = np.mean((log_I_exp - log_I_sim) ** 2)
+def calculate_fitness(hist_nxs, hist_sim, hist_sim_mc_error):
+  """
+  Goodness-of-fit metrics between measured counts N (hist_nxs) and simulated expected counts m
+  (hist_sim, incl. background) with Monte Carlo uncertainty sigma (hist_sim_mc_error), over the
+  n pixels where neither histogram is NaN (masked). Returns a dict:
+    poisson_deviance: mean per-pixel deviance of poisson_deviance_with_mc; ~1 for a perfect
+      model, unbiased also at low counts.
+    reduced_chi2: 1/n sum (N - m)^2 / (m + sigma^2); ~1 for a perfect model at high counts.
+      (The counting variance is that of the model, counted once; previously N + m + sigma^2.)
+    log_residual: mean of (log10 N - log10 m)^2 over pixels where both are positive.
+    mc_to_poisson_variance: 95th percentile of sigma^2 / m (MC vs counting variance).
+  """
+  keep = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
+  n_valid = int(np.sum(keep))
+  if n_valid == 0:
+    return {key: np.nan for key in LOSS_FUNCTIONS + ('mc_to_poisson_variance',)}
+
+  counts = hist_nxs[keep]
+  expected = hist_sim[keep]
+  mc_variance = hist_sim_mc_error[keep] ** 2
+
+  poisson_deviance = float(np.sum(poisson_deviance_with_mc(counts, expected, mc_variance)) / n_valid)
+
+  variance = expected + mc_variance
+  variance = np.where(variance > 0, variance, 1.0)
+  reduced_chi2 = float(np.sum((counts - expected) ** 2 / variance) / n_valid)
+
+  both_positive = (counts > 0) & (expected > 0)
+  if np.any(both_positive):
+    log_residual = float(np.mean((np.log10(counts[both_positive]) - np.log10(expected[both_positive])) ** 2))
   else:
     log_residual = np.nan
 
-  return reduced_chi2, log_residual
+  with np.errstate(divide='ignore', invalid='ignore'):
+    ratio = mc_variance / expected
+  ratio = ratio[np.isfinite(ratio)]
+  mc_to_poisson_variance = float(np.percentile(ratio, 95)) if ratio.size else np.nan
+
+  return {
+      'poisson_deviance': poisson_deviance,
+      'reduced_chi2': reduced_chi2,
+      'log_residual': log_residual,
+      'mc_to_poisson_variance': mc_to_poisson_variance,
+  }
 
 def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
                          hist_sim, hist_sim_error, y_edges_sim, z_edges_sim,
@@ -454,6 +507,8 @@ def validate_fit_args(args, parser):
       parser.error("the following arguments are required: filename")
     if not args.scan and not args.fit and not args.fit_common and not args.fit2:
       parser.error("Either --scan, --fit, --fit2, or --fit_common must be specified.")
+    if not args.experiment_time:
+      parser.error("--experiment_time is required: the simulated rates are scaled to expected counts over the measurement time before they are compared with the measured counts.")
   if not args.nxs:
     parser.error("the following arguments are required: --nxs")
 
@@ -576,13 +631,15 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
   hist_sim_masked = apply_mask(hist_sim, mask, np.nan)
   hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
 
-  reduced_chi2, log_residual = calculate_fitness(
-      hist_nxs, hist_nxs_error, hist_sim_masked, hist_sim_error_masked
-  )
+  metrics = calculate_fitness(hist_nxs, hist_sim_masked, hist_sim_error_masked)
+  if metrics['mc_to_poisson_variance'] > 1.0:
+    print(f"WARNING: the Monte Carlo variance of the simulation exceeds the counting variance in more than 5% of the "
+          f"unmasked pixels (95th percentile of the ratio: {metrics['mc_to_poisson_variance']:.2f}). More simulated "
+          f"statistics would make the loss more reliable.")
 
   record = copy.deepcopy(grid_point)
-  record['reduced_chi2'] = reduced_chi2
-  record['log_residual'] = log_residual
+  for key in LOSS_FUNCTIONS:
+    record[key] = metrics[key]
 
   if args.png:
     plot_path = os.path.join(args.output_dir, f"{label_prefix}_{param_str}.png")
@@ -601,7 +658,7 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
       'edges': edges
   }
 
-  return reduced_chi2, log_residual, record, sim_data
+  return metrics, record, sim_data
 
 def save_summary_csv(records, output_dir, filename):
   if not records:
@@ -615,9 +672,9 @@ def save_summary_csv(records, output_dir, filename):
     for r in records:
       writer.writerow(r)
 
-def save_and_print_summary(records, output_dir, filename, title_header, extra_summary_text=None):
-  if records and 'reduced_chi2' in records[0]:
-    records.sort(key=lambda r: (np.isnan(r['reduced_chi2']), r['reduced_chi2']))
+def save_and_print_summary(records, output_dir, filename, title_header, extra_summary_text=None, sort_key='poisson_deviance'):
+  if records and sort_key in records[0]:
+    records.sort(key=lambda r: (np.isnan(r[sort_key]), r[sort_key]))
 
   save_summary_csv(records, output_dir, filename)
   summary_path = os.path.join(output_dir, filename)
@@ -625,7 +682,7 @@ def save_and_print_summary(records, output_dir, filename, title_header, extra_su
   print(f"\n{title_header} complete! Summary saved to: {summary_path}")
 
   summary_lines = []
-  summary_lines.append(f"--- {title_header} Results (Sorted by reduced_chi2) ---")
+  summary_lines.append(f"--- {title_header} Results (Sorted by {sort_key}) ---")
   if records:
     headers = list(records[0].keys())
     col_widths = {h: max(len(h), 12) for h in headers}
@@ -789,15 +846,15 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
           grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
           save_npz=False, label_prefix=f"fit_eval_{eval_counter[0]}"
       )
-      reduced_chi2, log_residual = res[0], res[1]
+      metrics = res[0]
       rec = copy.deepcopy(display_point)
       rec['eval_index'] = eval_counter[0]
-      rec['reduced_chi2'] = reduced_chi2
-      rec['log_residual'] = log_residual
+      for key in LOSS_FUNCTIONS:
+        rec[key] = metrics[key]
       records.append(rec)
       save_summary_csv(records, args.output_dir, "fit_summary.csv")
 
-      loss = log_residual if args.loss_function == 'log_residual' else reduced_chi2
+      loss = metrics[args.loss_function]
     else:
       grid_point_s2 = {}
       for name, idx in s2_map.items():
@@ -815,25 +872,19 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       )
       args.png = png_backup
 
-      reduced_chi2_1, log_res_1, sim_data1 = res1[0], res1[1], res1[3] if len(res1) > 3 else {}
-      reduced_chi2_2, log_res_2, sim_data2 = res2[0], res2[1], res2[3] if len(res2) > 3 else {}
-      args.png = png_backup
-
-      joint_reduced_chi2 = reduced_chi2_1 + reduced_chi2_2
-      joint_log_residual = log_res_1 + log_res_2
+      metrics1, sim_data1 = res1[0], res1[2]
+      metrics2, sim_data2 = res2[0], res2[2]
 
       rec = copy.deepcopy(display_point)
       rec['eval_index'] = eval_counter[0]
-      rec['chi2_sample1'] = reduced_chi2_1
-      rec['chi2_sample2'] = reduced_chi2_2
-      rec['reduced_chi2'] = joint_reduced_chi2
-      rec['log_res_sample1'] = log_res_1
-      rec['log_res_sample2'] = log_res_2
-      rec['log_residual'] = joint_log_residual
+      for key in LOSS_FUNCTIONS:  # joint loss: sum of the per-sample metrics
+        rec[f'{key}_sample1'] = metrics1[key]
+        rec[f'{key}_sample2'] = metrics2[key]
+        rec[key] = metrics1[key] + metrics2[key]
       records.append(rec)
       save_summary_csv(records, args.output_dir, "fit_summary.csv")
 
-      loss = joint_log_residual if args.loss_function == 'log_residual' else joint_reduced_chi2
+      loss = rec[args.loss_function]
 
       if args.png:
         plot_path = os.path.join(args.output_dir, f"fit_eval_joint_{eval_counter[0]:03d}.png")
@@ -919,7 +970,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
 
   extra_summary_text = "\n".join(fit_results_lines)
 
-  save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text)
+  save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
   if args.gif:
     create_fit_evolution_gif(args.output_dir, is_joint=is_joint_fit)
@@ -943,7 +994,7 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
     iter_start_time = time.time()
     current_count = idx + 1
     print(f"\n[{current_count}/{total_evals}] Running simulation with: {grid_point}")
-    reduced_chi2, log_residual, record, _ = run_simulation_evaluation(
+    metrics, record, _ = run_simulation_evaluation(
         grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
         save_npz=True, label_prefix="sim"
     )
@@ -954,7 +1005,7 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
     remaining = total_evals - current_count
     eta = avg_iter_time * max(0, remaining)
 
-    print(f"Fit results: reduced_chi2={reduced_chi2:.4f}, log_residual={log_residual:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+    print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     records.append(record)
     save_summary_csv(records, args.output_dir, "scan_summary.csv")
 
@@ -969,7 +1020,7 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
   ]
   extra_summary_text = "\n".join(runtime_summary_lines)
 
-  save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text)
+  save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
 def main():
   parser = create_fit_parser()

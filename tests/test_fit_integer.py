@@ -28,7 +28,7 @@ def test_fit_integer_rounding(monkeypatch):
     called_points = []
     def mock_run_simulation_evaluation(grid_point, *args, **kwargs):
         called_points.append(grid_point)
-        return 1.0, 1.0, {"reduced_chi2": 1.0, "log_residual": 1.0, **grid_point}
+        return {"poisson_deviance": 1.0, "reduced_chi2": 1.0, "log_residual": 1.0, "mc_to_poisson_variance": 0.0}, {**grid_point}, {}
         
     monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
     monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
@@ -78,7 +78,7 @@ def test_differential_evolution_execution(monkeypatch):
     called_points = []
     def mock_run_simulation_evaluation(grid_point, *args, **kwargs):
         called_points.append(grid_point)
-        return 1.0, 1.0, {"reduced_chi2": 1.0, "log_residual": 1.0, **grid_point}
+        return {"poisson_deviance": 1.0, "reduced_chi2": 1.0, "log_residual": 1.0, "mc_to_poisson_variance": 0.0}, {**grid_point}, {}
         
     monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
     monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
@@ -113,7 +113,7 @@ def test_joint_fit_execution(monkeypatch):
             called_points2.append(grid_point)
         else:
             called_points1.append(grid_point)
-        return 1.0, 1.0, {"reduced_chi2": 1.0, "log_residual": 1.0, **grid_point}, {}
+        return {"poisson_deviance": 1.0, "reduced_chi2": 1.0, "log_residual": 1.0, "mc_to_poisson_variance": 0.0}, {**grid_point}, {}
 
     monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
     monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
