@@ -936,7 +936,8 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
         tol=0.0,
         atol=args.fatol,
         integrality=integrality,
-        polish=False
+        polish=False,
+        seed=getattr(args, 'seed', None)
     )
     best_x = np.asarray(opt_res.x, dtype=float)
   else:

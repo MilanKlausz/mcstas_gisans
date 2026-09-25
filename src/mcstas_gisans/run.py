@@ -91,7 +91,18 @@ def get_result_intensities(res):
       sys.exit("Terminating script due to incompatible BornAgain version.")
     return pout
 
-def process_particles(particles, params, queue=None):
+def seed_particle_rng(random_seed, particle_index):
+  """
+  Seed numpy's global random generator for one incident particle from the run seed and the
+  particle's global index. The random numbers used for a particle (outgoing-direction grid
+  jitter, detector resolution smearing) then do not depend on how the particles are split
+  between processes: results are reproducible and identical for any number of processes, and
+  worker processes started by fork (Linux) no longer share one random sequence.
+  """
+  if random_seed is not None:
+    np.random.seed(np.random.SeedSequence([random_seed, particle_index]).generate_state(4))
+
+def process_particles(particles, params, queue=None, start_index=0):
   """Carry out the BornAgain simulation and subsequent calculations of each
   incident particle (separately) in the input array.
   1) The BornAgain simulation for a certain sample model is set up with an array
@@ -129,9 +140,11 @@ def process_particles(particles, params, queue=None):
     q_hist_weights_squared = np.zeros(bins)
 
   ## Carry out BornAgain simulation for all incident particle one-by-one
+  random_seed = params.get('random_seed')
   for id, particle in enumerate(particles):
     if id%200==0:
       print(f'{id:10}/{len(particles)}') #print output to indicate progress
+    seed_particle_rng(random_seed, start_index + id)  # start_index: global index of the first particle of this batch
     # Particle positions, velocities and corresponding calculations are expressed
     # in the McStas coord system (X - left; Y - up; Z - forward 'along the beam')
     # not in the BornAgain coord system (X - forward, Y - left, Z - up),
@@ -236,7 +249,7 @@ def process_particles_parallelly(particles, params, process_number):
     return particles[start:end]
 
   for i in range(process_number):
-    p = multiprocessing.Process(target=process_particles, args=(get_particles_chunk(i), params, queue,))
+    p = multiprocessing.Process(target=process_particles, args=(get_particles_chunk(i), params, queue, i * chunk_size))
     processes.append(p)
     p.start()
 

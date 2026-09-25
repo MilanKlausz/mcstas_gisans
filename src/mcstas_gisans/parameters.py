@@ -52,4 +52,5 @@ def pack_parameters(args, particle_type):
     'analyzer_efficiency': args.analyzer_efficiency,
     'analyzer_transmission': args.analyzer_transmission,
     'bornagain_number_of_threads': args.bornagain_number_of_threads,
+    'random_seed': getattr(args, 'seed', None),
   }

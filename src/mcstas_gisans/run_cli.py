@@ -3,6 +3,7 @@
 Create and run argparse command line interface for the run script
 """
 import argparse
+import numpy as np
 from .instrument_defaults import instrument_defaults, required_keys_for_wfm, set_instrument_parameters
 from .sample import Sample
 builtin_samples = Sample.list_builtin_samples()
@@ -16,6 +17,7 @@ def create_argparser():
   parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help = 'Instrument (from instruments.py).')
   parser.add_argument('-p','--parallel_processes', required=False, type=int, help = 'Number of processes to be used for parallel processing.')
   parser.add_argument('--no_parallel', default=False, action='store_true', help = 'Do not use multiprocessing. This makes the simulation significantly slower, but enables profiling. Uses --raw_output implicitly.')
+  parser.add_argument('--seed', type=int, default=None, help='Random seed for the Monte Carlo sampling (outgoing-direction jitter, detector resolution smearing). Results are reproducible and independent of the number of parallel processes for a given seed. Default: a random seed, which is printed. mg_fit uses the same seed for every evaluation.')
   parser.add_argument('--wavelength_selected', type=float, help = 'Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
   parser.add_argument('--no_gravity', default=False, action='store_true', help = 'Do not take into account gravity.')
   parser.add_argument('-v', '--verbose', default=False, action='store_true', help = 'Enable verbose logging.')
@@ -179,5 +181,10 @@ def parse_args(parser):
         f"The analyzer Bloch vector (efficiency * direction) must have a length <= 1.0. "
         f"Current length: {bloch_vector_len:.4f} (efficiency: {args.analyzer_efficiency}, direction norm: {direction_norm:.4f})."
     )
+
+  if args.seed is None:
+    # a random seed, printed so that the run can be reproduced
+    args.seed = int(np.random.SeedSequence().entropy % 2**63)
+  print(f"Random seed: {args.seed}")
 
   return args

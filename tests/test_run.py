@@ -139,3 +139,35 @@ if __name__ == "__main__":
     test_analyzer_arguments_parsing()
     test_analyzer_input_validation()
     print("All test_run tests passed!")
+
+def _run_hist(tmpdir, name, extra, start_method=None):
+  """Run a small simulation (paper MCPL, 5x5 outgoing directions) and return its Q histogram."""
+  savename = os.path.join(tmpdir, name)
+  args = ["data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
+          "--outgoing_directions", "5", "--savename", savename] + extra
+  if start_method is None:
+    cmd = [sys.executable, "-m", "mcstas_gisans.run"] + args
+  else:
+    # start the worker processes like on the cluster (fork on Linux, the default there)
+    code = ("import sys, multiprocessing; multiprocessing.set_start_method(%r, force=True); "
+            "from mcstas_gisans.run import main; sys.argv = ['mg_run'] + %r; main()") % (start_method, args)
+    cmd = [sys.executable, "-c", code]
+  result = subprocess.run(cmd, capture_output=True, text=True)
+  assert result.returncode == 0, f"Run failed with stderr: {result.stderr}"
+  return np.load(savename + ".npz")["hist"]
+
+def test_parallel_run_is_identical_to_sequential_with_same_seed():
+  """With per-particle seeding the result does not depend on the number of processes or on how
+  they are started: on Linux (fork) all workers used to share one random sequence."""
+  with tempfile.TemporaryDirectory() as tmpdir:
+    sequential = _run_hist(tmpdir, "seq", ["--no_parallel", "--seed", "11"])
+    assert sequential.sum() > 0
+    for processes, start_method in [("3", None), ("4", "fork")]:
+      parallel = _run_hist(tmpdir, f"par{processes}", ["--parallel_processes", processes, "--seed", "11"], start_method)
+      np.testing.assert_allclose(parallel, sequential, rtol=1e-12, atol=0)
+
+def test_different_seeds_give_different_monte_carlo_samples():
+  with tempfile.TemporaryDirectory() as tmpdir:
+    a = _run_hist(tmpdir, "a", ["--no_parallel", "--seed", "1"])
+    b = _run_hist(tmpdir, "b", ["--no_parallel", "--seed", "2"])
+    assert a.sum() > 0 and not np.allclose(a, b)
