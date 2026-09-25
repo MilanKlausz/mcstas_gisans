@@ -100,7 +100,7 @@ def create_fit_parser():
   fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=list(LOSS_FUNCTIONS),
                          help='Metric to minimize (default: poisson_deviance). poisson_deviance: per-pixel deviance of a Poisson likelihood with the Monte Carlo uncertainty of the simulation folded in (without it: 2/n*sum[m - N + N*ln(N/m)], m: expected simulated counts incl. background, N: measured counts); unbiased also at low counts, about 1 for a perfect model. reduced_chi2: 1/n*sum[(N - m)^2 / (m + sigma_MC^2)], biased at low counts. log_residual: mean squared difference of log10 intensities over pixels where both are positive.')
   fit_group.add_argument('--xatol', type=float, default=0.01,
-                         help='Absolute parameter convergence tolerance for Nelder-Mead and Powell (not used by Differential Evolution). (SciPy default: 1e-4. Suggested for Monte Carlo simulations: 0.01).')
+                         help="Parameter convergence tolerance for Nelder-Mead and Powell (not used by Differential Evolution), relative to each parameter's scale: its bound range if bounded, otherwise the absolute initial value (default: 0.01, i.e. 1%%).")
   fit_group.add_argument('--fatol', type=float, default=0.05,
                          help='Absolute loss convergence tolerance. Nelder-Mead/Powell: change of the loss; Differential Evolution: spread (standard deviation) of the losses of the population. (Suggested for Monte Carlo simulations: 0.05, matching the noise floor.)')
   fit_group.add_argument('--gif', action='store_true',
@@ -938,20 +938,46 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
         integrality=integrality,
         polish=False
     )
+    best_x = np.asarray(opt_res.x, dtype=float)
   else:
+    # Nelder-Mead / Powell work in scaled coordinates u = (x - x0) / scale, with scale the bound
+    # range (or |x0|, or 1): all parameters are O(1), so --xatol is relative (0.01 = 1% of each
+    # parameter's range) and parameters of very different magnitude (e.g. an SLD ~1e-6 and a
+    # position ~100 nm) are handled alike.
+    x0_arr = np.asarray(x0, dtype=float)
+    scale = np.array([
+        (high - low) if (low is not None and high is not None) else (abs(v) if v != 0 else 1.0)
+        for v, (low, high) in zip(x0_arr, bounds)
+    ])
+    to_x = lambda u: x0_arr + scale * np.asarray(u)
+    u_bounds = [((low - v) / sc if low is not None else None, (high - v) / sc if high is not None else None)
+                for v, sc, (low, high) in zip(x0_arr, scale, bounds)]
+    has_bounds = any(b is not None for pair in u_bounds for b in pair)
+    is_integer = lambda name: name in fit_integers or (name[3:] if name.startswith(('s1_', 's2_')) else name) in fit_integers
     opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
-    opt_options = {'maxiter': args.max_evals}
+    opt_options = {'maxiter': args.max_evals, 'maxfev': args.max_evals}
     if opt_method == 'nelder-mead':
-      opt_options['maxfev'] = args.max_evals
       opt_options['xatol'] = args.xatol
       opt_options['fatol'] = args.fatol
-    elif opt_method == 'powell':
+      # initial simplex: a step of 10% of each parameter's scale (at least one unit for integer
+      # parameters), towards the inside of the bounds
+      steps = [max(0.1, 1.0 / sc) if is_integer(name) else 0.1 for name, sc in zip(param_names, scale)]
+      simplex = [np.zeros(len(param_names))]
+      for i, step in enumerate(steps):
+        vertex = np.zeros(len(param_names))
+        low, high = u_bounds[i]
+        vertex[i] = step if (high is None or step <= high) else -step
+        simplex.append(vertex)
+      opt_options['initial_simplex'] = np.array(simplex)
+    else:
       opt_options['xtol'] = args.xatol
       opt_options['ftol'] = args.fatol
 
     opt_res = scipy.optimize.minimize(
-        objective_function, x0, method=opt_method, options=opt_options
+        lambda u: objective_function(to_x(u)), np.zeros(len(param_names)), method=opt_method,
+        options=opt_options, bounds=u_bounds if has_bounds else None
     )
+    best_x = to_x(opt_res.x)
 
   total_runtime = time.time() - start_total_time
   total_evals = max(1, eval_counter[0])
@@ -963,7 +989,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       f"Best Loss ({args.loss_function}): {opt_res.fun:.4f}",
       "Optimal Parameters:"
   ]
-  best_params = dict(zip(param_names, opt_res.x))
+  best_params = dict(zip(param_names, best_x))
   for k, v in best_params.items():
     base_name = k[3:] if k.startswith(('s1_', 's2_')) else k
     if k in fit_integers or base_name in fit_integers:

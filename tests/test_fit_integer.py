@@ -203,3 +203,64 @@ def test_differential_evolution_stops_when_the_population_loss_spread_is_below_f
         gif = False
     run_automated_fit(DummyArgs(), particles=[], particle_type="neutron", hist_nxs=None, hist_nxs_error=None, y_edges_nxs=None, z_edges_nxs=None, mask=None)
     assert len(evaluations) < 600
+
+
+def _run_fit(monkeypatch, fit_params, loss_of_point, optimizer="nelder-mead", max_evals=60, fatol=1e-6, xatol=0.01, fit_integer=None):
+    evaluations = []
+    def mock_run_simulation_evaluation(grid_point, *args, **kwargs):
+        evaluations.append(dict(grid_point))
+        loss = loss_of_point(grid_point)
+        return {"poisson_deviance": loss, "reduced_chi2": loss, "log_residual": loss, "mc_to_poisson_variance": 0.0}, {**grid_point}, {}
+    monkeypatch.setattr(fit, "run_simulation_evaluation", mock_run_simulation_evaluation)
+    monkeypatch.setattr(fit, "save_and_print_summary", lambda *args, **kwargs: None)
+    class DummyArgs:
+        pass
+    args = DummyArgs()
+    args.fit, args.fit_integer, args.optimizer, args.max_evals = fit_params, fit_integer, optimizer, max_evals
+    args.fatol, args.xatol, args.popsize = fatol, xatol, 15
+    args.poisson_sampling, args.loss_function, args.output_dir, args.gif = False, "poisson_deviance", "dummy_output", False
+    run_automated_fit(args, particles=[], particle_type="neutron", hist_nxs=None, hist_nxs_error=None, y_edges_nxs=None, z_edges_nxs=None, mask=None)
+    return evaluations
+
+
+def test_tiny_valued_parameter_is_fitted(monkeypatch):
+    """Parameters on the 1e-6 scale (SLDs) must converge; with absolute tolerances they stopped at once."""
+    target = 5.3e-6
+    evaluations = _run_fit(monkeypatch, [["sld", "4.5e-6", "3e-6", "7e-6"]], lambda p: ((p["sld"] - target) / 1e-6) ** 2, xatol=1e-4)
+    best = min(evaluations, key=lambda p: (p["sld"] - target) ** 2)["sld"]
+    assert len(evaluations) > 5
+    assert best == pytest.approx(target, rel=0.01)
+
+
+def test_parameters_of_very_different_magnitude_are_fitted_together(monkeypatch):
+    """Like the microgel fits: a volume fraction, a position [nm] and an SLD in one fit."""
+    target = {"vf": 0.62, "z_pos": -150.0, "sld": 5.0e-6}
+    loss = lambda p: ((p["vf"] - 0.62) / 0.1) ** 2 + ((p["z_pos"] + 150.0) / 20.0) ** 2 + ((p["sld"] - 5.0e-6) / 1e-6) ** 2
+    evaluations = _run_fit(monkeypatch, [["vf", "0.5", "0.4", "0.9"], ["z_pos", "-120", "-180", "-10"], ["sld", "5.56e-6", "2e-6", "6.35e-6"]],
+                           loss, max_evals=300)
+    best = min(evaluations, key=loss)
+    assert best["vf"] == pytest.approx(target["vf"], abs=0.01)
+    assert best["z_pos"] == pytest.approx(target["z_pos"], abs=2.0)
+    assert best["sld"] == pytest.approx(target["sld"], rel=0.02)
+
+
+def test_integer_parameter_is_explored_by_nelder_mead(monkeypatch):
+    """The initial simplex must move integer parameters by at least one unit (no rounding plateau)."""
+    evaluations = _run_fit(monkeypatch, [["n", "2", "0", "10"]], lambda p: (p["n"] - 6) ** 2, max_evals=40, fit_integer=[["n"]])
+    visited = {p["n"] for p in evaluations}
+    assert len(visited) > 1 and 6 in visited
+
+
+@pytest.mark.parametrize("optimizer", ["nelder-mead", "powell"])
+def test_evaluation_budget_is_respected(monkeypatch, optimizer):
+    evaluations = _run_fit(monkeypatch, [["a", "1", "0", "5"], ["b", "5", "0", "10"]],
+                           lambda p: (p["a"] - 1.3) ** 2 + (p["b"] - 7.0) ** 2, optimizer=optimizer, max_evals=7)
+    assert len(evaluations) <= 7
+
+
+@pytest.mark.parametrize("optimizer", ["nelder-mead", "powell"])
+def test_bounds_are_passed_to_the_optimizer(monkeypatch, optimizer):
+    """The optimum lies outside the bounds: no evaluation may leave them (no 1e9-penalty evaluations)."""
+    evaluations = _run_fit(monkeypatch, [["a", "4", "0", "5"]], lambda p: (p["a"] - 9.0) ** 2, optimizer=optimizer, max_evals=40)
+    assert all(0 <= p["a"] <= 5 for p in evaluations)
+    assert max(p["a"] for p in evaluations) == pytest.approx(5.0, abs=0.05)
