@@ -205,7 +205,7 @@ def test_differential_evolution_stops_when_the_population_loss_spread_is_below_f
     assert len(evaluations) < 600
 
 
-def _run_fit(monkeypatch, fit_params, loss_of_point, optimizer="nelder-mead", max_evals=60, fatol=1e-6, xatol=0.01, fit_integer=None):
+def _run_fit(monkeypatch, fit_params, loss_of_point, optimizer="nelder-mead", max_evals=60, fatol=1e-6, xatol=0.01, fit_integer=None, seed=None):
     evaluations = []
     def mock_run_simulation_evaluation(grid_point, *args, **kwargs):
         evaluations.append(dict(grid_point))
@@ -217,7 +217,7 @@ def _run_fit(monkeypatch, fit_params, loss_of_point, optimizer="nelder-mead", ma
         pass
     args = DummyArgs()
     args.fit, args.fit_integer, args.optimizer, args.max_evals = fit_params, fit_integer, optimizer, max_evals
-    args.fatol, args.xatol, args.popsize = fatol, xatol, 15
+    args.fatol, args.xatol, args.popsize, args.seed = fatol, xatol, 15, seed
     args.poisson_sampling, args.loss_function, args.output_dir, args.gif = False, "poisson_deviance", "dummy_output", False
     run_automated_fit(args, particles=[], particle_type="neutron", hist_nxs=None, hist_nxs_error=None, y_edges_nxs=None, z_edges_nxs=None, mask=None)
     return evaluations
@@ -264,3 +264,12 @@ def test_bounds_are_passed_to_the_optimizer(monkeypatch, optimizer):
     evaluations = _run_fit(monkeypatch, [["a", "4", "0", "5"]], lambda p: (p["a"] - 9.0) ** 2, optimizer=optimizer, max_evals=40)
     assert all(0 <= p["a"] <= 5 for p in evaluations)
     assert max(p["a"] for p in evaluations) == pytest.approx(5.0, abs=0.05)
+
+
+def test_differential_evolution_accepts_the_default_64_bit_seed(monkeypatch):
+    """run_cli draws the default --seed below 2**63; scipy's legacy seeding only takes seeds below 2**32."""
+    seed = 7187904184844630382  # the seed of a failed cluster run
+    loss = lambda p: (p["a"] - 1.3) ** 2 + (p["b"] - 7.0) ** 2
+    run = lambda: _run_fit(monkeypatch, [["a", "1", "0", "5"], ["b", "5", "0", "10"]], loss,
+                           optimizer="differential-evolution", max_evals=60, seed=seed)
+    assert run() == run()  # reproducible for a given seed
