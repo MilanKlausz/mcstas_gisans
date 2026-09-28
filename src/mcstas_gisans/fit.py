@@ -1222,6 +1222,10 @@ def run_automated_fit(
         # criterion, so --xatol does not apply to DE.
         print(f"Differential Evolution: population {population}, at most {de_maxiter + 1} generations "
               f"({(de_maxiter + 1) * population} evaluations); stops when the population's loss spread < {args.fatol}")
+        # A Generator, because scipy seeds the legacy RandomState from an int seed, which must be
+        # below 2**32, while the default --seed is a random 63-bit number
+        seed = getattr(args, 'seed', None)
+        de_rng = np.random.default_rng(seed) if seed is not None else None
         opt_res = scipy.optimize.differential_evolution(
             objective_function,
             bounds,
@@ -1232,7 +1236,7 @@ def run_automated_fit(
             atol=args.fatol,
             integrality=integrality,
             polish=False,
-            seed=getattr(args, 'seed', None)
+            seed=de_rng
         )
         best_x = np.asarray(opt_res.x, dtype=float)
     else:

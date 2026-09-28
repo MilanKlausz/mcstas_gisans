@@ -199,3 +199,14 @@ def test_differential_evolution_stops_when_the_population_loss_spread_is_below_f
     flat = _mock_evaluation(monkeypatch, loss_of_point=lambda p: 1.0)
     _run(_args(tmp_path, fit=fit_params, optimizer="differential-evolution", popsize=3, max_evals=120, fatol=0.01))
     assert len(flat) < 120
+
+
+def test_differential_evolution_accepts_the_default_63_bit_seed(monkeypatch, tmp_path):
+    """run_cli draws the default --seed below 2**63; scipy's legacy seeding only takes seeds below 2**32."""
+    fit_params = [["radius", "50.0", "40.0", "60.0"], ["height", "10.0", "5.0", "20.0"]]
+    runs = []
+    for _ in range(2):
+        runs.append(_mock_evaluation(monkeypatch, loss_of_point=lambda p: (p["radius"] - 52.0) ** 2 + (p["height"] - 12.0) ** 2))
+        _run(_args(tmp_path, fit=fit_params, optimizer="differential-evolution", popsize=3, max_evals=30,
+                   seed=7187904184844630382))  # the seed of a failed cluster run
+    assert [p for p, _ in runs[0]] == [p for p, _ in runs[1]]  # reproducible for a given seed
