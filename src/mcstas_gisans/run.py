@@ -10,6 +10,7 @@ particle, and saves the result for further analysis or plotting.
 import numpy as np
 from multiprocessing import Queue
 import multiprocessing
+import queue as queue_module
 from .hardware import get_available_cores
 
 import bornagain as ba
@@ -253,13 +254,19 @@ def process_particles_parallelly(particles, params, process_number):
     processes.append(p)
     p.start()
 
-  for p in processes: # get the results from each process
-    results.append(queue.get())
+  while len(results) < len(processes): # get the results from each process
+    try:
+      results.append(queue.get(timeout=1))
+    except queue_module.Empty:
+      # a worker that failed (exception, or killed e.g. by the OOM killer) never sends a result:
+      # stop instead of waiting for it forever
+      failed = [(i, p.exitcode) for i, p in enumerate(processes) if p.exitcode not in (None, 0)]
+      if failed:
+        for p in processes:
+          p.terminate()
+        raise RuntimeError(f"Parallel process(es) failed (process index, exit code): {failed}. See the error output above.")
   for p in processes: # Wait for all processes to finish
     p.join()
-
-  if len(results) != len(processes):
-      print(f"Warning: Expected {len(processes)} results, but received {len(results)}. Some processes may not have completed.")
 
   if params['raw_output']: #merge lists of raw Q events of the processes
     result = [item for sublist in results for item in sublist]

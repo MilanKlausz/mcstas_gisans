@@ -171,3 +171,23 @@ def test_different_seeds_give_different_monte_carlo_samples():
     a = _run_hist(tmpdir, "a", ["--no_parallel", "--seed", "1"])
     b = _run_hist(tmpdir, "b", ["--no_parallel", "--seed", "2"])
     assert a.sum() > 0 and not np.allclose(a, b)
+
+def test_a_failing_parallel_process_stops_the_run():
+  """A worker that raises, or is killed (e.g. by the OOM killer), sends no result: the run must
+  fail instead of waiting for it forever."""
+  with tempfile.TemporaryDirectory() as tmpdir:
+    args = ["data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
+            "--outgoing_directions", "5", "--savename", os.path.join(tmpdir, "fail"), "--parallel_processes", "3", "--seed", "1"]
+    code = ("import os, signal, sys, multiprocessing; multiprocessing.set_start_method('fork', force=True)\n"
+            "import mcstas_gisans.run as run\n"
+            "original = run.process_particles\n"
+            "def process_particles(particles, params, queue=None, start_index=0):\n"
+            "  if start_index > 0 and start_index == len(particles): raise ValueError('failing worker')\n"
+            "  if start_index > len(particles): os.kill(os.getpid(), signal.SIGKILL)\n"
+            "  return original(particles, params, queue, start_index)\n"
+            "run.process_particles = process_particles\n"
+            "sys.argv = ['mg_run'] + %r; run.main()\n") % args
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=300)
+    assert result.returncode != 0
+    assert "failing worker" in result.stderr  # the worker's own traceback
+    assert "Parallel process(es) failed" in result.stderr and "-9" in result.stderr
