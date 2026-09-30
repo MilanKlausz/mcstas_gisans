@@ -191,26 +191,29 @@ def process_particles(particles, params, queue=None, start_index=0):
       q_array = calculate_q(x, y, z, t, VX_grid.flatten(), VY_grid.flatten(), VZ_grid.flatten())
       weights = pout.T.flatten()
 
-    if specular == 'specular_simulation':
-      q_specular_sim = []
-      weight_specular_sim = []
-      
-      # Calculated reflected and transmitted (1-reflected) beams
-      ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
-      res = ssim.simulate()
-      refl_fraction = np.array(res.flatVector())[0]
+      if specular == 'specular_simulation':
+        # The specular reflection as one extra ray in the exact mirror direction (y is the surface normal in
+        # the sample frame, so vy changes sign), with the reflectivity of the sample; independent of the
+        # outgoing-direction grid, unlike include_specular, which puts it into the grid bin containing it.
+        # The transmitted (1 - reflectivity) part continues straight. Only for particles hitting the sample.
+        q_specular_sim = []
+        weight_specular_sim = []
 
-      # Reflected beam
-      q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [-vz]))
-      weight_specular_sim.append(np.array([p * refl_fraction]))
+        ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
+        res = ssim.simulate()
+        refl_fraction = np.array(res.flatVector())[0]
 
-      ptrans = p * (1.0 - refl_fraction)
-      if ptrans>1e-10:
-          q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [vz]))
-          weight_specular_sim.append(np.array([ptrans]))
+        # Reflected beam
+        q_specular_sim.append(calculate_q(x, y, z, t, [vx], [-vy], [vz]))
+        weight_specular_sim.append(np.array([p * refl_fraction]))
 
-      q_array = np.vstack([q_array] + q_specular_sim)
-      weights = np.concatenate([weights] + weight_specular_sim)
+        ptrans = p * (1.0 - refl_fraction)
+        if ptrans>1e-10:
+            q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [vz]))
+            weight_specular_sim.append(np.array([ptrans]))
+
+        q_array = np.vstack([q_array] + q_specular_sim)
+        weights = np.concatenate([weights] + weight_specular_sim)
 
     if raw_output:
       q_events.append(np.column_stack([weights, q_array]))
