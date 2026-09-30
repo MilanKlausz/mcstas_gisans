@@ -151,6 +151,8 @@ where the sums run over the incident neutrons that hit the sample, with their st
 
 The printed number of rays can exceed the target, because the numbers of directions are rounded up (noticeably when an axis spans only a few pixels). Explicit ``-n``/``--outgoing_directions`` or ``--outgoing_directions_horizontal``/``--outgoing_directions_vertical`` always override the presets (the two cannot be combined); without any of these options the ``quick`` preset is used. For a simulation of the whole detector this can mean many directions (e.g. about 110 × 60 for the D22 paper data with 1300 effective neutrons); ``-n`` sets a small grid for a first look.
 
+The random grid shift makes every continuous feature of the cross section unbiased, however sharp; only the noise grows for features narrower than a bin. The specular reflection is the exception with ``--specular include_specular``: BornAgain puts it into the bin containing the specular direction, so it is smeared over one bin width (see :doc:`known_issues`); ``--specular specular_simulation`` adds it as a separate ray in the exact mirror direction instead, independent of the grid.
+
 The margin added around a fit region (``--simulate_mask_angle_range``) enlarges the simulated angle range, so the same target needs more directions (the directions per pixel stay the same, the extra rays land outside the region). The margin is still needed: because of the beam divergence and the beam spot, directions just outside the region reach its edge pixels for some neutrons, and without them these pixels would lose intensity.
 
 5. Core Tools and Modules
