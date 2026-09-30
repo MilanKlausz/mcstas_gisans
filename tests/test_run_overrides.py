@@ -13,6 +13,7 @@ def test_instrument_overrides():
   argv = [
     "data/paper/d22_measurement/073174.nxs",
     "-i", "d22",
+    "-n", "20",  # explicit grid: pack_parameters is called without particles
     "--instrument_sample_detector_distance", "15.5",
     "--instrument_detector_pixels", "512", "256",
     "--instrument_detector_size", "2.048", "2.048",

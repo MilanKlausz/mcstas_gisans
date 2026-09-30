@@ -10,10 +10,9 @@ def test_outgoing_directions_default():
     sys.argv = ["run"] + argv
     try:
         args = parse_args(parser)
-        assert args.outgoing_directions == 20
-        params = pack_parameters(args, "neutron")
-        assert params["outgoing_directions_horizontal"] == 20
-        assert params["outgoing_directions_vertical"] == 20
+        # default: the 'quick' sampling preset, the grid is chosen from the particles
+        assert args.sampling == 'quick' and args.rays_per_pixel == 250
+        assert args.outgoing_directions is None and args.outgoing_directions_horizontal is None
     finally:
         sys.argv = sys_argv_backup
 
@@ -178,10 +177,12 @@ def test_default_sampling_constant(monkeypatch):
   import mcstas_gisans.run_cli as run_cli
   monkeypatch.setattr(sys, "argv", D22_RUN_ARGV)
   args = parse_args(create_argparser())
+  assert run_cli.DEFAULT_SAMPLING == 'quick'
+  assert args.sampling == 'quick' and args.rays_per_pixel == 250 and args.outgoing_directions is None
+  monkeypatch.setattr(run_cli, "DEFAULT_SAMPLING", None)  # without a default preset: the fixed default grid
+  args = parse_args(create_argparser())
   assert args.rays_per_pixel is None and args.outgoing_directions == run_cli.DEFAULT_OUTGOING_DIRECTIONS
   monkeypatch.setattr(run_cli, "DEFAULT_SAMPLING", "quick")
-  args = parse_args(create_argparser())
-  assert args.sampling == 'quick' and args.rays_per_pixel == 250
   monkeypatch.setattr(sys, "argv", D22_RUN_ARGV + ["-n", "30"])  # explicit directions still win over the default
   args = parse_args(create_argparser())
   assert args.rays_per_pixel is None and args.outgoing_directions == 30

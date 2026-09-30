@@ -27,6 +27,7 @@ def test_run_without_polarization():
       "-i", "d22",
       "--wavelength_selected", "6.0",
       "--no_parallel",
+      "--outgoing_directions", "10",  # small grid: this test is about the output, not the sampling
       "--savename", savename
     ]
     result = subprocess.run(argv, capture_output=True, text=True)
@@ -52,6 +53,7 @@ def test_run_with_polarization_default_analyzer():
       "--wavelength_selected", "6.0",
       "--use_polarization",
       "--no_parallel",
+      "--outgoing_directions", "10",  # small grid: this test is about the output, not the sampling
       "--savename", savename
     ]
     result = subprocess.run(argv, capture_output=True, text=True)
@@ -75,6 +77,7 @@ def test_analyzer_arguments_parsing():
   argv = [
     "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
     "-i", "d22",
+    "-n", "20",  # explicit grid: pack_parameters is called without particles
     "--wavelength_selected", "6.0",
     "--use_polarization",
     "--analyzer_direction", "0.0", "1.0", "0.0",
