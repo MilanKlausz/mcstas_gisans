@@ -8,6 +8,7 @@
 
    .. autosummary::
    
+      beam_spot
       compare_with_simulated_direct_beam
       create_argparser
       find_required_centre_offset

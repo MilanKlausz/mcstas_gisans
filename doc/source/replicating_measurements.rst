@@ -74,9 +74,16 @@ Keep this ``[X, Y]`` value — it is reused, unchanged, in steps 3 and 4 below a
 ``--instrument_detector_centre_offset X Y``. With it, the measured direct beam
 is exactly at Q = 0 and a simulated direct beam lands on the measured one (see
 :ref:`q_convention` in :doc:`technical_details`). The centroid is computed
-within ``--beam_radius`` (default 100 mm, which holds the whole D22 big beam)
-of the beam, so that scattered background elsewhere on the detector does not
-bias it.
+in a rectangle around the beam, so that scattered background elsewhere on the
+detector does not bias it. The search starts at the maximum of the
+3×3-median-filtered image (a single hot pixel cannot capture it), and the
+rectangle is re-centred on its centroid until it settles; by default its
+half-sizes are three RMS widths of the beam on each detector axis, measured
+together with the centre (for a rectangular beam of width :math:`W` this is
+:math:`0.87\,W`, so the whole beam is inside). The window used is printed with
+the option that sets it, ``--beam_window HALF_X HALF_Y`` (m). A warning is
+printed if a window reaches the detector edge while counts lie there, i.e.
+if the spot is probably cut off.
 
 **Cross-checks in the same command (recommended).** Given the MCPL file of the
 direct-beam McStas simulation (``--mcpl``), the tool ray-traces the McStas beam
@@ -90,14 +97,23 @@ that would make the simulation match; it points at the McStas beam (direction,
 position, slits), the beam angle or the wavelength — the offset printed first
 always describes the measurement. Given a sample measurement at the same
 wavelength (``--sample_nxs``), the real incident angle is measured from the
-distance between the specular spot and the direct beam (:math:`2\alpha`; the
-gravity drop cancels) and compared with ``--alpha``. The specular position is
-the intensity centroid in a window of ±20 mm along the sample normal and
-±80 mm across it, re-centred on its own centroid: the window has to hold the
-whole spot, because the specular of a wide beam is flat-topped and a window
-around its brightest pixels is biased (by up to 1 pixel for the D22 big beam).
-With ``--figure``, a second figure (``<savename>_incident_angle``) shows the
-direct beam and the sample image with the found centres and both windows:
+distance :math:`s` between the specular spot and the direct beam,
+:math:`\alpha = \tfrac{1}{2}\arctan(s/L)` (both beams have the same wavelength
+and flight path, so the gravity drop cancels), and compared with ``--alpha``.
+The specular position is the intensity centroid in a rectangle aligned with
+the sample normal, re-centred on its own centroid until it settles. By default
+it has the size of the direct-beam window across the normal and 1.5 times it
+along the normal (a flat sample images the direct beam, slightly broadened);
+``--specular_window HALF_ALONG HALF_ACROSS`` (m) sets it (the size used is
+printed). The window has to hold the whole spot: the specular of a wide beam is
+flat-topped, and a window around its brightest pixels alone is biased (by up to
+one pixel for the D22 big beam). With ``--alpha`` the search starts near the
+expected position :math:`L\tan(2\alpha)`, otherwise at the brightest spot
+beyond the direct beam along the normal. The measured angle assumes the nominal
+sample-detector distance :math:`L`: the specular fixes :math:`L\tan(2\alpha)`,
+so a distance error cannot be told apart from an angle error. With
+``--figure``, a second figure (``<savename>_incident_angle``) shows the direct
+beam and the sample image with the found centres and both windows:
 
 .. code-block:: bash
 

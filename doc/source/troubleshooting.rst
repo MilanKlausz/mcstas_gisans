@@ -17,12 +17,13 @@ If you see ``ModuleNotFoundError: No module named 'bornagain'`` or ``'scipp'``, 
 
 Wrong Beam Centre (``mg_beam_centre_correction``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The beam centre is the intensity centroid within ``--beam_radius`` (default 50 mm) of the brightest pixel. If the result looks wrong:
+The beam centre is the intensity centroid in a rectangle around the beam (by default three RMS widths of the beam on each axis, determined from the image; the size used is printed). If the result looks wrong:
 
 - Check that the file is a **direct beam** measurement (no sample, or the sample moved out of the beam). A sample measurement gives the centroid of the direct beam and the specular spot together.
 - **Saturated or attenuated detector:** dead time or saturation distorts the beam profile; check the NeXus data visually.
-- Draw the measured beam next to a simulated one with ``--mcpl <direct beam MCPL file> --figure show`` (see :doc:`replicating_measurements`). A large residual between the two points at the McStas beam or the given ``--beam_angle``/``--wavelength``.
-- Increase ``--beam_radius`` for a wide beam, decrease it if another feature is close to the beam.
+- Draw the measured beam next to a simulated one with ``--mcpl <direct beam MCPL file> --figure show`` (see :doc:`replicating_measurements`). A large residual between the two points at the McStas beam or the given ``--beam_angle``/``--wavelength``. The figures show the found centres and the windows used to find them.
+- Set the window with ``--beam_window HALF_X HALF_Y`` (m) if the automatic one is too small (a beam with long tails) or holds another feature close to the beam; for the specular spot of ``--sample_nxs`` use ``--specular_window HALF_ALONG HALF_ACROSS``.
+- A warning that a window *reaches the edge of the detector* means that the spot is probably cut off by the detector edge, which biases its centre.
 
 Fit Does Not Converge (``mg_fit``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
