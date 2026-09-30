@@ -19,7 +19,7 @@ from bornagain import deg, angstrom
 from .input_output import get_particles, save_q_histogram_file, save_raw_q_list_file
 from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
-from .parameters import pack_parameters
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling
 
 def get_outgoing_grid(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z):
   """
@@ -292,9 +292,8 @@ def main():
   particles = precondition(particles, args)
 
   ### BornAgain simulation ###
-  if getattr(args, 'outgoing_directions_per_pixel', None):
-    suffix = f"{args.outgoing_directions_per_pixel:g}perpixel"
-  elif args.outgoing_directions is not None:
+  set_outgoing_directions_from_sampling(args, particles, particle_type) #only with --sampling/--rays_per_pixel
+  if args.outgoing_directions is not None:
     suffix = args.outgoing_directions
   else:
     suffix = f"{args.outgoing_directions_horizontal}_{args.outgoing_directions_vertical}"

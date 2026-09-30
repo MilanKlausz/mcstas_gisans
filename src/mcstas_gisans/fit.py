@@ -15,7 +15,7 @@ import numpy as np
 from .run_cli import create_argparser as create_run_parser, parse_args as parse_run_args
 from .input_output import get_particles, save_q_histogram_file
 from .preconditioning import precondition
-from .parameters import pack_parameters
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling
 from .run import process_particles, process_particles_parallelly
 from .read_d22 import read_nexus_data
 from .experiment_time import upscale_simple
@@ -579,6 +579,9 @@ def load_and_precondition_particles(args):
   )
   particles = precondition(particles, args)
   print(f"Loaded and preconditioned {len(particles)} particles.")
+  # choose the outgoing directions of --sampling/--rays_per_pixel once for all evaluations
+  # (the angle range of --simulate_mask_angle_range is already set by prepare_experimental_data)
+  set_outgoing_directions_from_sampling(args, particles, particle_type)
   return particles, particle_type
 
 def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, save_npz=True, label_prefix="sim"):
@@ -777,6 +780,7 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       particles2, particle_type2 = load_and_precondition_particles(args2)
     else:
       particles2, particle_type2 = particles, particle_type
+      set_outgoing_directions_from_sampling(args2, particles2, particle_type2) #angle range of the sample 2 mask
 
     param_names, x0, bounds, s1_map, s2_map = parse_joint_fit_arguments(args)
   else:

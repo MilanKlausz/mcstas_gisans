@@ -89,12 +89,13 @@ class Sample:
 
   def sample_missed(self, x, y, z, vy):
     """Decide if position is outside the area of the sample surface or the
-    particle is not approaching the sample surface (i.e., vy >= 0)."""
+    particle is not approaching the sample surface (i.e., vy >= 0).
+    Works for single particles and element-wise for arrays of particles."""
     return (
-        (abs(x) > 0.5 * self.size_y) or  # Outside horizontal bounds
-        (abs(z) > 0.5 * self.size_x) or  # Outside longitudinal bounds
-        (y < -1e-12) or                  # Already below the sample surface
-        (vy >= 0)                        # Moving away from or parallel to surface
+        (abs(x) > 0.5 * self.size_y) |  # Outside horizontal bounds
+        (abs(z) > 0.5 * self.size_x) |  # Outside longitudinal bounds
+        (y < -1e-12) |                  # Already below the sample surface
+        (vy >= 0)                       # Moving away from or parallel to surface
     )
 
   def _resolve_sample_source(self):
