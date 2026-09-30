@@ -6,25 +6,30 @@ from .instrument import Instrument
 from .sample import Sample
 
 
-def outgoing_directions_for_sampling(angle_range, detector, sample_detector_distance, n_hit, rays_per_pixel):
+# Noise of the direction sampling per pixel: about SAMPLING_NOISE_COEFFICIENT / sqrt(rays per pixel), with the rays
+# counted with the effective number of neutrons (measured for the D22 paper data: 1.5/sqrt(N rho) with N_eff = 0.75 N)
+SAMPLING_NOISE_COEFFICIENT = 1.3
+
+def outgoing_directions_for_sampling(angle_range, detector, sample_detector_distance, n_effective, rays_per_pixel):
     """
     Number of outgoing directions (horizontal, vertical) with which every detector pixel collects about
     rays_per_pixel rays over the run, in the angle range [horiz_min, horiz_max, vert_min, vert_max] (deg).
     The grid of every neutron is shifted randomly by up to half a bin, so any grid is unbiased; the grid
-    only sets the statistical noise, about 1.5/sqrt(rays per pixel) per pixel. A pixel collects
-    n_hit * rho rays, where n_hit is the number of incident neutrons hitting the sample and rho the
-    number of directions per pixel of angular area. The directions are split with the same bin width
-    (in pixels) along both axes. The pixel sizes are those along the BornAgain horizontal and vertical
-    axes, i.e. swapped for vertical samples.
+    only sets the noise of the direction sampling, about SAMPLING_NOISE_COEFFICIENT/sqrt(rays per pixel)
+    per pixel. A pixel collects n_effective * rho rays, where n_effective = (sum w)^2 / sum w^2 is the
+    effective number of the incident neutrons hitting the sample (their number, for equal weights w) and
+    rho the number of directions per pixel of angular area. The directions are split with the same bin
+    width (in pixels) along both axes. The pixel sizes are those along the BornAgain horizontal and
+    vertical axes, i.e. swapped for vertical samples.
     """
-    if n_hit < 1:
+    if n_effective < 1:
         print("WARNING: No incident neutron hits the sample, the outgoing directions are chosen as for a single neutron.")
-        n_hit = 1
+        n_effective = 1
     pixel_deg_h = np.degrees(detector.pixel_size_y_bornagain / sample_detector_distance)
     pixel_deg_v = np.degrees(detector.pixel_size_z_bornagain / sample_detector_distance)
     pixels_h = (angle_range[1] - angle_range[0]) / pixel_deg_h
     pixels_v = (angle_range[3] - angle_range[2]) / pixel_deg_v
-    directions_per_pixel_1d = np.sqrt(rays_per_pixel / n_hit)
+    directions_per_pixel_1d = np.sqrt(rays_per_pixel / n_effective)
     n_h = int(np.ceil(directions_per_pixel_1d * pixels_h - 1e-9))
     n_v = int(np.ceil(directions_per_pixel_1d * pixels_v - 1e-9))
     return max(n_h, 1), max(n_v, 1)
@@ -57,9 +62,12 @@ def set_outgoing_directions_from_sampling(args, particles, particle_type):
     sample = Sample(args.sample_size_y, args.sample_size_x, args.model, None)
     columns = np.asarray(particles).T if len(particles) else np.zeros((7, 0))
     x, y, z, vz = columns[1], columns[2], columns[3], columns[6]  # p, x, y, z, vx, vy, vz, ... (BornAgain frame)
-    n_hit = int(np.count_nonzero(~sample.sample_missed(x, y, z, vz)))
+    hit = ~np.asarray(sample.sample_missed(x, y, z, vz), dtype=bool)
+    weights = (np.asarray(particles).T[0] if len(particles) else np.zeros(0))[hit]
+    n_hit = int(np.count_nonzero(hit))
+    n_effective = float(weights.sum() ** 2 / (weights ** 2).sum()) if n_hit else 0.0  # effective number for unequal weights
 
-    n_h, n_v = outgoing_directions_for_sampling(angle_range, instrument.detector, instrument.sample_detector_distance, n_hit, rays_per_pixel)
+    n_h, n_v = outgoing_directions_for_sampling(angle_range, instrument.detector, instrument.sample_detector_distance, n_effective, rays_per_pixel)
     args.outgoing_directions = None
     args.outgoing_directions_horizontal, args.outgoing_directions_vertical = n_h, n_v
 
@@ -67,11 +75,12 @@ def set_outgoing_directions_from_sampling(args, particles, particle_type):
     pixel_area_deg2 = np.degrees(instrument.detector.pixel_size_y_bornagain / instrument.sample_detector_distance) \
         * np.degrees(instrument.detector.pixel_size_z_bornagain / instrument.sample_detector_distance)
     angle_area_deg2 = (angle_range[1] - angle_range[0]) * (angle_range[3] - angle_range[2])
-    rays = max(n_hit, 1) * n_h * n_v * pixel_area_deg2 / angle_area_deg2
+    rays = max(n_effective, 1) * n_h * n_v * pixel_area_deg2 / angle_area_deg2
     sampling = getattr(args, 'sampling', None)
     target = f"sampling '{sampling}'" if sampling else f"rays_per_pixel {rays_per_pixel:g}"
     print(f"Outgoing directions: {n_h} x {n_v} ({target}: about {rays:.0f} rays per detector pixel (target {rays_per_pixel:g}) "
-          f"from {n_hit} neutrons hitting the sample, expected noise about {100 * 1.5 / np.sqrt(rays):.2g}% per pixel). "
+          f"from {n_hit} neutrons hitting the sample, {n_effective:.0f} effective for their weights). Noise of the direction "
+          f"sampling about {100 * SAMPLING_NOISE_COEFFICIENT / np.sqrt(rays):.2g}% per pixel (the statistical noise of the MCPL file adds to it). "
           f"To reproduce: --outgoing_directions_horizontal {n_h} --outgoing_directions_vertical {n_v}")
 
 

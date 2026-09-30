@@ -35,6 +35,7 @@ def test_run_simulations(temp_savename, run_args):
         "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
         "-i", "d22",
         "--wavelength_selected", "6.0",
+        "--outgoing_directions", "10",  # small grid: this test is about the output, not the sampling
         "--savename", temp_savename
     ] + run_args
     
@@ -89,6 +90,7 @@ def test_analyzer_arguments_parsing(monkeypatch, overrides, expected):
         "-i", "d22",
         "--wavelength_selected", "6.0",
         "--use_polarization",
+        "--outgoing_directions", "20",  # explicit grid: pack_parameters is called without particles
     ] + overrides
     
     monkeypatch.setattr("sys.argv", ["run"] + argv)

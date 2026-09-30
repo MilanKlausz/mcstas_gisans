@@ -50,7 +50,8 @@ def test_instrument_overrides(clean_defaults, monkeypatch, overrides, expected_p
     argv = [
         "data/paper/d22_measurement/073174.nxs",
         "-i", "d22",
-        "--wavelength_selected", "6.0"
+        "--wavelength_selected", "6.0",
+        "--outgoing_directions", "20",  # explicit grid: pack_parameters is called without particles
     ] + overrides
 
     parser = create_argparser()

@@ -10,10 +10,11 @@ from .sample import Sample
 builtin_samples: List[str] = Sample.list_builtin_samples()
 builtin_str: str = ', '.join(builtin_samples)
 DEFAULT_OUTGOING_DIRECTIONS: int = 20
-# Sampling presets: target number of rays a detector pixel collects over the run (relative noise about 1.5/sqrt(rays))
+# Sampling presets: target number of rays a detector pixel collects over the run, counted with the effective number of
+# neutrons for their weights (noise of the direction sampling about 1.3/sqrt(rays) per pixel: 8%, 3%, 1.3%)
 SAMPLING_PRESETS = {'quick': 250, 'standard': 2000, 'long': 10000}
 # Used when no outgoing-direction or sampling option is given: a SAMPLING_PRESETS key, or None for DEFAULT_OUTGOING_DIRECTIONS
-DEFAULT_SAMPLING = None
+DEFAULT_SAMPLING = 'quick'
 
 def create_argparser() -> argparse.ArgumentParser:
     """
@@ -38,11 +39,11 @@ def create_argparser() -> argparse.ArgumentParser:
 
     bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
     bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help='Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
-    bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. (default: {DEFAULT_OUTGOING_DIRECTIONS})')
-    bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction.')
+    bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. Overrides the sampling preset (default: none, the grid is chosen by --sampling {DEFAULT_SAMPLING}).')
+    bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction (with --outgoing_directions_vertical; overrides the sampling preset).')
     bornagainGroup.add_argument('--outgoing_directions_vertical', type=int, help='Number of outgoing directions in the vertical direction.')
     presets_str = ', '.join(f'{name}: {rays}' for name, rays in SAMPLING_PRESETS.items())
-    bornagainGroup.add_argument('--sampling', choices=list(SAMPLING_PRESETS.keys()), type=str.lower, help=f'Sampling preset: choose the number of outgoing directions so that every detector pixel collects about this many rays over the run ({presets_str}), from the number of neutrons hitting the sample and the simulated angle range. The relative noise per pixel is about 1.5/sqrt(rays). The grid of every neutron is shifted randomly, so any grid is unbiased. The chosen numbers are printed with the options that reproduce them. Cannot be combined with --outgoing_directions/_horizontal/_vertical.')
+    bornagainGroup.add_argument('--sampling', choices=list(SAMPLING_PRESETS.keys()), type=str.lower, help=f'Sampling preset: choose the number of outgoing directions so that every detector pixel collects about this many rays over the run ({presets_str}), from the (effective) number of neutrons hitting the sample and the simulated angle range. The noise of the direction sampling is about 1.3/sqrt(rays) per pixel; the statistical noise of the MCPL file adds to it. Default: {DEFAULT_SAMPLING}. The grid of every neutron is shifted randomly, so any grid is unbiased. The chosen numbers are printed with the options that reproduce them. Cannot be combined with --outgoing_directions/_horizontal/_vertical.')
     bornagainGroup.add_argument('--rays_per_pixel', type=float, help='Custom target number of rays per detector pixel instead of a --sampling preset.')
     bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help='Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
     bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help='BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')

@@ -55,7 +55,7 @@ Here we simulate a standard ``silica_100nm_D2O`` model, defining the instrument 
      --savename test_q \
      --specular include_specular
 
-*(Note: ``-n 20`` is the number of BornAgain scattering directions per axis, so each incident MCPL neutron produces 20 × 20 = 400 outgoing rays. The run time grows with its square; it has nothing to do with the McStas source neutron count.)*
+*(Note: ``-n 20`` is the number of BornAgain scattering directions per axis, so each incident MCPL neutron produces 20 × 20 = 400 outgoing rays. The run time grows with its square; it has nothing to do with the McStas source neutron count. Without ``-n``, the ``quick`` sampling preset chooses the number of directions from the neutrons and the detector pixels, see :ref:`sampling_presets`.)*
 
 This will run the DWBA calculation and save the simulated detector image as ``test_q.h5`` in your current directory.
 

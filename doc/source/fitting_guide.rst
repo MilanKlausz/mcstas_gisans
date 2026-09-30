@@ -164,9 +164,9 @@ parameters with a new fit if the loss was still decreasing.
 
 The cost of one evaluation grows with the number of MCPL particles and with the
 square of ``-n`` (the outgoing directions per axis). ``--sampling`` chooses the
-directions for a target noise per pixel (``quick``, ``standard``, ``long``) and
-takes the number of neutrons into account, so a larger MCPL file automatically
-gets fewer directions per neutron. ``-p`` sets the number of
+directions for a target noise per pixel (``quick``, the default, ``standard``,
+``long``) and takes the (effective) number of neutrons into account, so a larger
+MCPL file automatically gets fewer directions per neutron. ``-p`` sets the number of
 parallel processes; with many processes use ``--bornagain_number_of_threads 1``.
 ``--simulate_mask_angle_range`` saves time when much of the detector is masked.
 A scan with a few points is usually worth more than a long fit from a poor

@@ -7,8 +7,14 @@ from mcstas_gisans.parameters import pack_parameters
 def parser():
     return create_argparser()
 
+def test_default_is_the_quick_sampling_preset(monkeypatch, parser):
+    monkeypatch.setattr(sys, 'argv', ["run", "dummy.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0"])
+    args = parse_args(parser)
+    assert args.sampling == 'quick' and args.rays_per_pixel == 250
+    assert args.outgoing_directions is None and args.outgoing_directions_horizontal is None
+
+
 @pytest.mark.parametrize("argv,expected_horiz,expected_vert,expected_out", [
-    (["dummy.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0"], 20, 20, 20),
     (["dummy.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0", "--outgoing_directions", "45"], 45, 45, 45),
     (["dummy.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0", "--outgoing_directions", "10"], 10, 10, 10),
     (["dummy.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0", "--outgoing_directions_horizontal", "50", "--outgoing_directions_vertical", "30"], 50, 30, None),
@@ -173,10 +179,12 @@ def test_default_sampling_constant(monkeypatch):
     import mcstas_gisans.run_cli as run_cli
     monkeypatch.setattr(sys, "argv", D22_RUN_ARGV)
     args = parse_args(create_argparser())
+    assert run_cli.DEFAULT_SAMPLING == 'quick'
+    assert args.sampling == 'quick' and args.rays_per_pixel == 250 and args.outgoing_directions is None
+    monkeypatch.setattr(run_cli, "DEFAULT_SAMPLING", None)  # without a default preset: the fixed default grid
+    args = parse_args(create_argparser())
     assert args.rays_per_pixel is None and args.outgoing_directions == run_cli.DEFAULT_OUTGOING_DIRECTIONS
     monkeypatch.setattr(run_cli, "DEFAULT_SAMPLING", "quick")
-    args = parse_args(create_argparser())
-    assert args.sampling == 'quick' and args.rays_per_pixel == 250
     monkeypatch.setattr(sys, "argv", D22_RUN_ARGV + ["-n", "30"])  # explicit directions still win over the default
     args = parse_args(create_argparser())
     assert args.rays_per_pixel is None and args.outgoing_directions == 30
