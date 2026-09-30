@@ -19,7 +19,9 @@ from .nexus_reader import read_nexus_raw
 from .instrument import Instrument
 from .instrument_defaults import instrument_defaults, default_detector
 
-DEFAULT_BEAM_RADIUS = 0.05  # [m] radius around the beam used for the centroid
+DEFAULT_BEAM_RADIUS = 0.1  # [m] radius around the beam used for the centroid (holds the whole D22 big beam)
+SPECULAR_HALF_ALONG = 0.02  # [m] specular window half-width along the sample normal
+SPECULAR_HALF_ACROSS = 0.08  # [m] specular window half-width across the sample normal: the whole spot
 
 
 def find_required_centre_offset(filepath, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', verbose=False, nxs_data_path=None, beam_radius=DEFAULT_BEAM_RADIUS):
@@ -191,27 +193,35 @@ def compare_with_simulated_direct_beam(filepath, mcpl_path, offset, beam_angle=N
         from .nexus_reader import warn_if_duration_mismatch
         warn_if_duration_mismatch([filepath], experiment_time, label=filepath)
     if figure:
-        _direct_beam_figure(measured, simulated, x_rel + offset[0], y_rel + offset[1], c_meas + offset, c_sim + offset, figure, savename)
+        _direct_beam_figure(measured, simulated, x_rel + offset[0], y_rel + offset[1], c_meas + offset, c_sim + offset, figure, savename,
+                            beam_radius)
     return results
 
 
-def _direct_beam_figure(measured, simulated, x_lab, y_lab, c_meas, c_sim, figure, savename):
+def _direct_beam_figure(measured, simulated, x_lab, y_lab, c_meas, c_sim, figure, savename, beam_radius=DEFAULT_BEAM_RADIUS):
     import matplotlib
     if figure != 'show':
         matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
     scaled = simulated * measured.sum() / simulated.sum()
+    from matplotlib.patches import Circle
     ix, iy = np.unravel_index(np.argmax(measured), measured.shape)
-    half = 12
-    xs, ys = slice(max(ix - half, 0), ix + half + 1), slice(max(iy - 3 * half, 0), iy + 3 * half + 1)
+    pitch_x, pitch_y = abs(x_lab[1] - x_lab[0]), abs(y_lab[1] - y_lab[0])
+    reach = max(beam_radius or 0.0, 0.06) * 1.15  # show the whole centroid window
+    hx, hy = int(np.ceil(reach / pitch_x)), int(np.ceil(reach / pitch_y))
+    xs, ys = slice(max(ix - hx, 0), ix + hx + 1), slice(max(iy - hy, 0), iy + hy + 1)
     fig, axes = plt.subplots(2, 2, figsize=(13, 10))
     extent = [x_lab[xs][0] * 1e3, x_lab[xs][-1] * 1e3, y_lab[ys][0] * 1e3, y_lab[ys][-1] * 1e3]
     vmax = max(measured[xs, ys].max(), scaled[xs, ys].max())
     for ax, image, title, centre in ((axes[0, 0], measured, 'Measured direct beam', c_meas),
                                      (axes[0, 1], scaled, 'Simulated direct beam (scaled to measured total)', c_sim)):
         mesh = ax.imshow(np.maximum(image[xs, ys].T, 0.1), origin='lower', extent=extent, aspect='auto', norm=LogNorm(vmin=1, vmax=vmax), cmap='jet')
-        ax.plot(centre[0] * 1e3, centre[1] * 1e3, 'w+', markersize=14, mew=2)
+        ax.plot(centre[0] * 1e3, centre[1] * 1e3, 'x', color='red', markersize=12, mew=2.5, label='centroid')
+        if beam_radius and beam_radius > 0:
+            ax.add_patch(Circle((centre[0] * 1e3, centre[1] * 1e3), beam_radius * 1e3, fill=False, ec='red', ls='--', lw=1.5,
+                                label=f'centroid window ({beam_radius * 1e3:.0f} mm)'))
+        ax.legend(loc='upper right', fontsize=8)
         ax.set_title(title)
         ax.set_xlabel('x (NeXus, from beam axis) [mm]')
         ax.set_ylabel('y (NeXus, from beam axis) [mm]')
@@ -238,30 +248,94 @@ def _direct_beam_figure(measured, simulated, x_lab, y_lab, c_meas, c_sim, figure
 
 
 def measure_incident_angle(sample_filepath, direct_beam_filepath, instrument_name='d22', sample_orientation=1,
-                           nxs_data_path=None, min_separation_pixels=3):
+                           nxs_data_path=None, min_separation_pixels=3, beam_radius=DEFAULT_BEAM_RADIUS,
+                           half_along=SPECULAR_HALF_ALONG, half_across=SPECULAR_HALF_ACROSS, figure=None,
+                           savename='incident_angle_check'):
     """
     Measure the real incident angle from a sample measurement: the specular spot lies 2*alpha from
     the direct beam (both at the same wavelength, so the gravity drop cancels). Returns alpha [deg].
-    The specular spot is the brightest region displaced from the direct beam along the sample normal.
+    The direct beam is the windowed centroid of image_statistics. The specular spot starts at the
+    brightest pixel displaced from the direct beam along the sample normal; its position is the
+    intensity centroid in a window of +-half_along along the normal and +-half_across across it,
+    re-centred on its own centroid until it settles. The window has to hold the whole spot: the
+    specular of a wide beam is flat-topped, and a window around the brightest pixel alone is biased.
     """
     instrument = _instrument(instrument_name, [0.0, 0.0], None, 6.0, sample_orientation)
     det = instrument.detector
     direct = read_nexus_raw(direct_beam_filepath, nxs_data_path)
     sample = read_nexus_raw(sample_filepath, nxs_data_path)
-    c_direct, _, x_rel, y_rel = image_statistics(direct, det, DEFAULT_BEAM_RADIUS)
+    c_direct, _, x_rel, y_rel = image_statistics(direct, det, beam_radius)
     normal = np.array(det.coords.bornagain_to_nexus(0.0, 0.0, 1.0)[:2])  # sample normal in the detector plane
+    normal = normal / np.linalg.norm(normal)
+    tangent = np.array([normal[1], -normal[0]])
     X, Y = np.meshgrid(x_rel, y_rel, indexing='ij')
-    along_normal = (X - c_direct[0]) * normal[0] + (Y - c_direct[1]) * normal[1]
+    along = (X - c_direct[0]) * normal[0] + (Y - c_direct[1]) * normal[1]
+    across = (X - c_direct[0]) * tangent[0] + (Y - c_direct[1]) * tangent[1]
     pixel = max(det.pixel_size_x_nexus, det.pixel_size_y_nexus)
-    candidates = np.where(along_normal > min_separation_pixels * pixel, sample, 0.0)
+    candidates = np.where(along > min_separation_pixels * pixel, sample, 0.0)
     if candidates.max() <= 0:
         raise ValueError("No specular reflection found above the direct beam in the sample measurement.")
     i, j = np.unravel_index(np.argmax(candidates), candidates.shape)
-    window = (slice(max(i - 3, 0), i + 4), slice(max(j - 3, 0), j + 4))
-    w = sample[window]
-    spot = np.array([(w * X[window]).sum(), (w * Y[window]).sum()]) / w.sum()
-    separation = float(np.dot(spot - c_direct, normal))
-    return float(np.rad2deg(0.5 * np.arctan(separation / instrument.sample_detector_distance)))
+    s, c = along[i, j], across[i, j]
+    for _ in range(100):
+        w = np.where((np.abs(along - s) <= half_along) & (np.abs(across - c) <= half_across), sample, 0.0)
+        s_new, c = (w * along).sum() / w.sum(), (w * across).sum() / w.sum()
+        converged = abs(s_new - s) < 1e-9
+        s = s_new
+        if converged:
+            break
+    alpha = float(np.rad2deg(0.5 * np.arctan(s / instrument.sample_detector_distance)))
+    if figure:
+        spot = c_direct + s * normal + c * tangent
+        _incident_angle_figure(direct, sample, x_rel, y_rel, c_direct, spot, normal, tangent, beam_radius, half_along,
+                               half_across, alpha, figure, savename)
+    return alpha
+
+
+def _incident_angle_figure(direct, sample, x_rel, y_rel, c_direct, spot, normal, tangent, beam_radius, half_along,
+                           half_across, alpha, figure, savename):
+    """Direct beam and sample images with the found centres (x) and the windows used to find them."""
+    import matplotlib
+    if figure != 'show':
+        matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+    from matplotlib.patches import Circle, Polygon
+    extent = np.array([x_rel[0] - 0.5 * (x_rel[1] - x_rel[0]), x_rel[-1] + 0.5 * (x_rel[1] - x_rel[0]),
+                       y_rel[0] - 0.5 * (y_rel[1] - y_rel[0]), y_rel[-1] + 0.5 * (y_rel[1] - y_rel[0])]) * 1e3
+    corners = [(spot + a * half_along * normal + b * half_across * tangent) * 1e3 for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5.5))
+    panels = ((axes[0], direct, 'Direct beam', c_direct, max(beam_radius or 0.0, 0.06) * 1.2, None),
+              (axes[1], sample, f'Sample: specular {np.dot(spot - c_direct, normal) * 1e3:.1f} mm from the direct beam, '
+                                f'alpha = {alpha:.4f} deg', 0.5 * (c_direct + spot), None, None),
+              (axes[2], sample, 'Specular close-up (linear scale)', spot, None, 'linear'))
+    for ax, image, title, centre, reach, scale in panels:
+        if reach is None:
+            reach = (0.5 * np.dot(spot - c_direct, normal) + 0.06) if ax is axes[1] else max(half_along, half_across) * 1.2
+        norm = None if scale == 'linear' else LogNorm(vmin=max(image.max() * 1e-5, 0.5), vmax=image.max())
+        ax.imshow(np.maximum(image.T, 0.5), origin='lower', extent=extent, norm=norm, cmap='viridis', interpolation='nearest', aspect='equal')
+        ax.set_xlim((centre[0] - reach) * 1e3, (centre[0] + reach) * 1e3)
+        ax.set_ylim((centre[1] - reach) * 1e3, (centre[1] + reach) * 1e3)
+        if ax is not axes[2]:
+            ax.plot(c_direct[0] * 1e3, c_direct[1] * 1e3, 'x', color='red', ms=12, mew=2.5, label='direct-beam centre')
+        if ax is axes[0] and beam_radius and beam_radius > 0:
+            ax.add_patch(Circle(c_direct * 1e3, beam_radius * 1e3, fill=False, ec='red', ls='--', lw=1.5,
+                                label=f'direct-beam window ({beam_radius * 1e3:.0f} mm)'))
+        if ax is not axes[0]:
+            ax.plot(spot[0] * 1e3, spot[1] * 1e3, 'x', color='magenta', ms=12, mew=2.5, label='specular centre')
+            ax.add_patch(Polygon(corners, closed=True, fill=False, ec='magenta', ls='--', lw=1.5,
+                                 label=f'specular window (+-{half_along * 1e3:.0f} mm along the normal, +-{half_across * 1e3:.0f} mm across)'))
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel('x (NeXus, detector centre) [mm]')
+        ax.set_ylabel('y (NeXus, detector centre) [mm]')
+        ax.legend(loc='best', fontsize=7)
+    plt.tight_layout()
+    if figure == 'show':
+        plt.show()
+    else:
+        path = f"{savename}.{figure}"
+        plt.savefig(path)
+        print(f"Created {path}")
 
 
 def create_argparser():
@@ -274,13 +348,13 @@ def create_argparser():
     parser.add_argument('--beam_angle', type=float, default=None, help="Beam angle in degrees: angle of the incident beam above the nominal beam axis, in the plane of incidence, positive towards the sample surface normal (default: the instrument's configured value, or 0). Note: opposite sign to the former --beam_declination.")
     parser.add_argument('--beam_declination', type=float, default=None, help=argparse.SUPPRESS)  # removed, see main
     parser.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the NeXus file, e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
-    parser.add_argument('--beam_radius', type=float, default=DEFAULT_BEAM_RADIUS, help="Radius [m] around the beam within which the intensity centroid is computed (iterated from the brightest pixel), so that background elsewhere on the detector does not bias it; <= 0 uses the whole detector (default: 0.05).")
+    parser.add_argument('--beam_radius', type=float, default=DEFAULT_BEAM_RADIUS, help="Radius [m] around the beam within which the intensity centroid is computed (iterated from the brightest pixel), so that background elsewhere on the detector does not bias it; <= 0 uses the whole detector (default: 0.1).")
     parser.add_argument('--verbose', action='store_true', help="Print the direct-beam centroid and the predicted landing point.")
     check = parser.add_argument_group('Cross-checks (optional)')
     check.add_argument('--mcpl', type=str, default=None, help="McStas MCPL file of the direct-beam configuration: ray-trace it with the found offset and compare the simulated with the measured direct beam (centroid residual, widths, beam angle, wavelength, intensity factor).")
     check.add_argument('--experiment_time', type=float, default=None, help="Duration of the direct-beam measurement [s], for the intensity factor (with --mcpl).")
-    check.add_argument('--figure', choices=['png', 'pdf', 'show'], default=None, help="Comparison figure of the measured and simulated direct beam (with --mcpl): save as png/pdf, or show it.")
-    check.add_argument('--savename', type=str, default='beam_centre_check', help="Output file name (without extension) for --figure png/pdf (default: beam_centre_check).")
+    check.add_argument('--figure', choices=['png', 'pdf', 'show'], default=None, help="Figures with the found centres and the windows used to find them: the measured and simulated direct beam (with --mcpl) and the incident-angle measurement (with --sample_nxs). Save as png/pdf, or show them.")
+    check.add_argument('--savename', type=str, default='beam_centre_check', help="Output file name (without extension) for --figure png/pdf (default: beam_centre_check; the incident-angle figure gets the suffix _incident_angle).")
     check.add_argument('--sample_nxs', type=str, default=None, help="Sample measurement (same wavelength and detector position): measure the real incident angle from the distance of the specular spot to the direct beam, and compare it with --alpha.")
     check.add_argument('--alpha', type=float, default=None, help="Intended incident angle [deg], compared with the angle measured from --sample_nxs.")
     return parser
@@ -288,8 +362,10 @@ def create_argparser():
 def main():
     parser = create_argparser()
     args = parser.parse_args()
-    if (args.figure or args.experiment_time) and not args.mcpl:
-        parser.error("--figure and --experiment_time require --mcpl.")
+    if args.experiment_time and not args.mcpl:
+        parser.error("--experiment_time requires --mcpl.")
+    if args.figure and not (args.mcpl or args.sample_nxs):
+        parser.error("--figure requires --mcpl or --sample_nxs.")
     if args.beam_declination is not None:
         parser.error("--beam_declination was renamed to --beam_angle, with the OPPOSITE sign "
                      f"(positive = beam rising towards the sample normal): use --beam_angle {-args.beam_declination}")
@@ -312,7 +388,9 @@ def main():
                                                nxs_data_path=args.nxs_data_path, experiment_time=args.experiment_time,
                                                figure=args.figure, savename=args.savename, beam_radius=args.beam_radius)
         if args.sample_nxs:
-            alpha_measured = measure_incident_angle(args.sample_nxs, args.filepath, args.instrument, args.sample_orientation, args.nxs_data_path)
+            alpha_measured = measure_incident_angle(args.sample_nxs, args.filepath, args.instrument, args.sample_orientation, args.nxs_data_path,
+                                                    beam_radius=args.beam_radius, figure=args.figure,
+                                                    savename=f"{args.savename}_incident_angle")
             print(f"\nIncident angle measured from the specular spot of {args.sample_nxs}: {alpha_measured:.4f} deg")
             if args.alpha is not None:
                 print(f"Given --alpha: {args.alpha:.4f} deg (difference {alpha_measured - args.alpha:+.4f} deg)")

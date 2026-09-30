@@ -86,7 +86,7 @@ mg_run \
   --use_avg_materials \
   --savename $OUTPUT_FILE_PATH \
   --sample_orientation 2 \
-  --instrument_detector_centre_offset 0.290852 -0.016066 \
+  --instrument_detector_centre_offset 0.290855 -0.016063 \
 
 ## run plotting using the output of the simulation (OUTPUT_FILE_PATH)
 ## uncomment last line to create png output
@@ -107,6 +107,6 @@ mg_plot \
   --wavelength 6.0 \
   --png \
 #   --sample_orientation 2 \
-#   --instrument_detector_centre_offset 0.290852 -0.016066 \
+#   --instrument_detector_centre_offset 0.290855 -0.016063 \
 #   --alpha 0.24 \
 #   --savename "d22_sim_vs_measurement" --png

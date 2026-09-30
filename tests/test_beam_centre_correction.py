@@ -25,12 +25,12 @@ def _expected_offset(wavelength):
     size_x, size_y = instrument_defaults['d22']['detector']['size']
     x_rel = (np.arange(nx) + 0.5) * size_x / nx - size_x / 2
     y_rel = (np.arange(ny) + 0.5) * size_y / ny - size_y / 2
-    # windowed centroid: pixels within 50 mm of the centroid, iterated from the brightest pixel
+    # windowed centroid: pixels within 100 mm of the centroid, iterated from the brightest pixel
     X, Y = np.meshgrid(x_rel, y_rel, indexing='ij')
     i, j = np.unravel_index(np.argmax(image), image.shape)
     centroid = np.array([x_rel[i], y_rel[j]])
     for _ in range(50):
-        w = image * (((X - centroid[0]) ** 2 + (Y - centroid[1]) ** 2) <= 0.05 ** 2)
+        w = image * (((X - centroid[0]) ** 2 + (Y - centroid[1]) ** 2) <= 0.1 ** 2)
         centroid = np.array([(w * X).sum(), (w * Y).sum()]) / w.sum()
     L = instrument_defaults['d22']['sample_detector_distance']
     drop = 0.5 * G * (L * M_N * wavelength * 1e-10 / H) ** 2
@@ -103,3 +103,36 @@ def test_incident_angle_is_measured_from_the_specular_spot():
     from mcstas_gisans.beam_centre_correction import measure_incident_angle
     alpha = measure_incident_angle("data/paper/d22_measurement/073174.nxs", DIRECT_BEAM_FILE, sample_orientation=2)
     assert alpha == pytest.approx(0.24, rel=0.05)
+
+
+def test_incident_angle_uses_the_whole_flat_topped_specular(tmp_path):
+    """A wide beam gives a flat-topped specular spot, here 5 rows tall and 20 tubes wide with its brightest
+    row at the lower edge: its position is the centroid of the whole spot, not of the brightest pixels."""
+    from mcstas_gisans.beam_centre_correction import measure_incident_angle
+    nx, ny = 128, 256
+    size_x, size_y = instrument_defaults['d22']['detector']['size']
+    y_rel = (np.arange(ny) + 0.5) * size_y / ny - size_y / 2
+    direct, sample = np.zeros((nx, ny)), np.zeros((nx, ny))
+    direct[55:75, 100:105] = 1000.0
+    sample[55:75, 100:105] = 50.0                   # attenuated direct beam below the sample horizon
+    rows = np.arange(160, 165)
+    heights = np.array([1.05, 1.0, 1.0, 1.0, 1.0])  # the brightest row is the lowest one
+    sample[55:75, rows] = 1000.0 * heights
+    paths = []
+    for name, image in (("direct.nxs", direct), ("sample.nxs", sample)):
+        paths.append(tmp_path / name)
+        with h5py.File(paths[-1], 'w') as f:
+            f.create_dataset('entry0/D22/Detector 1/data1', data=image[:, :, None])
+    s = (heights * y_rel[rows]).sum() / heights.sum() - y_rel[100:105].mean()
+    expected = np.rad2deg(0.5 * np.arctan(s / instrument_defaults['d22']['sample_detector_distance']))
+    alpha = measure_incident_angle(str(paths[1]), str(paths[0]), sample_orientation=1)
+    assert alpha == pytest.approx(expected, abs=1e-5)
+    narrow = np.rad2deg(0.5 * np.arctan((y_rel[160:163].mean() - y_rel[100:105].mean()) / instrument_defaults['d22']['sample_detector_distance']))
+    assert abs(narrow - expected) > 1e-3  # a window around the brightest row would be biased low
+
+
+def test_incident_angle_figure_shows_the_found_positions(tmp_path):
+    from mcstas_gisans.beam_centre_correction import measure_incident_angle
+    measure_incident_angle("data/paper/d22_measurement/073174.nxs", DIRECT_BEAM_FILE, sample_orientation=2, figure='png',
+                           savename=str(tmp_path / "angle"))
+    assert (tmp_path / "angle.png").exists()

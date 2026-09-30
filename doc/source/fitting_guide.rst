@@ -177,7 +177,7 @@ Yoneda region) is masked:
    mg_fit data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz \
      --nxs data/paper/d22_measurement/073174.nxs --experiment_time 10800 --background 1.6 \
      --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2084 \
-     --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290852 -0.016066 \
+     --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290855 -0.016063 \
      --model silica_100nm_air --sample_arguments "interferenceRange=5" \
      --sample_size_y 0.10 --sample_size_x 0.10 --allow_sample_miss \
      --specular include_specular --use_avg_materials \

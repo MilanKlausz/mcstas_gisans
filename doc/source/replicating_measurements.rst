@@ -67,15 +67,16 @@ e.g.:
 
    Calculated centre_offset [m]:  [X, Y]
 
-(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290852, -0.016066]``;
+(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290855, -0.016063]``;
 the 0.29 m matches the recorded 300 mm sideways detector translation).
 
 Keep this ``[X, Y]`` value — it is reused, unchanged, in steps 3 and 4 below as
 ``--instrument_detector_centre_offset X Y``. With it, the measured direct beam
 is exactly at Q = 0 and a simulated direct beam lands on the measured one (see
 :ref:`q_convention` in :doc:`technical_details`). The centroid is computed
-within ``--beam_radius`` (default 50 mm) of the beam, so that scattered
-background elsewhere on the detector does not bias it.
+within ``--beam_radius`` (default 100 mm, which holds the whole D22 big beam)
+of the beam, so that scattered background elsewhere on the detector does not
+bias it.
 
 **Cross-checks in the same command (recommended).** Given the MCPL file of the
 direct-beam McStas simulation (``--mcpl``), the tool ray-traces the McStas beam
@@ -90,7 +91,13 @@ position, slits), the beam angle or the wavelength — the offset printed first
 always describes the measurement. Given a sample measurement at the same
 wavelength (``--sample_nxs``), the real incident angle is measured from the
 distance between the specular spot and the direct beam (:math:`2\alpha`; the
-gravity drop cancels) and compared with ``--alpha``:
+gravity drop cancels) and compared with ``--alpha``. The specular position is
+the intensity centroid in a window of ±20 mm along the sample normal and
+±80 mm across it, re-centred on its own centroid: the window has to hold the
+whole spot, because the specular of a wide beam is flat-topped and a window
+around its brightest pixels is biased (by up to 1 pixel for the D22 big beam).
+With ``--figure``, a second figure (``<savename>_incident_angle``) shows the
+direct beam and the sample image with the found centres and both windows:
 
 .. code-block:: bash
 
@@ -99,7 +106,7 @@ gravity drop cancels) and compared with ``--alpha``:
      --sample_nxs sample.nxs --alpha 0.24
 
 For the D22 paper data this gives a residual of 0.01 pixel, an intensity
-factor of 0.2107, and a measured incident angle of 0.234° for the nominal 0.24°.
+factor of 0.2107, and a measured incident angle of 0.235° for the nominal 0.24°.
 
 2. Direct beam simulation and the intensity factor
 -----------------------------------------------------

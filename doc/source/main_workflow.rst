@@ -155,7 +155,7 @@ Each ``--fit`` takes the parameter name followed by the initial value (``--fit r
 
    mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 \
      --model my_custom_sample --wavelength_selected 6.0 --experiment_time 10800 \
-     -a 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290852 -0.016066 \
+     -a 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290855 -0.016063 \
      --intensity_factor 0.21 \
      --fit radius 51 40 60 \
      --fit height 30 20 50 \
