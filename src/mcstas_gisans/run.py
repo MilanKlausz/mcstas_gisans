@@ -292,7 +292,9 @@ def main():
   particles = precondition(particles, args)
 
   ### BornAgain simulation ###
-  if args.outgoing_directions is not None:
+  if getattr(args, 'outgoing_directions_per_pixel', None):
+    suffix = f"{args.outgoing_directions_per_pixel:g}perpixel"
+  elif args.outgoing_directions is not None:
     suffix = args.outgoing_directions
   else:
     suffix = f"{args.outgoing_directions_horizontal}_{args.outgoing_directions_vertical}"

@@ -27,6 +27,7 @@ def create_argparser():
   bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. (default: {DEFAULT_OUTGOING_DIRECTIONS})') #default value is not handled by the argparser to allow checking if outgoing_directions is used together with outgoing_directions_horizontal/outgoing_directions_vertical
   bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction.')
   bornagainGroup.add_argument('--outgoing_directions_vertical', type=int, help='Number of outgoing directions in the vertical direction.')
+  bornagainGroup.add_argument('--outgoing_directions_per_pixel', type=float, help='Choose the number of outgoing directions from the detector: this many directions per detector pixel in each direction within the simulated angle range (e.g. 1). The grid of every neutron is shifted randomly, so a coarser grid adds statistical noise but no blur. Replaces --outgoing_directions/_horizontal/_vertical.')
   bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help = 'Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
   bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help = 'BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
   bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation' ], type=str.lower, help="Control specular reflection in the simulation. "
@@ -96,9 +97,16 @@ def parse_args(parser):
   has_outgoing_directions = hasattr(args, 'outgoing_directions')
   if has_outgoing_directions and (args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None):
     parser.error("Cannot specify --outgoing_directions together with --outgoing_directions_horizontal or --outgoing_directions_vertical")
+  if args.outgoing_directions_per_pixel is not None:
+    if has_outgoing_directions or args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None:
+      parser.error("Cannot specify --outgoing_directions_per_pixel together with --outgoing_directions, --outgoing_directions_horizontal or --outgoing_directions_vertical")
+    if args.outgoing_directions_per_pixel <= 0:
+      parser.error("--outgoing_directions_per_pixel must be positive")
   if (args.outgoing_directions_horizontal is not None) != (args.outgoing_directions_vertical is not None):
     parser.error("Both --outgoing_directions_horizontal and --outgoing_directions_vertical must be specified together")
-  if not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
+  if args.outgoing_directions_per_pixel is not None:
+    args.outgoing_directions = None
+  elif not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
     args.outgoing_directions = DEFAULT_OUTGOING_DIRECTIONS
   elif not has_outgoing_directions:
     args.outgoing_directions = None #needed because of default=argparse.SUPPRESS
