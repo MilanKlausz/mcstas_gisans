@@ -129,8 +129,16 @@ few different ``--seed`` values, which sample the outgoing directions and the
 detector resolution differently, and, if available, with an independent McStas
 run of the same instrument (the seed does not change the MCPL particles). If the
 loss changes as much as the differences between the best evaluations, more
-statistics (more McStas neutrons, or more outgoing directions ``-n``) are needed
-before the parameters can be told apart.
+statistics (more McStas neutrons, or more outgoing directions: ``-n``, or a
+higher ``--sampling`` preset, see :ref:`sampling_presets`) are needed before
+the parameters can be told apart.
+The loss includes the Monte Carlo variance of the simulation, so a noisier
+simulation scores a *lower* loss for the same pattern (for the D22 paper data
+the Poisson deviance rose from 16 to 44 when the rays per pixel went from about
+250 to 7000). Compare losses only between runs with the same MCPL file and the
+same outgoing directions; with ``--sampling``, use the printed
+``--outgoing_directions_horizontal``/``--outgoing_directions_vertical`` numbers
+to repeat a run with exactly the same grid.
 ``mg_fit`` warns if the Monte Carlo variance exceeds the counting variance in
 more than 5% of the pixels.
 
@@ -155,7 +163,10 @@ parameters with a new fit if the loss was still decreasing.
 -----------
 
 The cost of one evaluation grows with the number of MCPL particles and with the
-square of ``-n`` (the outgoing directions per axis). ``-p`` sets the number of
+square of ``-n`` (the outgoing directions per axis). ``--sampling`` chooses the
+directions for a target noise per pixel (``quick``, ``standard``, ``long``) and
+takes the number of neutrons into account, so a larger MCPL file automatically
+gets fewer directions per neutron. ``-p`` sets the number of
 parallel processes; with many processes use ``--bornagain_number_of_threads 1``.
 ``--simulate_mask_angle_range`` saves time when much of the detector is masked.
 A scan with a few points is usually worth more than a long fit from a poor

@@ -132,6 +132,27 @@ For each incident neutron a BornAgain simulation is run with a spherical detecto
 
 Each incident neutron therefore produces one outgoing ray per bin, with the weight of the incident neutron times the probability of scattering into that bin (the differential cross section times the solid angle of the bin). The rays are propagated from the scattering point to the detector plane with gravity (unless ``--no_gravity``). The hit position is smeared with the detector resolution (Gaussian with the given FWHM; it should only describe the detection process — conversion, charge spread, electronics — since the pixelation is applied separately) and assigned to a pixel. Q is then calculated from the pixel, as for a measurement (:ref:`q_convention`). The Monte Carlo randomness (grid shift, resolution smearing) is seeded per particle from ``--seed``, so results are reproducible and independent of the number of processes.
 
+.. _sampling_presets:
+
+Choosing the number of outgoing directions (``--sampling``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Because of the random grid shift, any number of outgoing directions gives an unbiased result: a coarse grid does not blur the pattern, it only adds statistical noise. Each neutron's rays land in different pixels, so the pixels are filled by the rays of *many* neutrons, and the number of directions does not have to match the number of detector pixels. What matters is how many rays a pixel collects over the whole run,
+
+.. math::
+
+   R = N_\mathrm{hit} \, \rho ,
+
+where :math:`N_\mathrm{hit}` is the number of incident neutrons that hit the sample and :math:`\rho` the number of outgoing directions per detector pixel of angular area within the simulated angle range. The relative noise per pixel is about :math:`1.5/\sqrt{R}` (measured for the D22 paper data: 10% at :math:`R \approx 250`, 3.4% at 2000, 1.7% at 7000). The more neutrons the MCPL file contains, the fewer directions are needed for the same noise.
+
+``--sampling quick|standard|long`` chooses the grid for a target of :math:`R` = 250 / 2000 / 10000 rays per pixel (about 10% / 3% / 1.5% noise per pixel); ``--rays_per_pixel`` sets a custom target. The grid is computed once per run, after the particles are preconditioned and the final simulated angle range is known (``--angle_range``, the full detector, or for ``mg_fit`` with ``--simulate_mask_angle_range`` the mask range including its margins): :math:`\rho = R/N_\mathrm{hit}`, and the directions are split so that both axes have the same bin width in units of detector pixels, :math:`n_\mathrm{h,v} = \lceil \sqrt{\rho}\, P_\mathrm{h,v} \rceil`, where :math:`P_\mathrm{h,v}` is the number of detector pixels spanned by the angle range along the horizontal and vertical axis (pixel size divided by the sample-detector distance; for vertical samples the axes of the detector are swapped). The chosen numbers are printed together with the options that reproduce them, e.g.::
+
+   Outgoing directions: 74 x 3 (sampling 'quick': about 269 rays per detector pixel (target 250) from 1710 neutrons hitting the sample, expected noise about 9.1% per pixel). To reproduce: --outgoing_directions_horizontal 74 --outgoing_directions_vertical 3
+
+The printed number of rays can exceed the target, because the numbers of directions are rounded up (noticeably when an axis spans only a few pixels). Explicit ``-n``/``--outgoing_directions`` or ``--outgoing_directions_horizontal``/``--outgoing_directions_vertical`` always override the presets (the two cannot be combined); without any of these options the default grid of 20 × 20 is used.
+
+The margin added around a fit region (``--simulate_mask_angle_range``) enlarges the simulated angle range, so the same target needs more directions (the directions per pixel stay the same, the extra rays land outside the region). The margin is still needed: because of the beam divergence and the beam spot, directions just outside the region reach its edge pixels for some neutrons, and without them these pixels would lose intensity.
+
 5. Core Tools and Modules
 -------------------------
 

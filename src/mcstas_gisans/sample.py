@@ -115,12 +115,13 @@ class Sample:
         sample have been propagated onto the surface (z = 0) by propagate_to_sample_surface;
         a particle is missed if it is not on the surface, outside the sample area, or not
         approaching the surface (vz >= 0).
-        In BornAgain coordinates: x is forward (longitudinal), y is left (horizontal), z is up (vertical)."""
+        In BornAgain coordinates: x is forward (longitudinal), y is left (horizontal), z is up (vertical).
+        Works for single particles and element-wise for arrays of particles."""
         return (
-            (abs(z) > 1e-9) or               # Not on the sample surface (missed particles are not propagated)
-            (abs(x) > 0.5 * self.size_x) or  # Outside longitudinal bounds
-            (abs(y) > 0.5 * self.size_y) or  # Outside horizontal bounds
-            (vz >= 0)                        # Moving away from or parallel to surface
+            (abs(z) > 1e-9) |               # Not on the sample surface (missed particles are not propagated)
+            (abs(x) > 0.5 * self.size_x) |  # Outside longitudinal bounds
+            (abs(y) > 0.5 * self.size_y) |  # Outside horizontal bounds
+            (vz >= 0)                       # Moving away from or parallel to surface
         )
 
     def _resolve_sample_source(self):

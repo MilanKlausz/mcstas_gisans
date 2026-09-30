@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Tuple, Optional, Union
 from .run_cli import parse_args as parse_run_args
 from .input_output import get_particles
 from .preconditioning import precondition
-from .parameters import pack_parameters
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling, build_instrument
 from .run import process_particles, process_particles_parallelly
 from .hardware import get_available_cores
 from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
@@ -1099,6 +1099,7 @@ def run_automated_fit(
             particles2, particle_type2, mcpl_metadata2 = particles, particle_type, mcpl_metadata
         if getattr(args2, 'simulate_mask_angle_range', False):
             _widen_simulated_angle_range(args2, particles2, particle_type2)
+        set_outgoing_directions_from_sampling(args2, particles2, particle_type2)  # sample 2: its own particles and range
 
         param_names, x0, bounds, s1_map, s2_map = parse_joint_fit_arguments(args)
     else:
@@ -1387,7 +1388,7 @@ def run_parameter_scan(
     save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
 def _widen_simulated_angle_range(args: Any, particles: np.ndarray, particle_type: str) -> None:
-    instrument = pack_parameters(args, particle_type)['instrument']
+    instrument = build_instrument(args, particle_type)  # the outgoing directions may not be chosen yet (--sampling)
     args.angle_range = widen_angle_range_for_simulation(args.angle_range, particles, instrument, args.sample_size_x, args.sample_size_y)
     h_min, h_max, v_min, v_max = args.angle_range
     print(f"Simulated angle range incl. margins for beam divergence, sample size, resolution and gravity [deg]: "
@@ -1428,6 +1429,7 @@ def main() -> None:
     particles, particle_type, mcpl_metadata = load_and_precondition_particles(args)
     if getattr(args, 'simulate_mask_angle_range', False):
         _widen_simulated_angle_range(args, particles, particle_type)
+    set_outgoing_directions_from_sampling(args, particles, particle_type)  # once, for the final angle range
 
     if args.fit or args.fit2 or args.fit_common:
         run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)

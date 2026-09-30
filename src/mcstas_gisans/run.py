@@ -21,7 +21,7 @@ from .hardware import get_available_cores
 from .input_output import get_particles, save_simulation_results_as_scipp
 from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
-from .parameters import pack_parameters
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling
 
 def _grid_jitter(angle_range: List[float], n_horizontal: int, n_vertical: int, rand_y: float, rand_z: float) -> Tuple[float, float]:
     """
@@ -430,6 +430,7 @@ def main() -> None:
         sys.exit("ERROR: no incident particles are left to simulate (none hit the sample). Check --alpha, the sample size "
                  "and --sample_orientation, or use --allow_sample_miss to propagate missing particles to the detector.")
 
+    set_outgoing_directions_from_sampling(args, particles, particle_type)  # only with --sampling/--rays_per_pixel
     if args.outgoing_directions is not None:
         suffix = args.outgoing_directions
     else:

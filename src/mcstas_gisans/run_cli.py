@@ -10,6 +10,10 @@ from .sample import Sample
 builtin_samples: List[str] = Sample.list_builtin_samples()
 builtin_str: str = ', '.join(builtin_samples)
 DEFAULT_OUTGOING_DIRECTIONS: int = 20
+# Sampling presets: target number of rays a detector pixel collects over the run (relative noise about 1.5/sqrt(rays))
+SAMPLING_PRESETS = {'quick': 250, 'standard': 2000, 'long': 10000}
+# Used when no outgoing-direction or sampling option is given: a SAMPLING_PRESETS key, or None for DEFAULT_OUTGOING_DIRECTIONS
+DEFAULT_SAMPLING = None
 
 def create_argparser() -> argparse.ArgumentParser:
     """
@@ -37,6 +41,9 @@ def create_argparser() -> argparse.ArgumentParser:
     bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. (default: {DEFAULT_OUTGOING_DIRECTIONS})')
     bornagainGroup.add_argument('--outgoing_directions_horizontal', type=int, help='Number of outgoing directions in the horizontal direction.')
     bornagainGroup.add_argument('--outgoing_directions_vertical', type=int, help='Number of outgoing directions in the vertical direction.')
+    presets_str = ', '.join(f'{name}: {rays}' for name, rays in SAMPLING_PRESETS.items())
+    bornagainGroup.add_argument('--sampling', choices=list(SAMPLING_PRESETS.keys()), type=str.lower, help=f'Sampling preset: choose the number of outgoing directions so that every detector pixel collects about this many rays over the run ({presets_str}), from the number of neutrons hitting the sample and the simulated angle range. The relative noise per pixel is about 1.5/sqrt(rays). The grid of every neutron is shifted randomly, so any grid is unbiased. The chosen numbers are printed with the options that reproduce them. Cannot be combined with --outgoing_directions/_horizontal/_vertical.')
+    bornagainGroup.add_argument('--rays_per_pixel', type=float, help='Custom target number of rays per detector pixel instead of a --sampling preset.')
     bornagainGroup.add_argument('--angle_range', nargs=4, type=float, help='Horizontal min/max and vertical min/max scattering angles covered by the simulation: horiz_min horiz_max vert_min vert_max [deg]')
     bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help='BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
     bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation'], type=str.lower, help="Control specular reflection in the simulation. NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)). SPECULAR_SIMULATION: Uses a separate SpecularSimulation for the specular reflection.")
@@ -113,9 +120,22 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
     has_outgoing_directions: bool = hasattr(args, 'outgoing_directions')
     if has_outgoing_directions and (args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None):
         parser.error("Cannot specify --outgoing_directions together with --outgoing_directions_horizontal or --outgoing_directions_vertical")
+    has_explicit_directions = has_outgoing_directions or args.outgoing_directions_horizontal is not None or args.outgoing_directions_vertical is not None
+    if args.sampling is not None and args.rays_per_pixel is not None:
+        parser.error("Cannot specify --sampling together with --rays_per_pixel")
+    if (args.sampling is not None or args.rays_per_pixel is not None) and has_explicit_directions:
+        parser.error("Cannot specify --sampling or --rays_per_pixel together with --outgoing_directions, --outgoing_directions_horizontal or --outgoing_directions_vertical")
+    if args.rays_per_pixel is not None and args.rays_per_pixel <= 0:
+        parser.error("--rays_per_pixel must be positive")
     if (args.outgoing_directions_horizontal is not None) != (args.outgoing_directions_vertical is not None):
         parser.error("Both --outgoing_directions_horizontal and --outgoing_directions_vertical must be specified together")
-    if not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
+    if args.sampling is None and args.rays_per_pixel is None and not has_explicit_directions and DEFAULT_SAMPLING is not None:
+        args.sampling = DEFAULT_SAMPLING
+    if args.sampling is not None:
+        args.rays_per_pixel = SAMPLING_PRESETS[args.sampling]
+    if args.rays_per_pixel is not None:
+        args.outgoing_directions = None  # set from the particles by set_outgoing_directions_from_sampling
+    elif not has_outgoing_directions and args.outgoing_directions_horizontal is None and args.outgoing_directions_vertical is None:
         args.outgoing_directions = DEFAULT_OUTGOING_DIRECTIONS
     elif not has_outgoing_directions:
         args.outgoing_directions = None
