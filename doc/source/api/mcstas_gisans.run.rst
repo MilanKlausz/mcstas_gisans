@@ -15,4 +15,5 @@
       process_particles
       process_particles_parallelly
       seed_particle_rng
+      set_analyzer
    
