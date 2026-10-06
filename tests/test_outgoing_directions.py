@@ -46,7 +46,7 @@ def test_outgoing_directions_validation_errors(monkeypatch, parser, argv):
 
 def _substrate():
     import bornagain as ba
-    sample = ba.MultiLayer()
+    sample = ba.MultiLayer() if hasattr(ba, 'MultiLayer') else ba.Sample()  # ba.Sample from BornAgain 22 on
     sample.addLayer(ba.Layer(ba.RefractiveMaterial("Vacuum", 0.0, 0.0)))
     sample.addLayer(ba.Layer(ba.RefractiveMaterial("Si", 7.6e-6, 1.7e-10)))
     return sample
