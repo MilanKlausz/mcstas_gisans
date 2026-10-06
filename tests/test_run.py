@@ -23,7 +23,7 @@ def test_run_without_polarization():
     savename = os.path.join(tmpdir, "test_out_no_pol")
     argv = [
       sys.executable, "-m", "mcstas_gisans.run",
-      "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+      "tests/data/d22_1e8/test_events.mcpl.gz",
       "-i", "d22",
       "--wavelength_selected", "6.0",
       "--no_parallel",
@@ -48,7 +48,7 @@ def test_run_with_polarization_default_analyzer():
     savename = os.path.join(tmpdir, "test_out_pol_default")
     argv = [
       sys.executable, "-m", "mcstas_gisans.run",
-      "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+      "tests/data/d22_1e8/test_events.mcpl.gz",
       "-i", "d22",
       "--wavelength_selected", "6.0",
       "--use_polarization",
@@ -75,7 +75,7 @@ def test_analyzer_arguments_parsing():
 
   parser = create_argparser()
   argv = [
-    "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+    "tests/data/d22_1e8/test_events.mcpl.gz",
     "-i", "d22",
     "-n", "20",  # explicit grid: pack_parameters is called without particles
     "--wavelength_selected", "6.0",
@@ -146,7 +146,7 @@ if __name__ == "__main__":
 def _run_hist(tmpdir, name, extra, start_method=None):
   """Run a small simulation (paper MCPL, 5x5 outgoing directions) and return its Q histogram."""
   savename = os.path.join(tmpdir, name)
-  args = ["data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
+  args = ["tests/data/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
           "--outgoing_directions", "5", "--savename", savename] + extra
   if start_method is None:
     cmd = [sys.executable, "-m", "mcstas_gisans.run"] + args
@@ -179,7 +179,7 @@ def test_a_failing_parallel_process_stops_the_run():
   """A worker that raises, or is killed (e.g. by the OOM killer), sends no result: the run must
   fail instead of waiting for it forever."""
   with tempfile.TemporaryDirectory() as tmpdir:
-    args = ["data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
+    args = ["tests/data/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
             "--outgoing_directions", "5", "--savename", os.path.join(tmpdir, "fail"), "--parallel_processes", "3", "--seed", "1"]
     code = ("import os, signal, sys, multiprocessing; multiprocessing.set_start_method('fork', force=True)\n"
             "import mcstas_gisans.run as run\n"

@@ -142,7 +142,7 @@ def test_simulated_direct_beam_matches_the_measurement(tmp_path):
   intensity factor equals the hand calculation of the paper example (120538 / 60 / 9639.83)."""
   from mcstas_gisans.beam_centre_correction import compare_with_simulated_direct_beam
   offset = find_required_centre_offset(DIRECT_BEAM_FILE, sample_orientation=2)
-  results = compare_with_simulated_direct_beam(DIRECT_BEAM_FILE, "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz", offset,
+  results = compare_with_simulated_direct_beam(DIRECT_BEAM_FILE, "tests/data/d22_1e8/test_events.mcpl.gz", offset,
                                                sample_orientation=2, experiment_time=60, figure='png', savename=str(tmp_path / "check"))
   assert np.all(np.abs(results['residual_pixels']) < 0.2)
   assert results['intensity_factor'] == pytest.approx(120538 / 60 / 9639.83, rel=1e-3)

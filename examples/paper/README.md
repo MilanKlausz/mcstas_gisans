@@ -27,10 +27,10 @@ The first two steps can be computationally intensive, so intermediate results ar
 
 ## Skip McStas (use existing results) with *run_d22_sim.sh*
 
-Using an existing McStas simulation result enables doing only the BornAgain simulation/q calculation step and the data processing/plotting step. For this approach use the `run_d22_sim.sh` script. By default, this script uses lower-statistics McStas output for faster runs, but the option to use the McStas output used in the paper is also included (commented out).
+Using an existing McStas simulation result enables doing only the BornAgain simulation/q calculation step and the data processing/plotting step. For this approach use the `run_d22_sim.sh` script. It uses the McStas output of the paper with the `quick` sampling preset (`--sampling quick`, about 100 rays per detector pixel), which takes about 1 minute; the `standard` and `long` presets reduce the noise of the simulated pattern at a higher cost. The plot in the paper was made with an earlier version of the code and different simulation options (100 x 100 outgoing directions per neutron, `--specular include_specular`).
 
 ### Available Data
-- **McStas simulation results in:** `data/paper/mcstas_output`
+- **McStas simulation result in:** `data/paper/mcstas_output/d22_1e9`
 
 ---
 
@@ -60,7 +60,8 @@ It can be checked by examining the output MCPL file with:
 > pymcpltool --stats <path/to/the/file>
 ```
 
-Using the two stored McStas simulation results from the *data/paper* directory as example:
+Using the stored McStas simulation result from the *data/paper* directory as example
+(the *_1e9* in the directory name indicates the number of simulated source neutrons):
 
 ```bash
 > pymcpltool --stats data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz
@@ -69,24 +70,9 @@ nparticles   : 17081
 sum(weights) : 9533.86
 (...)
 ```
-```bash
-> pymcpltool --stats data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz 
-------------------------------------------------------------------------------
-nparticles   : 1726
-sum(weights) : 9639.83
-(...)
-```
 
-Looking at the intensities (sum(weights)), one can see that it is slightly
-lower for the the simulation with lower statistics (the *_1e9* and *_1e8* in the
-directory name indicate the number of simulated source neutrons).
-The intensity factor specific for the *d22_1e8* simulation output is:
-```
-INTENSITY_FACTOR = 120538 / 60 / 9639.83 = 0.2084
-```
-
-These two McStas simulation outputs and the corresponding intensity factors
-are the (first two) *MCSTAS INPUT* options in the `run_d22_sim.sh` script.
+This McStas simulation output and the corresponding intensity factor are the
+first *MCSTAS INPUT* option in the `run_d22_sim.sh` script.
 
 In case the `run_d22_mcstas.sh` script is run to create the *examples/paper/output/d22_1e8* 
 output directory, the resulting intensity can be examined by:
@@ -96,7 +82,7 @@ output directory, the resulting intensity can be examined by:
 
 the corresponding intensity factor can then be calculated as demonstrated above.
 Then, to continue the workflow using the `run_d22_sim.sh` script, the output
-directory and intensity factor can be added to the third **MCSTAS INPUT** option.
+directory and intensity factor can be added to the second **MCSTAS INPUT** option.
 
 ---
 #### Doing the q-calculation for the direct beam simulation
