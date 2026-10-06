@@ -11,7 +11,7 @@ def test_outgoing_directions_default():
     try:
         args = parse_args(parser)
         # default: the 'quick' sampling preset, the grid is chosen from the particles
-        assert args.sampling == 'quick' and args.rays_per_pixel == 250
+        assert args.sampling == 'quick' and args.rays_per_pixel == 100
         assert args.outgoing_directions is None and args.outgoing_directions_horizontal is None
     finally:
         sys.argv = sys_argv_backup
@@ -124,7 +124,7 @@ def _particles(n_hit, n_miss):
   rows = [[1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 400.0, 6.0, 0.0]] * n_hit + [[1.0, 0.05, 0.0, 0.0, 0.0, -1.0, 400.0, 6.0, 0.0]] * n_miss
   return np.array(rows).reshape(-1, 9)
 
-@pytest.mark.parametrize("option, rays_per_pixel", [(["--sampling", "quick"], 250), (["--sampling", "standard"], 2000),
+@pytest.mark.parametrize("option, rays_per_pixel", [(["--sampling", "quick"], 100), (["--sampling", "standard"], 2000),
                                                     (["--sampling", "long"], 10000), (["--rays_per_pixel", "2000"], 2000)])
 def test_sampling_cli_mg_run(monkeypatch, option, rays_per_pixel):
   from mcstas_gisans.parameters import set_outgoing_directions_from_sampling, outgoing_directions_for_sampling
@@ -179,7 +179,7 @@ def test_default_sampling_constant(monkeypatch):
   monkeypatch.setattr(sys, "argv", D22_RUN_ARGV)
   args = parse_args(create_argparser())
   assert run_cli.DEFAULT_SAMPLING == 'quick'
-  assert args.sampling == 'quick' and args.rays_per_pixel == 250 and args.outgoing_directions is None
+  assert args.sampling == 'quick' and args.rays_per_pixel == 100 and args.outgoing_directions is None
   monkeypatch.setattr(run_cli, "DEFAULT_SAMPLING", None)  # without a default preset: the fixed default grid
   args = parse_args(create_argparser())
   assert args.rays_per_pixel is None and args.outgoing_directions == run_cli.DEFAULT_OUTGOING_DIRECTIONS
