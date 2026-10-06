@@ -1,5 +1,5 @@
 """
-Model for Silica particles on Silicon measured in air.
+Model for Silica particles on Silicon measured in air. For BornAgain 21, 22 and 23.
 """
 
 import bornagain as ba
@@ -34,7 +34,9 @@ def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVar
     lattice = ba.BasicLattice2D(latticeParameter*nm, latticeParameter*nm, 120*deg, 0*deg)
 
     # Define interference functions
-    iff = ba.InterferenceFinite2DLattice(lattice, interferenceRange, interferenceRange)
+    # the lattice size must be an integer (BornAgain 22+ rejects a float, e.g. a fitted value)
+    n_size = int(max(1, round(interferenceRange)))
+    iff = ba.InterferenceFinite2DLattice(lattice, n_size, n_size)
     # Averaging the orientation of the 2D lattice around all possible rotation in the x,y plane
     iff.setIntegrationOverXi(True)
     iff.setPositionVariance(positionVariance*nm2)
@@ -55,7 +57,7 @@ def get_sample(radius=51, latticeParameter=114, interferenceRange=5, positionVar
     layer_3 = ba.Layer(material_Silicon)
 
     # Define sample
-    sample = ba.MultiLayer()
+    sample = ba.MultiLayer() if hasattr(ba, 'MultiLayer') else ba.Sample()  # ba.Sample from BornAgain 22 on
     sample.addLayer(layer_1)
     sample.addLayer(layer_2)
     sample.addLayer(layer_3)
