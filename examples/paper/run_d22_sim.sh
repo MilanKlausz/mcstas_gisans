@@ -1,11 +1,15 @@
 #!/bin/bash
 
-## Example script to recreate 'Comparison of measured and simulated GISANS data'
-## plot from the paper by running the BornAgain simulation an data processing
-## steps, but using stored McStas simulations results to skip the longest part
-## of the complete workflow.
-## NOTE: if you with to do the McStas simulation as well, see run_d22_mcstas.sh
+## Example script to recreate the 'Comparison of measured and simulated GISANS data'
+## plot from the paper by running the BornAgain simulation and the data processing
+## steps, using a stored McStas simulation result to skip the longest part of the
+## complete workflow.
+## NOTE: if you wish to do the McStas simulation as well, see run_d22_mcstas.sh
 ##       if you wish to skip the BornAgain simulation, see run_paper_plot.sh
+## The plot in the paper (the stored result plotted by run_paper_plot.sh) was made with
+## an earlier version of the code and different simulation options: the same McStas
+## output and sample parameters, but a fixed grid of 100 x 100 outgoing directions per
+## neutron and --specular include_specular.
 
 ## Expected to be executed from the repository root directory by invoking:
 ##  . examples/paper/run_d22_sim.sh
@@ -14,22 +18,13 @@
 ################################ MCSTAS INPUT #################################
 ###############################################################################
 
-####################### 1) Quick simulation parameters ########################
-## Use lower statistics McStas simulation output
-# Finishes in ~2 minutes with 7 processes (depending on the computer)
-MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e8"
-INTENSITY_FACTOR=0.2084  # based on direct beam simulation vs measurement
+#################### 1) McStas simulation used in the paper ###################
+MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e9"
+INTENSITY_FACTOR=0.2107 # 120538 / 60 / 9533.86: direct beam measurement vs McStas (see README.md)
 
-######################## 2) Long simulation parameters ########################
-## Use McStas output used to create results presented in the paper.
-## Finishes in ~2 minutes with 7 processes as well: the sampling preset gives fewer outgoing directions per neutron
-## for the 10x more neutrons, which have less statistical noise of the beam (depending on the computer)
-# MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e9"
-# INTENSITY_FACTOR=0.2107 # based on direct beam simulation vs measurement
-
-#################### 3) User McStas simulation parameters #####################
+#################### 2) User McStas simulation parameters #####################
 ## McStas output created using the run_d22_mcstas.sh script. Calculate the
-## intensity factor following the instructions in that script.
+## intensity factor following the instructions in README.md.
 # MCSTAS_DIR_NAME="examples/paper/output/d22_1e8" #set McStas output directory
 # INTENSITY_FACTOR= #set intensity factor (should be around ~0.2)
 
@@ -45,7 +40,8 @@ WAVELENGTH=6.0
 ###############################################################################
 SAMPLE_SIZE_Y=0.06 #sample width
 SAMPLE_SIZE_X=0.08 #sample height
-INCIDENT_ANGLE=0.24
+INCIDENT_ANGLE=0.24 # intended angle, as in the paper
+# INCIDENT_ANGLE=0.2353 # measured from the specular spot (mg_beam_centre_correction --sample_nxs ... --alpha 0.24)
 SAMPLE_MODEL=silica_100nm_air #built-in (src/mcstas_gisans/bornagain_samples)
 ## sample parameters for silica_100nm_air sample model
 PARAM_RADIUS=51
@@ -55,13 +51,22 @@ PARAM_LATTICE_PARAMETER=114
 SAMPLE_ARGS="radius=${PARAM_RADIUS};interferenceRange=${PARAM_INTERFERENCE_RANGE};latticeParameter=${PARAM_LATTICE_PARAMETER}"
 
 ###############################################################################
+############################## DETECTOR GEOMETRY ##############################
+###############################################################################
+## detector position from the direct beam measurement 073162.nxs (mg_beam_centre_correction)
+DETECTOR_CENTRE_OFFSET="0.290855 -0.016063"
+
+###############################################################################
 ############################# SIMULATION SETTINGS #############################
 ###############################################################################
-## outgoing directions per neutron from a sampling preset (quick / standard / long: about 250 / 2000 / 10000 rays
-## per detector pixel; printed by mg_run, with the options that reproduce them). With --specular specular_simulation
-## the specular spot keeps the shape of the beam whatever the grid, so no fine grid is needed for it.
+## Outgoing directions per neutron from a sampling preset: quick / standard / long, about
+## 100 / 2000 / 10000 rays per detector pixel (direction-sampling noise ~13% / 3% / 1.3% per
+## pixel); mg_run prints the chosen numbers and the options that reproduce them.
+## 'quick' takes about 1 minute (7 processes, depending on the computer). For an even faster
+## first look, replace '--sampling $SAMPLING' below by '--rays_per_pixel 10' (about 25 seconds).
+## With --specular specular_simulation the specular spot keeps the shape of the beam whatever
+## the number of outgoing directions.
 SAMPLING=quick
-# OUTGOING_DIRECTIONS=100 # previous fixed grid (100 x 100), needed for the specular spot with include_specular
 
 ###############################################################################
 ############################# INPUT/OUTPUT PATHS ##############################
@@ -91,10 +96,10 @@ mg_run \
   --use_avg_materials \
   --savename $OUTPUT_FILE_PATH \
   --sample_orientation 2 \
-  --instrument_detector_centre_offset 0.290855 -0.016063 \
+  --instrument_detector_centre_offset $DETECTOR_CENTRE_OFFSET \
 
-## run plotting using the output of the simulation (OUTPUT_FILE_PATH)
-## uncomment last line to create png output
+## run plotting using the output of the simulation (OUTPUT_FILE_PATH); mg_plot reads the instrument configuration
+## (sample orientation, detector offset, incident angle) from the metadata of the file
 mg_plot \
   --filename "${OUTPUT_FILE_PATH}.h5" \
   --label "D22 simulation" \
@@ -109,9 +114,5 @@ mg_plot \
   --q_min 0.072 \
   --q_max 0.102 \
   --plot_differences 1 \
-  --wavelength 6.0 \
+  --wavelength $WAVELENGTH \
   --png \
-#   --sample_orientation 2 \
-#   --instrument_detector_centre_offset 0.290855 -0.016063 \
-#   --alpha 0.24 \
-#   --savename "d22_sim_vs_measurement" --png

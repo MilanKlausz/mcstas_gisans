@@ -28,7 +28,7 @@ BACKGROUND = 1.6
 def test_d22_paper_comparison(tmp_path):
     savename = str(tmp_path / "d22_sim")
     cmd = [
-        "mg_run", "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "mg_run", "tests/data/d22_1e8/test_events.mcpl.gz",
         "--instrument", "d22", "--intensity_factor", "0.2084", "--wavelength_selected", "6.0",
         "--model", "silica_100nm_air", "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
         "--sample_size_y", "0.10", "--sample_size_x", "0.10", "--alpha", "0.24", "--outgoing_directions", "35",

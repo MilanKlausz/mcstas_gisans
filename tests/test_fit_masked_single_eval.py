@@ -19,7 +19,7 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
     savename = str(tmp_path / "test_fit_masked_output")
     cmd = [
         "mg_fit",
-        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "tests/data/d22_1e8/test_events.mcpl.gz",
         "--instrument", "d22",
         "--intensity_factor", "0.2084",
         "--wavelength_selected", "6.0",

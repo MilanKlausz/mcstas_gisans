@@ -16,7 +16,7 @@ mg_run
 
 .. code-block:: bash
 
-   mg_run mcstas_output.mcpl.gz -i d22 --wavelength_selected 6.0 --model silica_100nm_D2O -n 100 --specular include_specular
+   mg_run mcstas_output.mcpl.gz -i d22 --wavelength_selected 6.0 --model silica_100nm_D2O -n 100 --specular specular_simulation
 
 mg_plot
 -------

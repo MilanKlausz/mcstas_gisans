@@ -226,8 +226,8 @@ starting point.
 ----------------------------------
 
 The silica nanoparticle measurement of the paper (``073174.nxs``, 3 hours at
-0.24°, vertical sample with its normal pointing left) with the low-statistics
-McStas beam included in the repository. The detector offset and the intensity
+0.24°, vertical sample with its normal pointing left) with the McStas beam of
+the paper included in the repository. The detector offset and the intensity
 factor come from the direct beam measurement ``073162.nxs``
 (see :doc:`replicating_measurements`); the region below
 :math:`Q_z = 0.14\,\mathrm{nm}^{-1}` (transmitted beam, specular reflection and
@@ -235,19 +235,21 @@ Yoneda region) is masked:
 
 .. code-block:: bash
 
-   mg_fit data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz \
-     --nxs data/paper/d22_measurement/073174.nxs --experiment_time 10800 --background 1.6 \
-     --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2084 \
+   mg_fit data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz \
+     --nxs data/paper/d22_measurement/073174.nxs --experiment_time 10800 --fit_background \
+     --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2107 \
      --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290855 -0.016063 \
      --model silica_100nm_air --sample_arguments "interferenceRange=5" \
      --sample_size_y 0.10 --sample_size_x 0.10 --allow_sample_miss \
-     --specular include_specular --use_avg_materials \
+     --specular specular_simulation --use_avg_materials \
      --mask_qz_min_cut 0.14 \
      --fit radius 51 45 57 --fit latticeParameter 114 100 130 \
      --max_evals 20 --seed 1 --output_dir fit_example
 
-With 18176 unmasked pixels, 20 evaluations took 5 minutes on a laptop and
-lowered the deviance from 1.650 (radius 51 nm, lattice parameter 114 nm) to
-1.637 (52.6 nm, 117.5 nm). The small differences between the best evaluations
-show that more simulated statistics would be needed to pin the parameters down
-more precisely (section 6).
+``mg_fit`` prints the number of unmasked pixels, the chosen outgoing directions
+(here the ``quick`` preset) and, for every evaluation, the parameters, the loss
+and the fitted background; ``fit_summary.csv`` lists them sorted by the loss.
+If the best evaluations differ by less than the Monte Carlo noise of the loss
+(repeat the best one with a few ``--seed`` values, section 6), more simulated
+statistics (``--sampling standard``) are needed to pin the parameters down more
+precisely.

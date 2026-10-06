@@ -32,7 +32,7 @@ def test_run_simulations(temp_savename, run_args):
     """
     argv = [
         sys.executable, "-m", "mcstas_gisans.run",
-        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "tests/data/d22_1e8/test_events.mcpl.gz",
         "-i", "d22",
         "--wavelength_selected", "6.0",
         "--outgoing_directions", "10",  # small grid: this test is about the output, not the sampling
@@ -86,7 +86,7 @@ def test_analyzer_arguments_parsing(monkeypatch, overrides, expected):
 
     parser = create_argparser()
     argv = [
-        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "tests/data/d22_1e8/test_events.mcpl.gz",
         "-i", "d22",
         "--wavelength_selected", "6.0",
         "--use_polarization",
@@ -143,7 +143,7 @@ def _prepare_run(argv):
 
 
 COMMON_ARGV = [
-    "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+    "tests/data/d22_1e8/test_events.mcpl.gz",
     "--model", "silica_100nm_air",
     "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
     "--sample_size_y", "0.10", "--sample_size_x", "0.10",

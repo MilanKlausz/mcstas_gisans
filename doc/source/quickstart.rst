@@ -21,7 +21,7 @@ Then, install the package via the conda environment defined in ``conda.yml``:
    conda env create -f conda.yml
    conda activate mcstas_gisans
 
-To run the McStas simulation of step 2 you need McStas (version 3.4 or higher). To try the tools without McStas, skip step 2 and use the D22 McStas output included in the repository, ``data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz``, in step 3.
+To run the McStas simulation of step 2 you need McStas (version 3.4 or higher). To try the tools without McStas, skip step 2 and use the D22 McStas output included in the repository, ``data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz``, in step 3.
 
 2. Running the McStas Simulation
 --------------------------------
@@ -44,7 +44,7 @@ This will generate a ``resources/mcstas_models/output_dir/test_events.mcpl.gz`` 
 
 Next, we process these neutrons through the BornAgain sample physics engine using the ``mg_run`` utility. 
 
-Here we simulate a standard ``silica_100nm_D2O`` model, defining the instrument (``-i d22``), the monochromatic wavelength (``--wavelength_selected 6.0``) and the number of outgoing directions (``-n 20``, the default):
+Here we simulate a standard ``silica_100nm_D2O`` model, defining the instrument (``-i d22``), the monochromatic wavelength (``--wavelength_selected 6.0``) and the number of outgoing directions (``-n 20``):
 
 .. code-block:: bash
 
@@ -53,7 +53,7 @@ Here we simulate a standard ``silica_100nm_D2O`` model, defining the instrument 
      --model silica_100nm_D2O \
      -n 20 \
      --savename test_q \
-     --specular include_specular
+     --specular specular_simulation
 
 *(Note: ``-n 20`` is the number of BornAgain scattering directions per axis, so each incident MCPL neutron produces 20 × 20 = 400 outgoing rays. The run time grows with its square; it has nothing to do with the McStas source neutron count. Without ``-n``, the ``quick`` sampling preset chooses the number of directions from the neutrons and the detector pixels, see :ref:`sampling_presets`.)*
 

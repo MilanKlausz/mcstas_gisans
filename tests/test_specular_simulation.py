@@ -19,7 +19,7 @@ import scipp as sc
 def _run_and_get_total_intensity(savename, specular_mode):
     argv = [
         sys.executable, "-m", "mcstas_gisans.run",
-        "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        "tests/data/d22_1e8/test_events.mcpl.gz",
         "-i", "d22",
         "--wavelength_selected", "6.0",
         "--model", "silica_100nm_air",
@@ -125,7 +125,7 @@ def test_no_transmitted_ray(tmp_path):
     intensity (which replaces the diffuse intensity of its specular bin, hence only 'of the order'). With a transmitted
     ray of weight 1 - R, (specular_simulation - none) would be ~(1 - R) / R ~ 200x larger."""
     def total(mode):
-        argv = [sys.executable, "-m", "mcstas_gisans.run", "data/paper/mcstas_output/d22_1e8/test_events.mcpl.gz",
+        argv = [sys.executable, "-m", "mcstas_gisans.run", "tests/data/d22_1e8/test_events.mcpl.gz",
                 "-i", "d22", "--wavelength_selected", "6.0", "--model", "silica_100nm_air",
                 "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
                 "--sample_size_y", "0.10", "--sample_size_x", "0.10", "--alpha", "0.6",
