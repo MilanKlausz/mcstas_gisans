@@ -16,13 +16,14 @@
 
 ####################### 1) Quick simulation parameters ########################
 ## Use lower statistics McStas simulation output
-# Finishes in ~5 minutes with 14 processes (depending on the computer)
+# Finishes in ~2 minutes with 7 processes (depending on the computer)
 MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e8"
 INTENSITY_FACTOR=0.2084  # based on direct beam simulation vs measurement
 
 ######################## 2) Long simulation parameters ########################
 ## Use McStas output used to create results presented in the paper.
-## Finishes in ~50 minutes with 14 processes (depending on the computer)
+## Finishes in ~2 minutes with 7 processes as well: the sampling preset gives fewer outgoing directions per neutron
+## for the 10x more neutrons, which have less statistical noise of the beam (depending on the computer)
 # MCSTAS_DIR_NAME="data/paper/mcstas_output/d22_1e9"
 # INTENSITY_FACTOR=0.2107 # based on direct beam simulation vs measurement
 
@@ -56,7 +57,11 @@ SAMPLE_ARGS="radius=${PARAM_RADIUS};interferenceRange=${PARAM_INTERFERENCE_RANGE
 ###############################################################################
 ############################# SIMULATION SETTINGS #############################
 ###############################################################################
-OUTGOING_DIRECTIONS=100
+## outgoing directions per neutron from a sampling preset (quick / standard / long: about 250 / 2000 / 10000 rays
+## per detector pixel; printed by mg_run, with the options that reproduce them). With --specular specular_simulation
+## the specular spot keeps the shape of the beam whatever the grid, so no fine grid is needed for it.
+SAMPLING=quick
+# OUTGOING_DIRECTIONS=100 # previous fixed grid (100 x 100), needed for the specular spot with include_specular
 
 ###############################################################################
 ############################# INPUT/OUTPUT PATHS ##############################
@@ -80,9 +85,9 @@ mg_run \
   --sample_size_y $SAMPLE_SIZE_Y \
   --sample_size_x $SAMPLE_SIZE_X \
   --alpha $INCIDENT_ANGLE \
-  --outgoing_directions $OUTGOING_DIRECTIONS \
+  --sampling $SAMPLING \
   --allow_sample_miss \
-  --specular 'include_specular' \
+  --specular 'specular_simulation' \
   --use_avg_materials \
   --savename $OUTPUT_FILE_PATH \
   --sample_orientation 2 \
