@@ -11,8 +11,8 @@ builtin_samples: List[str] = Sample.list_builtin_samples()
 builtin_str: str = ', '.join(builtin_samples)
 DEFAULT_OUTGOING_DIRECTIONS: int = 20
 # Sampling presets: target number of rays a detector pixel collects over the run, counted with the effective number of
-# neutrons for their weights (noise of the direction sampling about 1.3/sqrt(rays) per pixel: 8%, 3%, 1.3%)
-SAMPLING_PRESETS = {'quick': 250, 'standard': 2000, 'long': 10000}
+# neutrons for their weights (noise of the direction sampling about 1.3/sqrt(rays) per pixel: 13%, 3%, 1.3%)
+SAMPLING_PRESETS = {'quick': 100, 'standard': 2000, 'long': 10000}
 # Used when no outgoing-direction or sampling option is given: a SAMPLING_PRESETS key, or None for DEFAULT_OUTGOING_DIRECTIONS
 DEFAULT_SAMPLING = 'quick'
 
