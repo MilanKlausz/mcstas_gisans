@@ -11,6 +11,7 @@
       calculate_fitness
       convert_val
       create_fit_evolution_gif
+      fit_flat_background
       format_fit_value
       format_time
       load_and_precondition_particles

@@ -134,13 +134,14 @@ Mode 2: Automated fitting (``--fit``)
 - It uses SciPy optimizers selected with ``--optimizer``: **Nelder-Mead** (default) or **Powell** for local/derivative-free search, or **Differential Evolution** for global exploration (which requires finite bounds on every fitted parameter).
 - During each iteration, a full BornAgain simulation is executed and compared with the measurement over the unmasked detector region (see *Loss functions* below). The simulation is deterministic within a fit: the expected counts are used (no Poisson sampling), and every evaluation uses the same random seed (``--seed``), so differences between evaluations reflect the parameter changes only.
 - The optimizer stops once its convergence tolerances are met or the evaluation budget (``--max_evals``, respected by all optimizers) is exhausted; it does not necessarily reach a perfect match. Nelder-Mead and Powell work in scaled parameters (each parameter divided by its bound range, or by its initial value if unbounded), so ``--xatol`` is relative (default 1% of the scale) and parameters of very different magnitude (e.g. an SLD of 1e-6 and a radius of 50) are handled alike; the bounds are passed to the optimizer. The initial value must lie within the bounds.
+- The flat background is either fixed (``--background``, counts per pixel over the measurement time) or fitted for every evaluation (``--fit_background``, no extra simulation); see the background section of the :doc:`fitting_guide`.
 - Use ``--fit_integer`` to constrain specific parameters (e.g. a discrete layer count) to integer values (Nelder-Mead starts with a step of at least one unit for them), and ``--gif`` to render an animation of the fit's progress.
 
 .. _loss-functions:
 
 Loss functions (``--loss_function``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-With :math:`N_i` the measured counts and :math:`m_i` the simulated expected counts (including ``--background``) with Monte Carlo variance :math:`\sigma_i^2` in the :math:`n` unmasked pixels:
+With :math:`N_i` the measured counts and :math:`m_i` the simulated expected counts (including the flat background, ``--background`` or ``--fit_background``) with Monte Carlo variance :math:`\sigma_i^2` in the :math:`n` unmasked pixels:
 
 - ``poisson_deviance`` (default): the per-pixel deviance :math:`\frac{2}{n}\sum_i[\ln P(N_i|N_i) - \ln P(N_i|m_i,\sigma_i^2)]` of a Poisson likelihood in which the finite simulation statistics are included (the expectation is gamma distributed with mean :math:`m_i` and variance :math:`\sigma_i^2`, making :math:`N_i` negative-binomially distributed; cf. Argüelles, Schneider & Yuan, JHEP 06 (2019) 030). Without Monte Carlo uncertainty it is the Poisson deviance :math:`\frac{2}{n}\sum_i[m_i - N_i + N_i\ln(N_i/m_i)]`. It gives unbiased parameters also at low counts. For a perfect model it is about 1 per pixel (at high counts :math:`1 + \ln(1+\sigma^2/m)`).
 - ``reduced_chi2``: :math:`\frac{1}{n}\sum_i (N_i - m_i)^2/(m_i + \sigma_i^2)`. About 1 for a perfect model at high counts, but biased at low counts (a few counts per pixel).

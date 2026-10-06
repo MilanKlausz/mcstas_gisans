@@ -25,8 +25,9 @@ parameters. Establish these first, as described in :doc:`replicating_measurement
 - **Measurement time** (``--experiment_time``, required): the simulated rates are
   scaled to expected counts over this time. For several ``--nxs`` files (summed)
   it is their total time.
-- **Background** (``--background``): a flat number of counts per pixel added to
-  the simulation, e.g. estimated from a region without scattering.
+- **Background**: a flat number of counts per pixel added to the simulation,
+  either fixed (``--background``) or fitted (``--fit_background``); see
+  section 3.
 - **Sample model**: a built-in model or a Python file with a
   ``get_sample(**kwargs)`` function (see :doc:`custom_sample`). Every fitted or
   scanned name must be a keyword argument of ``get_sample``; fixed values are
@@ -60,7 +61,55 @@ part of the detector is masked. The range is widened by the beam divergence,
 the sample size, the detector resolution and gravity, so no intensity inside the
 unmasked region is lost.
 
-3. Scan first
+3. Background
+-------------
+
+The measured counts contain a background that the sample model does not
+describe: room and instrument background, detector noise, incoherent scattering
+(e.g. from a liquid subphase). In a GISANS measurement much of the unmasked
+region is at, or close to, the background level, so the background has a large
+effect on the loss. If it is set too low, the fit compensates with a pattern
+that is too intense. In the D22 microgel measurement used in the example below,
+the flat floor is 6.1 counts per pixel (the same far from the pattern, at high
+:math:`Q_z` and below the sample horizon, with a Poisson-like spread), while an
+earlier fit used 1.0: re-scored with 6.1, its loss dropped from 6.14 to 4.68
+(reduced :math:`\chi^2` from 8.67 to 3.55), and its pattern turned out to be
+about 1.7 times too intense.
+
+The background is an expected value, like the simulated counts: it is not
+Poisson-sampled, because the counting noise of the measurement is already part
+of the loss. Two ways to set it (they cannot be combined):
+
+- ``--background B``: a fixed number of counts per detector pixel over
+  ``--experiment_time`` (default 0). It can be estimated as the mean measured
+  counts in a region without scattering from the sample, for example below the
+  sample horizon or far from the pattern (away from the direct and transmitted
+  beam).
+- ``--fit_background``: the background is fitted for every evaluation. After
+  each simulation, the flat level that minimises ``--loss_function`` over the
+  unmasked pixels is found by a one-dimensional minimisation between 0 and the
+  mean measured counts. This needs no extra simulation (milliseconds), and it
+  leads to the same optimum as fitting the background as one more parameter.
+  The value is printed with every evaluation, written to the ``background``
+  column of ``fit_summary.csv``/``scan_summary.csv``, and reported for the best
+  evaluation. In joint fits each measurement gets its own background.
+
+The fitted value is conditional on the simulated pattern: where a pattern is
+too intense, a lower background reduces the excess, so far from the optimum
+the fitted background also absorbs errors of the model. In the microgel
+example, the first evaluations of a fit gave 1.1 to 4.1 counts per pixel (the
+best of them was the 1.7 times too intense pattern above), and it approaches
+the floor of the data only as the pattern improves. Judge the value at the best
+fit, and compare it with the measured floor. Two more points:
+
+- Use it with the default ``poisson_deviance``: minimising ``reduced_chi2``
+  (whose variance, the expected counts, is in the denominator) overestimates
+  the background by about 0.5 counts per pixel.
+- The background is flat. A background that varies across the detector (e.g.
+  from the subphase, or from the sample environment) is not described by it;
+  mask such regions or keep them in mind when judging the fit.
+
+4. Scan first
 -------------
 
 A scan evaluates listed parameter values without optimisation:
@@ -74,7 +123,7 @@ values in ``scan_summary.csv`` (in ``--output_dir``) show how sensitive the loss
 is to each parameter and where a fit should start; ``--png`` saves a comparison
 plot for every point.
 
-4. Fitting
+5. Fitting
 ----------
 
 Each ``--fit`` gives a parameter name followed by the initial value
@@ -106,7 +155,7 @@ integer (e.g. a number of layers).
 Joint fits of two measurements (``--nxs2``) with shared (``--fit_common``) and
 separate (``--fit``/``--fit2``) parameters are described in :doc:`main_workflow`.
 
-5. Loss function and Monte Carlo noise
+6. Loss function and Monte Carlo noise
 --------------------------------------
 
 The default loss, ``poisson_deviance``, is the per-pixel deviance of a Poisson
@@ -142,13 +191,14 @@ to repeat a run with exactly the same grid.
 ``mg_fit`` warns if the Monte Carlo variance exceeds the counting variance in
 more than 5% of the pixels.
 
-6. Outputs
+7. Outputs
 ----------
 
 In ``--output_dir`` (default ``scan_results``):
 
 - ``fit_summary.csv`` / ``scan_summary.csv``: every evaluation with its
-  parameters and all loss values, sorted by the selected loss.
+  parameters, all loss values and, with ``--fit_background``, the fitted
+  background, sorted by the selected loss.
 - With ``--png``: a comparison plot of the measurement and the simulation for
   every evaluation (``fit_eval_<n>_<parameters>.png`` in fits,
   ``sim_<parameters>.png`` in scans). ``--gif`` turns the fit plots into an
@@ -159,7 +209,7 @@ is also printed. "Maximum number of function evaluations has been exceeded"
 means the budget ran out before the tolerances were met; continue from the best
 parameters with a new fit if the loss was still decreasing.
 
-7. Run time
+8. Run time
 -----------
 
 The cost of one evaluation grows with the number of MCPL particles and with the
@@ -172,7 +222,7 @@ parallel processes; with many processes use ``--bornagain_number_of_threads 1``.
 A scan with a few points is usually worth more than a long fit from a poor
 starting point.
 
-8. Worked example (D22 paper data)
+9. Worked example (D22 paper data)
 ----------------------------------
 
 The silica nanoparticle measurement of the paper (``073174.nxs``, 3 hours at
@@ -200,4 +250,4 @@ With 18176 unmasked pixels, 20 evaluations took 5 minutes on a laptop and
 lowered the deviance from 1.650 (radius 51 nm, lattice parameter 114 nm) to
 1.637 (52.6 nm, 117.5 nm). The small differences between the best evaluations
 show that more simulated statistics would be needed to pin the parameters down
-more precisely (section 5).
+more precisely (section 6).

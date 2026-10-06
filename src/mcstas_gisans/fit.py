@@ -189,6 +189,51 @@ def calculate_fitness(
         'mc_to_poisson_variance': mc_to_poisson_variance,
     }
 
+def fit_flat_background(
+    hist_nxs: np.ndarray,
+    hist_signal: np.ndarray,
+    hist_signal_mc_error: np.ndarray,
+    loss_function: str
+) -> Tuple[float, float]:
+    """
+    Flat background that minimises a loss between measured and simulated counts (``--fit_background``).
+
+    The background b is searched by a bounded 1D minimisation between 0 and the mean measured
+    counts of the used pixels (a flat level above the mean cannot fit), so it costs no extra
+    simulation. Minimising over b for each parameter set gives the same optimum as fitting b as a
+    parameter of the fit.
+
+    Parameters
+    ----------
+    hist_nxs : np.ndarray
+        Measured counts N (NaN outside the mask).
+    hist_signal : np.ndarray
+        Simulated expected counts over the measurement time, without background.
+    hist_signal_mc_error : np.ndarray
+        Monte Carlo uncertainty of hist_signal.
+    loss_function : str
+        Key of calculate_fitness to minimise (one of LOSS_FUNCTIONS).
+
+    Returns
+    -------
+    tuple
+        (b, loss at b), b in counts per pixel; (0, NaN) if no pixel can be used.
+    """
+    from scipy.optimize import minimize_scalar
+    keep = np.isfinite(hist_nxs) & np.isfinite(hist_signal)
+    counts, signal, error = hist_nxs[keep], hist_signal[keep], hist_signal_mc_error[keep]
+    if counts.size == 0:
+        return 0.0, np.nan
+    loss = lambda b: calculate_fitness(counts, signal + b, error)[loss_function]
+    b_max = max(float(np.mean(counts)), 1e-6)
+    res = minimize_scalar(loss, bounds=(0.0, b_max), method='bounded', options={'xatol': 1e-3 * b_max})
+    best_b, best_loss = float(res.x), float(res.fun)
+    loss_at_zero = loss(0.0)  # the bounded method does not evaluate the end points themselves
+    if loss_at_zero <= best_loss:
+        best_b, best_loss = 0.0, loss_at_zero
+    return best_b, best_loss
+
+
 def save_comparison_plot(
     hist_nxs: np.ndarray,
     hist_nxs_error: np.ndarray,
@@ -584,6 +629,8 @@ def validate_fit_args(args: Any, parser: argparse.ArgumentParser) -> None:
             parser.error("Fitting is not implemented for TOF instruments yet.")
     if not args.nxs:
         parser.error("the following arguments are required: --nxs")
+    if getattr(args, 'fit_background', False) and (args.background is not None or getattr(args, 'background2', None) is not None):
+        parser.error("--fit_background fits the flat background for each evaluation: it cannot be combined with a fixed --background/--background2.")
 
     if has_fit:
         try:
@@ -833,12 +880,19 @@ def run_simulation_evaluation(
 
     # expected counts over the measurement time (deterministic: no Poisson sampling, which
     # would make the objective function random) and their Monte Carlo uncertainty
+    # flat background: fixed (--background, default 0) or fitted to this pattern (--fit_background)
+    fit_background = getattr(args, 'fit_background', False)
+    background = 0.0 if (fit_background or args.background is None) else args.background
     hist_sim, hist_sim_mc_error = upscale_simple(
-        hist_sim, hist_sim_error, args.experiment_time, args.background, poisson_sampling=False
+        hist_sim, hist_sim_error, args.experiment_time, background, poisson_sampling=False
     )
+    if fit_background:
+        background, _ = fit_flat_background(hist_nxs, hist_sim, hist_sim_mc_error, args.loss_function)
+        hist_sim = hist_sim + background
 
     # hist_nxs is NaN outside the mask (prepare_experimental_data)
     metrics = calculate_fitness(hist_nxs, hist_sim, hist_sim_mc_error)
+    metrics['background'] = background
     _warn_if_mc_uncertainty_large(metrics, args)
 
     # for display: expected spread of a measurement = Poisson + Monte Carlo
@@ -850,6 +904,8 @@ def run_simulation_evaluation(
     hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
 
     record = copy.deepcopy(grid_point)
+    if fit_background:
+        record['background'] = background
     for key in LOSS_FUNCTIONS:
         record[key] = metrics[key]
 
@@ -1126,6 +1182,9 @@ def run_automated_fit(
     eval_counter = [0]
     records = []
     start_total_time = time.time()
+    fit_background = getattr(args, 'fit_background', False)
+    if fit_background:
+        print("Flat background: fitted for each evaluation (--fit_background)")
 
     def is_integer(name: str) -> bool:
         base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
@@ -1159,6 +1218,8 @@ def run_automated_fit(
             )
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
+            if fit_background:
+                rec['background'] = metrics['background']
             for key in LOSS_FUNCTIONS:
                 rec[key] = metrics[key]
             loss = metrics[args.loss_function]
@@ -1180,6 +1241,9 @@ def run_automated_fit(
             # joint loss: sum of the per-sample (per-pixel normalised) metrics
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
+            if fit_background:
+                rec['background_sample1'] = metrics1['background']
+                rec['background_sample2'] = metrics2['background']
             for key in LOSS_FUNCTIONS:
                 rec[f"{key}_sample1"] = metrics1[key]
                 rec[f"{key}_sample2"] = metrics2[key]
@@ -1206,7 +1270,11 @@ def run_automated_fit(
             loss = 1e9
 
         param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
-        print_progress(f"{param_str} --> {args.loss_function} = {loss:.4f}", eval_start_time)
+        background_str = ''
+        if fit_background:
+            background_str = (f" | background = {rec['background']:.3f}" if 'background' in rec else
+                              f" | background = {rec['background_sample1']:.3f}, {rec['background_sample2']:.3f}")
+        print_progress(f"{param_str} --> {args.loss_function} = {loss:.4f}{background_str}", eval_start_time)
         return loss
 
     if args.optimizer.lower() == 'differential-evolution':
@@ -1291,6 +1359,15 @@ def run_automated_fit(
     for k, v in best_params.items():
         val_str = str(int(np.round(v))) if is_integer(k) else format_fit_value(v)
         fit_results_lines.append(f"  {k} = {val_str}")
+    if fit_background and records:
+        best_rec = min(records, key=lambda r: (np.isnan(r[args.loss_function]), r[args.loss_function]))
+        if 'background' in best_rec:
+            fit_results_lines.append(f"  background = {best_rec['background']:.4f} [counts per pixel] "
+                                     f"(fitted flat background of the best evaluation, #{best_rec['eval_index']})")
+        else:
+            fit_results_lines.append(f"  background = {best_rec['background_sample1']:.4f} (sample 1), "
+                                     f"{best_rec['background_sample2']:.4f} (sample 2) [counts per pixel] "
+                                     f"(fitted flat backgrounds of the best evaluation, #{best_rec['eval_index']})")
 
     fit_results_lines.extend([
         "\n--- Runtime Statistics ---",
@@ -1370,7 +1447,8 @@ def run_parameter_scan(
         remaining = total_evals - current_count
         eta = avg_iter_time * max(0, remaining)
 
-        print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        background_str = f", background={metrics['background']:.3f}" if getattr(args, 'fit_background', False) else ''
+        print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e}{background_str} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         records.append(record)
         save_summary_csv(records, args.output_dir, "scan_summary.csv")
 
