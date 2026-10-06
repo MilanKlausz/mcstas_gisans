@@ -74,3 +74,58 @@ def test_specular_ray_keeps_the_horizontal_direction(monkeypatch):
   pixel_qy = k * 0.004 / 17.6            # one 4 mm pixel
   assert abs(specular[1] - k * np.sin(phi)) < pixel_qy     # the same side as the incident offset (the old ray: 15 pixels away)
   assert abs(specular[2] - 2 * k * np.sin(a)) < k * 0.008 / 17.6  # qz of the specular within one 8 mm pixel
+
+
+def _include_specular_bin_and_reflectivity(alpha, use_avg_materials, polarization=None, analyzer=None):
+  """The value include_specular puts into the grid bin of the specular direction (BornAgain sets that bin to the
+  reflectivity, for a beam intensity of 1), and the reflectivity of get_simulation_specular, for the paper sample."""
+  from mcstas_gisans.run import get_simulation, get_simulation_specular, get_result_intensities
+  from mcstas_gisans.bornagain_samples import silica_100nm_air
+  sample = silica_100nm_air.get_sample(radius=49.22, latticeParameter=112.85, interferenceRange=5, positionVariance=35.74)
+  direction, efficiency, transmission = analyzer if analyzer else (None, None, None)
+  angle_range = [-0.1, 0.1, alpha - 0.1, alpha + 0.1]  # 3 x 3 bins: the specular in the centre bin
+  values = []
+  for include in (True, False):
+    sim = get_simulation(sample, 3, 3, angle_range, 6.0, alpha, 1.0, 0.0, 0.0, polarization, direction, efficiency, transmission)
+    sim.options().setUseAvgMaterials(use_avg_materials); sim.options().setIncludeSpecular(include)
+    values.append(np.asarray(get_result_intensities(sim.simulate())))
+  specular_bin = values[0][1, 1]
+  assert np.count_nonzero(np.abs(values[0] - values[1]) > 1e-12 * np.abs(values[0]).max()) == 1   # only that bin differs
+  ssim = get_simulation_specular(sample, 6.0, alpha, use_avg_materials, polarization, direction, efficiency, transmission)
+  return specular_bin, np.array(ssim.simulate().flatVector())[0]
+
+def test_reflectivity_is_the_include_specular_one_with_average_materials():
+  """Above the critical angle (0.6 deg; 0.28 deg for Si at 6 A) the reflectivity depends on the particle layer when it
+  is averaged (--use_avg_materials): specular_simulation must use the same option as the ScatteringSimulation."""
+  avg_bin, avg_refl = _include_specular_bin_and_reflectivity(0.6, True)
+  plain_bin, plain_refl = _include_specular_bin_and_reflectivity(0.6, False)
+  assert 1e-4 < avg_refl < 0.1                             # well above the critical angle
+  assert abs(avg_refl / avg_bin - 1) < 1e-6
+  assert abs(plain_refl / plain_bin - 1) < 1e-6
+  assert abs(avg_refl / plain_refl - 1) > 1e-3             # (the option matters here, so the test would see it missing)
+
+def test_reflectivity_is_the_include_specular_one_with_polarisation_and_analyzer():
+  """With a polarised beam and an analyzer the reflected ray gets the same intensity as include_specular's bin."""
+  for polarization, analyzer in (((0.0, 0.0, 1.0), ((0.0, 0.0, 1.0), 0.8, 0.5)), ((0.0, 0.0, 1.0), ((0.0, 0.0, -1.0), 0.8, 0.5))):
+    spec_bin, refl = _include_specular_bin_and_reflectivity(0.6, True, polarization, analyzer)
+    assert abs(refl / spec_bin - 1) < 1e-6, (polarization, analyzer, refl, spec_bin)
+  unpolarised_bin, _ = _include_specular_bin_and_reflectivity(0.6, True)
+  assert abs(spec_bin / unpolarised_bin - 1) > 1e-3        # (the analyzer changes the value, so the test would see it ignored)
+
+def test_no_transmitted_ray():
+  """Above the critical angle most of the beam is transmitted into the substrate; it does not reach the detector, so
+  specular_simulation adds only the reflected ray: nothing at the straight-through position (Qz ~ 0), and a reflected
+  intensity of the order of include_specular's (which replaces the diffuse intensity of its specular bin, hence only
+  'of the order')."""
+  above = ["--alpha", "0.6", "--angle_range", "-0.3", "0.3", "0.45", "0.75",
+           "--outgoing_directions_horizontal", "10", "--outgoing_directions_vertical", "10"]
+  with tempfile.TemporaryDirectory() as tmpdir:
+    none, z_edges, y_edges = _run(tmpdir, "none", above + ["--specular", "none"])
+    sim, _, _ = _run(tmpdir, "sim", above + ["--specular", "specular_simulation"])
+    incl, _, _ = _run(tmpdir, "incl", above + ["--specular", "include_specular"])
+  qz = 0.5 * (z_edges[1:] + z_edges[:-1]); qy = 0.5 * (y_edges[1:] + y_edges[:-1])
+  straight = (np.abs(qy)[:, None] < 0.05) & (np.abs(qz)[None, :] < 0.03)
+  assert z_edges[0] < -0.03 and z_edges[-1] > 0.03 and straight.any()   # the straight-through position is histogrammed
+  assert np.array_equal(sim[straight], none[straight])     # no transmitted ray (the old one: ~(1 - R) of the beam there)
+  reflected, included = (sim - none).sum(), (incl - none).sum()
+  assert reflected > 0 and 0.5 < reflected / included < 2

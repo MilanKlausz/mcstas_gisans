@@ -40,6 +40,18 @@ def get_outgoing_grid(angle_range, outgoing_directions_horizontal, outgoing_dire
   alpha_centres = vert_min + shift_alpha + (np.arange(outgoing_directions_vertical)[::-1] + 0.5) * bin_alpha
   return detector_range, phi_centres, alpha_centres
 
+def set_analyzer(target, direction, efficiency, transmission):
+  """
+  Polarisation analyzer of a detector or a specular scan. BornAgain 22+ takes the Bloch vector (the unit direction
+  times the efficiency) and the mean transmission; older versions took (direction, efficiency, transmission).
+  """
+  direction = np.asarray(direction, dtype=float)
+  unit = direction / np.linalg.norm(direction)
+  try:
+    target.setAnalyzer(ba.R3(*(efficiency * unit)), transmission)
+  except TypeError:
+    target.setAnalyzer(ba.R3(*unit), efficiency, transmission)
+
 def get_simulation(sample, outgoing_directions_horizontal, outgoing_directions_vertical, angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization, analyzer_direction, analyzer_efficiency, analyzer_transmission):
   """
   Create a simulation with outgoing_directions_horizontal and _vertical pixels covering the 4-element angle_range
@@ -60,14 +72,26 @@ def get_simulation(sample, outgoing_directions_horizontal, outgoing_directions_v
   if polarization:
     beam.setPolarization(ba.R3(*polarization))
     if analyzer_direction:
-      detector.setAnalyzer(ba.R3(*analyzer_direction), analyzer_efficiency, analyzer_transmission)
+      set_analyzer(detector, analyzer_direction, analyzer_efficiency, analyzer_transmission)
 
   return ba.ScatteringSimulation(beam, sample, detector)
 
-def get_simulation_specular(sample, wavelength, alpha_i):
+def get_simulation_specular(sample, wavelength, alpha_i, use_avg_materials=False, polarization=None,
+                            analyzer_direction=None, analyzer_efficiency=None, analyzer_transmission=None):
+    """
+    Reflectivity of the sample for one particle (--specular specular_simulation): a SpecularSimulation with the
+    options of the ScatteringSimulation of get_simulation (average materials, polarisation, analyzer), so that the
+    reflected ray has the reflectivity that include_specular puts into its grid bin.
+    """
     scan = ba.AlphaScan(2, alpha_i*deg, alpha_i*deg+1e-6)
     scan.setWavelength(wavelength*angstrom)
-    return ba.SpecularSimulation(scan, sample)
+    if polarization:
+      scan.setPolarization(ba.R3(*polarization))
+      if analyzer_direction:
+        set_analyzer(scan, analyzer_direction, analyzer_efficiency, analyzer_transmission)
+    simulation = ba.SpecularSimulation(scan, sample)
+    simulation.options().setUseAvgMaterials(use_avg_materials)
+    return simulation
 
 def get_result_intensities(res):
     # get probability (intensity) for all outgoing directions
@@ -194,26 +218,19 @@ def process_particles(particles, params, queue=None, start_index=0):
       if specular == 'specular_simulation':
         # The specular reflection as one extra ray in the exact mirror direction (y is the surface normal in
         # the sample frame, so vy changes sign), with the reflectivity of the sample; independent of the
-        # outgoing-direction grid, unlike include_specular, which puts it into the grid bin containing it.
-        # The transmitted (1 - reflectivity) part continues straight. Only for particles hitting the sample.
-        q_specular_sim = []
-        weight_specular_sim = []
+        # outgoing-direction grid, unlike include_specular, which puts it into the grid bin containing it (and
+        # replaces the diffuse intensity of that bin). Only for particles hitting the sample. The transmitted part
+        # (1 - reflectivity) is not added: it enters the substrate (e.g. a liquid) and does not reach the detector.
+        ssim = get_simulation_specular(sample_model, wavelength, alpha_i, use_avg_materials, polarization,
+                                       analyzer_direction=analyzer_direction,
+                                       analyzer_efficiency=analyzer_efficiency,
+                                       analyzer_transmission=analyzer_transmission)
+        if bornagain_number_of_threads is not None:
+          ssim.options().setNumberOfThreads(bornagain_number_of_threads)
+        refl_fraction = np.array(ssim.simulate().flatVector())[0]
 
-        ssim = get_simulation_specular(sample_model, wavelength, alpha_i)
-        res = ssim.simulate()
-        refl_fraction = np.array(res.flatVector())[0]
-
-        # Reflected beam
-        q_specular_sim.append(calculate_q(x, y, z, t, [vx], [-vy], [vz]))
-        weight_specular_sim.append(np.array([p * refl_fraction]))
-
-        ptrans = p * (1.0 - refl_fraction)
-        if ptrans>1e-10:
-            q_specular_sim.append(calculate_q(x, y, z, t, [vx], [vy], [vz]))
-            weight_specular_sim.append(np.array([ptrans]))
-
-        q_array = np.vstack([q_array] + q_specular_sim)
-        weights = np.concatenate([weights] + weight_specular_sim)
+        q_array = np.vstack([q_array, calculate_q(x, y, z, t, [vx], [-vy], [vz])])
+        weights = np.concatenate([weights, np.array([p * refl_fraction])])
 
     if raw_output:
       q_events.append(np.column_stack([weights, q_array]))

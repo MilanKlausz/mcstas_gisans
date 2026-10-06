@@ -39,8 +39,12 @@ def create_argparser():
   bornagainGroup.add_argument('--use_avg_materials', default=False, action='store_true', help = 'BornAgain - use average materials option: "the refractive properties of material layers are computed by taking the average of the matrix material and the embedded particles".')
   bornagainGroup.add_argument('--specular', default='none', choices=['none', 'include_specular', 'specular_simulation' ], type=str.lower, help="Control specular reflection in the simulation. "
                "NONE: Disables specular beam intensity in the GISAS ScatteringSimulation (setIncludeSpecular(False)). "
-               "INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)). "
-               "SPECULAR_SIMULATION: Uses a separate SpecularSimulation for the specular reflection.")
+               "INCLUDE_SPECULAR: Adds specular beam intensity to the GISAS ScatteringSimulation (setIncludeSpecular(True)): "
+               "BornAgain puts the reflectivity into the outgoing-direction bin containing the specular direction, replacing the "
+               "diffuse intensity of that bin, so the specular spot is smeared over one grid bin. "
+               "SPECULAR_SIMULATION: the reflectivity from a separate SpecularSimulation (with the same average-material, "
+               "polarisation and analyzer options) as one extra ray per particle hitting the sample, in the exact mirror "
+               "direction: the specular spot keeps the shape of the beam, independent of the grid (recommended).")
   bornagainGroup.add_argument('--bornagain_number_of_threads', type=int, default=None, help='Number of internal threads BornAgain should use. If None, uses BornAgain default.')
   outputGroup = parser.add_argument_group('Output', 'Control the generated outputs. By default a histogram (and corresponding uncertainty) is generated as an output, saved in a npz file, loadable with the plotQ script.')
   outputGroup.add_argument('-s', '--savename', default='', required=False, help = 'Output filename (can be full path).')
