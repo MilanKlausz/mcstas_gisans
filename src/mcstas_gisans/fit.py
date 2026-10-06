@@ -59,7 +59,8 @@ def create_fit_parser():
                           help='Parameter name followed by values to scan, e.g., --scan radius 10 12 15')
   scan_group.add_argument('--nxs', type=str, nargs='+', required=True, help='Path(s) to experimental NeXus file(s) to match. If multiple files are given (e.g. segmented measurements), their counts are summed; --experiment_time should then be the cumulative experiment time across all given files.')
   scan_group.add_argument('--experiment_time', type=float, default=None, help='Virtual experiment time in seconds for upscaling the simulation. If --nxs specifies multiple files, this should be their cumulative experiment time.')
-  scan_group.add_argument('--background', type=float, default=0.0, help='Flat background level added during upscaling.')
+  scan_group.add_argument('--background', type=float, default=None, help='Fixed flat background level added during upscaling [expected counts per bin of the measured histogram over --experiment_time] (default: 0). Cannot be combined with --fit_background.')
+  scan_group.add_argument('--fit_background', action='store_true', help='Fit the flat background instead of setting it with --background (the two cannot be combined): for each simulated pattern, the background level [counts per bin] that minimises --loss_function over the unmasked bins is found (a fast 1D minimisation between 0 and the mean measured counts, no extra simulation) and printed with the evaluation. It is conditional on the simulated pattern: a too intense pattern gets a too low background, so it is reliable only near the best fit. Use it with the poisson_deviance loss: minimising reduced_chi2 overestimates the background by ~0.5 counts.')
   scan_group.add_argument('--poisson_sampling', action='store_true', help='Enable random Poisson noise sampling on the simulated data. (Off by default during scans/fits to ensure deterministic, smooth objective function evaluation for optimizer convergence.)')
   scan_group.add_argument('--output_dir', type=str, default='scan_results', help='Directory to save scan results.')
 
@@ -276,6 +277,28 @@ def calculate_fitness(hist_nxs, hist_sim, hist_sim_mc_error):
       'log_residual': log_residual,
       'mc_to_poisson_variance': mc_to_poisson_variance,
   }
+
+def fit_flat_background(hist_nxs, hist_signal, hist_signal_error, loss_function):
+  """
+  Flat background b [counts per bin] that minimises the loss_function between the measured counts
+  (hist_nxs, NaN where masked) and the simulated expected counts hist_signal + b (hist_signal without
+  background, with its Monte Carlo error hist_signal_error), over the bins where both are finite.
+  b is searched between 0 and the mean measured counts (a flat level above the mean cannot fit).
+  Returns (b, loss at b).
+  """
+  from scipy.optimize import minimize_scalar
+  keep = np.isfinite(hist_nxs) & np.isfinite(hist_signal)
+  counts, signal, error = hist_nxs[keep], hist_signal[keep], hist_signal_error[keep]
+  loss = lambda b: calculate_fitness(counts, signal + b, error)[loss_function]
+  if counts.size == 0:
+    return 0.0, np.nan
+  b_max = max(float(np.mean(counts)), 1e-6)
+  res = minimize_scalar(loss, bounds=(0.0, b_max), method='bounded', options={'xatol': 1e-3 * b_max})
+  best_b, best_loss = float(res.x), float(res.fun)
+  loss_at_zero = loss(0.0)  # the bounded method does not evaluate the end points themselves
+  if loss_at_zero <= best_loss:
+    best_b, best_loss = 0.0, loss_at_zero
+  return best_b, best_loss
 
 def save_comparison_plot(hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
                          hist_sim, hist_sim_error, y_edges_sim, z_edges_sim,
@@ -511,6 +534,8 @@ def validate_fit_args(args, parser):
       parser.error("--experiment_time is required: the simulated rates are scaled to expected counts over the measurement time before they are compared with the measured counts.")
   if not args.nxs:
     parser.error("the following arguments are required: --nxs")
+  if getattr(args, 'fit_background', False) and (args.background is not None or getattr(args, 'background2', None) is not None):
+    parser.error("--fit_background fits the flat background for each evaluation: it cannot be combined with a fixed --background/--background2.")
 
   if (args.fit2 or args.sample_arguments2) and not args.nxs2:
     args.nxs2 = args.nxs  # Default secondary NeXus dataset to primary NeXus dataset if omitted
@@ -625,22 +650,33 @@ def run_simulation_evaluation(grid_point, args, particles, particle_type, hist_n
     else:
       raise ValueError(f"Incompatible shapes: NeXus={hist_nxs.shape}, Sim={hist_sim.shape}")
 
+  background = args.background if args.background is not None else 0.0
   if args.experiment_time:
+    fit_background = getattr(args, 'fit_background', False)
     hist_sim, hist_sim_error = upscale_simple(
-        hist_sim, hist_sim_error, args.experiment_time, args.background,
-        poisson_sampling=args.poisson_sampling
+        hist_sim, hist_sim_error, args.experiment_time, 0.0 if fit_background else background,
+        poisson_sampling=args.poisson_sampling and not fit_background
     )
+    if fit_background:
+      background, _ = fit_flat_background(hist_nxs, apply_mask(hist_sim, mask, np.nan), hist_sim_error, args.loss_function)
+      hist_sim = hist_sim + background
+      if args.poisson_sampling:
+        hist_sim = np.random.default_rng().poisson(lam=hist_sim)
+        hist_sim_error = np.sqrt(hist_sim)
 
   hist_sim_masked = apply_mask(hist_sim, mask, np.nan)
   hist_sim_error_masked = apply_mask(hist_sim_error, mask, 0.0)
 
   metrics = calculate_fitness(hist_nxs, hist_sim_masked, hist_sim_error_masked)
+  metrics['background'] = background
   if metrics['mc_to_poisson_variance'] > 1.0:
     print(f"WARNING: the Monte Carlo variance of the simulation exceeds the counting variance in more than 5% of the "
           f"unmasked pixels (95th percentile of the ratio: {metrics['mc_to_poisson_variance']:.2f}). More simulated "
           f"statistics would make the loss more reliable.")
 
   record = copy.deepcopy(grid_point)
+  if getattr(args, 'fit_background', False):
+    record['background'] = background
   for key in LOSS_FUNCTIONS:
     record[key] = metrics[key]
 
@@ -807,6 +843,9 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
   eval_counter = [0]
   records = []
   start_total_time = time.time()
+  fit_background = getattr(args, 'fit_background', False)
+  if fit_background:
+    print("Flat background: fitted for each evaluation (--fit_background)")
 
   def objective_function(x):
     eval_start_time = time.time()
@@ -853,6 +892,8 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
       metrics = res[0]
       rec = copy.deepcopy(display_point)
       rec['eval_index'] = eval_counter[0]
+      if fit_background:
+        rec['background'] = metrics['background']
       for key in LOSS_FUNCTIONS:
         rec[key] = metrics[key]
       records.append(rec)
@@ -881,6 +922,9 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
 
       rec = copy.deepcopy(display_point)
       rec['eval_index'] = eval_counter[0]
+      if fit_background:
+        rec['background_sample1'] = metrics1['background']
+        rec['background_sample2'] = metrics2['background']
       for key in LOSS_FUNCTIONS:  # joint loss: sum of the per-sample metrics
         rec[f'{key}_sample1'] = metrics1[key]
         rec[f'{key}_sample2'] = metrics2[key]
@@ -913,7 +957,11 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     eta = avg_iter_time * max(0, remaining)
 
     param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
-    print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+    background_str = ''
+    if fit_background:
+      background_str = (f" | background = {rec['background']:.3f}" if 'background' in rec else
+                        f" | background = {rec['background_sample1']:.3f}, {rec['background_sample2']:.3f}")
+    print(f"Fit Eval #{eval_counter[0]}/{args.max_evals}: {param_str} --> {args.loss_function} = {loss:.4f}{background_str} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     return loss
 
   if args.optimizer.lower() == 'differential-evolution':
@@ -1006,6 +1054,13 @@ def run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, 
     else:
       val_str = format_fit_value(v)
     fit_results_lines.append(f"  {k} = {val_str}")
+  if fit_background and records:
+    best_rec = min(records, key=lambda r: (np.isnan(r[args.loss_function]), r[args.loss_function]))
+    if 'background' in best_rec:
+      fit_results_lines.append(f"  background = {best_rec['background']:.4f} [counts per bin] (fitted flat background of the best evaluation, #{best_rec['eval_index']})")
+    else:
+      fit_results_lines.append(f"  background = {best_rec['background_sample1']:.4f} (sample 1), {best_rec['background_sample2']:.4f} (sample 2) "
+                               f"[counts per bin] (fitted flat backgrounds of the best evaluation, #{best_rec['eval_index']})")
 
   fit_results_lines.extend([
       "\n--- Runtime Statistics ---",
@@ -1051,7 +1106,8 @@ def run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error,
     remaining = total_evals - current_count
     eta = avg_iter_time * max(0, remaining)
 
-    print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+    background_str = f", background={metrics['background']:.3f}" if getattr(args, 'fit_background', False) else ''
+    print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e}{background_str} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
     records.append(record)
     save_summary_csv(records, args.output_dir, "scan_summary.csv")
 
