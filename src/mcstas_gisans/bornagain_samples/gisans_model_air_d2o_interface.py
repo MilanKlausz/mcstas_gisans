@@ -9,7 +9,6 @@ interface. For BornAgain 22 and 23 (ba.Sample).
 Default parameter values: the silica nanoparticle sample at high surface pressure (281836.nxs), sample 1 of the
 joint high/low-pressure fit (differential evolution, alpha 0.4318, specular_simulation, poisson_deviance 5.43;
 best evaluation of a run stopped by the time limit), with pos_var=60 and lattice_size=2 as in that fit.
-lattice_a_2_radius_plus keeps its original default 0 (the fit gave 19.09), which scripts rely on.
 The same model is used for the nanoparticles with a pNIPAM shell with other parameter values.
 
 Author: Nicolo Paracini (created on 1 May 2026).
@@ -112,7 +111,7 @@ def get_sample(
     vf_si_np=0.6537,
     radius=52.36,
     z_pos=-90.41,
-    lattice_a_2_radius_plus=0.0,
+    lattice_a_2_radius_plus=19.09,
     # lattice_a=108, #make this 2*radius + epsilon(where epsilon is a different parameter that can be fitted) (reasonable limit for NP: lower:0 -- upper:2 radius) (limit for with shell: lower: 0 (which would mean no shell:D)-- upper: 2radius] (todo check that the math adds up for the R85 lattica_a=205)
     # lattice_b=108, #this should be the same as lattice_a, remove this variable!
     lattice_alpha=120,

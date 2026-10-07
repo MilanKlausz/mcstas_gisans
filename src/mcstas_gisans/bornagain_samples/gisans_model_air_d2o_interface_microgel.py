@@ -9,7 +9,6 @@ sites hold a 'void' sphere of air above and D2O below the interface. For BornAga
 Default parameter values: the best fit of the high-resolution microgel measurement at 30 mN/m (8 summed NeXus
 files, alpha 0.4341, specular_simulation, fitted background; differential evolution, second round, with
 lattice_size=7 and pos_var=60: evaluation 321, poisson_deviance 2.6344).
-microgel_sld keeps its original default 5.56e-6 (the fit gave 5.116e-6), which scripts rely on.
 
 Author: Nicolo Paracini (created on 1 May 2026).
 """
@@ -119,7 +118,7 @@ def get_sample(
     pos_var=60,
     lattice_size=7,
     surface_density=7.39008344563e-05,
-    microgel_sld=5.56e-6
+    microgel_sld=5.116e-6
 ):
     """
     Get the BornAgain sample of the microgel particles at the air/D2O interface.

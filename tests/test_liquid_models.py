@@ -51,12 +51,12 @@ def test_liquid_model_defaults():
     np_defaults = {name: p.default for name, p in inspect.signature(
         Sample(0.1, 0.1, NP_MODEL, None).get_module().get_sample).parameters.items()}
     assert np_defaults['lattice_size'] == 2 and np_defaults['pos_var'] == 60
-    assert np_defaults['lattice_a_2_radius_plus'] == 0.0  # relied on by scripts that do not set it
+    assert np_defaults['lattice_a_2_radius_plus'] == 19.09
 
     microgel_defaults = {name: p.default for name, p in inspect.signature(
         Sample(0.1, 0.1, MICROGEL_MODEL, None).get_module().get_sample).parameters.items()}
     assert microgel_defaults['lattice_size'] == 7 and microgel_defaults['pos_var'] == 60
-    assert microgel_defaults['microgel_sld'] == 5.56e-6  # relied on by scripts that do not set it
+    assert microgel_defaults['microgel_sld'] == 5.116e-6
 
 
 @pytest.mark.parametrize('model, sample_arguments, fitted', SCRIPT_PARAMETERS)
