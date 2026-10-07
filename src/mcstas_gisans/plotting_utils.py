@@ -72,7 +72,9 @@ def log_plot_2d(
     savename : str, optional
         Base filename if saving the plot, by default 'plotQ'.
     match_horizontal_axes : bool, optional
-        Whether to adjust colorbar to match horizontal axes, by default False.
+        Whether to attach the colorbar to the right of the axes instead of taking its width
+        from them (so that the Qy axis lines up with a plot of the same width above or below),
+        by default False.
     output : str, optional
         Action for the plot ('show', 'none', or extension like '.png'), by default 'show'.
     add_colorbar : bool, optional
@@ -107,22 +109,65 @@ def log_plot_2d(
     ax.set_ylabel('Qz [1/nm]')
     if title_text is not None:
         ax.set_title(title_text)
-    fig = ax.figure
 
     # plt.gca().invert_xaxis() #optionally invert x-axis?
 
     if add_colorbar:
-        if not match_horizontal_axes:
-            cbar = fig.colorbar(quadmesh, ax=ax, orientation='vertical')
-        else:
-            # Adjust the colorbar axis to exactly match the plot's vertical extent
-            cax = fig.add_axes([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.02, ax.get_position().height])
-            cbar = fig.colorbar(quadmesh, cax=cax)
+        add_map_colorbar(quadmesh, ax, match_horizontal_axes)
 
     # cbar.set_label('Intensity') # Optionally set the colorbar label
 
     show_or_save(output, savename + '_2D')
     return quadmesh
+
+def add_map_colorbar(mappable: Any, ax: plt.Axes, match_horizontal_axes: bool = False) -> Any:
+    """
+    Add a vertical colorbar to a 2D map.
+
+    Parameters
+    ----------
+    mappable : matplotlib.cm.ScalarMappable
+        The plotted map (e.g. the QuadMesh of pcolormesh).
+    ax : matplotlib.axes.Axes
+        The axes of the map.
+    match_horizontal_axes : bool, optional
+        If False (default), the colorbar takes its width from the map's axes. If True, it is
+        attached to the right of the axes instead, so the map keeps the full width of its slot and
+        its Qy axis lines up with a plot of the same width above or below it (an inset axes, which
+        moves with the map, also through tight_layout).
+
+    Returns
+    -------
+    matplotlib.colorbar.Colorbar
+        The colorbar.
+    """
+    fig = ax.figure
+    if not match_horizontal_axes:
+        return fig.colorbar(mappable, ax=ax, orientation='vertical')
+    # gap and width of 0.01 and 0.02 figure widths, in units of the axes width
+    width = ax.get_position().width
+    cax = ax.inset_axes([1.0 + 0.01 / width, 0.0, 0.02 / width, 1.0])
+    return fig.colorbar(mappable, cax=cax)
+
+def link_axes(map_axes: List[plt.Axes], slice_ax: Optional[plt.Axes] = None) -> None:
+    """
+    Share the Qy and Qz axes of 2D Q maps, and the Qy axis of a 1D Qy-slice plot with them, so that
+    zooming or panning one map in the interactive viewer applies to all of them (axis limits set
+    later on any of them are shared, too). Tick labels are not hidden.
+
+    Parameters
+    ----------
+    map_axes : list of matplotlib.axes.Axes
+        Axes of the 2D maps (Qy horizontal, Qz vertical).
+    slice_ax : matplotlib.axes.Axes, optional
+        Axes of a 1D plot with Qy on its horizontal axis (only that axis is shared).
+    """
+    first = map_axes[0]
+    for ax in map_axes[1:]:
+        ax.sharex(first)
+        ax.sharey(first)
+    if slice_ax is not None:
+        slice_ax.sharex(first)
 
 def _finite_max_on_side(hist: np.ndarray, y_edges: np.ndarray, split_qy: float, left: bool) -> float:
     """Largest finite value of the Qy bins (first axis) whose centre is on the given side of split_qy."""
@@ -147,7 +192,8 @@ def split_plot_2d(
     y_range: Optional[List[float]] = None,
     z_range: Optional[List[float]] = None,
     split_qy: float = 0.0,
-    add_colorbar: bool = True
+    add_colorbar: bool = True,
+    match_horizontal_axes: bool = False
 ) -> Any:
     """
     Plot two 2D histograms in one map with a common logarithmic color scale: the first one
@@ -178,13 +224,16 @@ def split_plot_2d(
         Qy of the split, by default 0.
     add_colorbar : bool, optional
         Whether to add a colorbar, by default True.
+    match_horizontal_axes : bool, optional
+        Whether to attach the colorbar to the right of the axes instead of taking its width
+        from them (see add_map_colorbar), by default False.
 
     Returns
     -------
     matplotlib.collections.QuadMesh
         The QuadMesh of the left half (for a colorbar).
     """
-    from matplotlib.patches import Rectangle
+    from matplotlib.path import Path
     if ax is None:
         _, ax = plt.subplots()
     if y_range is None:
@@ -199,13 +248,16 @@ def split_plot_2d(
     norm = colors.LogNorm(vmin=intensity_min, vmax=intensity_max)
     quadmesh_left = ax.pcolormesh(y_edges_left, z_edges_left, hist_left.T, norm=norm, cmap=cmap)
     quadmesh_right = ax.pcolormesh(y_edges_right, z_edges_right, hist_right.T, norm=norm, cmap=cmap)
-    # clip each half to its side of split_qy within the plotted range (a clip path replaces the
-    # clipping to the axes, so the rectangles stay inside the axis limits)
-    y_lo, y_hi = min(y_range), max(y_range)
-    z_lo, z_hi = min(z_range), max(z_range)
-    split = min(max(split_qy, y_lo), y_hi)
-    quadmesh_left.set_clip_path(Rectangle((y_lo, z_lo), split - y_lo, z_hi - z_lo, transform=ax.transData))
-    quadmesh_right.set_clip_path(Rectangle((split, z_lo), y_hi - split, z_hi - z_lo, transform=ax.transData))
+    # clip each half to its side of split_qy (within the extent of its histogram). A Path, unlike a
+    # Rectangle patch, is applied in addition to the clipping to the axes, so the maps stay inside
+    # the axes also when zoomed or panned in the interactive viewer.
+    def side_clip_path(y_from, y_to, z_edges):
+        z_lo, z_hi = np.min(z_edges), np.max(z_edges)
+        return Path([(y_from, z_lo), (y_to, z_lo), (y_to, z_hi), (y_from, z_hi), (y_from, z_lo)], closed=True)
+    quadmesh_left.set_clip_path(side_clip_path(min(np.min(y_edges_left), split_qy), split_qy, z_edges_left),
+                                ax.transData)
+    quadmesh_right.set_clip_path(side_clip_path(split_qy, max(np.max(y_edges_right), split_qy), z_edges_right),
+                                 ax.transData)
     ax.axvline(split_qy, color='white', linewidth=1)
 
     text_style = dict(transform=ax.transAxes, va='top', color='white',
@@ -220,7 +272,7 @@ def split_plot_2d(
     if title_text is not None:
         ax.set_title(title_text)
     if add_colorbar:
-        ax.figure.colorbar(quadmesh_left, ax=ax, orientation='vertical')
+        add_map_colorbar(quadmesh_left, ax, match_horizontal_axes)
     return quadmesh_left
 
 def plot_q_1d(

@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Any, Dict
 
-from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, show_or_save
+from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, show_or_save, link_axes
 from .experiment_time import upscale_simple
 from .input_output import load_scipp_file
 
@@ -53,6 +53,8 @@ def get_overlay_plot_axes(column: int = 2) -> Tuple[List[plt.Axes], plt.Axes]:
     Get axes for special subplot layout for dataset comparison. 
     
     Create a grid of subplots, replacing the bottom row with a single larger subplot.
+    The Qy and Qz axes of the top row (2D maps) are shared, and the Qy axis of the bottom
+    row (1D slice) with them, so that zooming one of them zooms all.
 
     Parameters
     ----------
@@ -65,7 +67,7 @@ def get_overlay_plot_axes(column: int = 2) -> Tuple[List[plt.Axes], plt.Axes]:
         Tuple containing (axes_top, axes_bottom) where axes_top is a list of Axes 
         for the top row and axes_bottom is the single Axes for the bottom row.
     """
-    fig, axes = plt.subplots(2, column, figsize=(16, 12))
+    fig, axes = plt.subplots(2, column, figsize=(16, 12), squeeze=False)  # 2D array also for one column
 
     #Replace the bottom row of the grid with a single new subplot
     gs = axes[1, 0].get_gridspec() #Get GridSpec from the bottom left subplot
@@ -75,6 +77,7 @@ def get_overlay_plot_axes(column: int = 2) -> Tuple[List[plt.Axes], plt.Axes]:
 
     axes = axes.flatten()
     axes_top = [axes[i] for i in range(column)]
+    link_axes(axes_top, axes_bottom)
     return axes_top, axes_bottom
 
 PLOT_DEFAULTS = {'instrument': 'd22', 'alpha': 0.0, 'sample_orientation': 1, 'wavelength': 6.0}
@@ -440,6 +443,7 @@ def _setup_main_plot(args: Any, datasets: List[Any]) -> Tuple[Any, Any, Any, Any
 
     if args.dual_plot:
         _, (ax1, ax2) = plt.subplots(2, figsize=(6, 12))
+        link_axes([ax1], ax2)  # the Qy axis of the 1D slice follows the map
         plot_output = 'none'
         match_horizontal_axes = True
     else:
@@ -454,6 +458,7 @@ def _setup_main_plot(args: Any, datasets: List[Any]) -> Tuple[Any, Any, Any, Any
             axes_multi2d = axes.flatten()
             for i in range(n_plots, rows * cols):
                 fig.delaxes(axes_multi2d[i])
+            link_axes(axes_multi2d[:n_plots])  # zooming one map zooms all
             
         if args.pdf:
             plot_output = ".pdf"
@@ -505,7 +510,9 @@ def main() -> None:
             common_maximum = max_value if args.individual_colorbars is False else None
 
             if plot_2d_axes is not None:
-                log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, output='none')
+                # a single map spans the row: its colorbar is attached to its right instead of taking
+                # its width, so that its Qy axis lines up with the 1D slice below
+                log_plot_2d(hist, y_edges, z_edges, label, ax=plot_2d_axes, intensity_min=intensity_min, intensity_max=common_maximum, y_range=y_plot_range, z_range=z_plot_range, savename=args.savename, match_horizontal_axes=len(axes_top) == 1, output='none')
 
             qz_min_index = np.digitize(args.q_min, z_edges) - 1
             qz_max_index = np.digitize(args.q_max, z_edges) - 1

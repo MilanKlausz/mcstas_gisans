@@ -92,8 +92,10 @@ def test_fit_comparison_plot_split_view(tmp_path, monkeypatch):
                                  0.3, 0.6, [-0.3, 0.3], [0.0, 1.0], savename, "Sim", 1.0, split_view=split_view)
         assert os.path.exists(savename)
     plain, split = figures
-    # plain: two maps + two colorbars + the 1D slice; split: one map + one colorbar + the 1D slice
-    assert len(plain.axes) == 5 and len(split.axes) == 3
+    # plain: two maps + two colorbars + the 1D slice; split: one map (with its colorbar attached as
+    # an inset axes, so that the map has the width of the 1D slice) + the 1D slice
+    assert len(plain.axes) == 5 and len(split.axes) == 2
+    assert len(split.axes[0].child_axes) == 1
     labels = [text.get_text() for text in split.axes[0].texts]
     assert labels == ["D22 measurement", "Simulation"]
     monkeypatch.undo()

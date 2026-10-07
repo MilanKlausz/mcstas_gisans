@@ -254,7 +254,9 @@ def save_comparison_plot(
 ) -> None:
     """
     Save a 2x2 comparison plot of experimental and simulated data (with split_view: one 2D map
-    with the measurement for Qy < 0 and the simulation for Qy > 0, above the 1D slice).
+    with the measurement for Qy < 0 and the simulation for Qy > 0, above the 1D slice of the
+    same width). The axes of the 2D maps and the Qy axis of the 1D slice are shared (zooming one
+    zooms all in the interactive viewer).
 
     Parameters
     ----------
@@ -292,7 +294,7 @@ def save_comparison_plot(
         One split 2D map instead of two separate maps.
     """
     import matplotlib.pyplot as plt
-    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d
+    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
 
     if intensity_min is not None:
         intensity_min = float(intensity_min)
@@ -301,15 +303,14 @@ def save_comparison_plot(
     intensity_max = hist_nxs[~np.isnan(hist_nxs)].max()
 
     if split_view:
-        fig = plt.figure(figsize=(16, 12))
-        gs = fig.add_gridspec(2, 4)
-        ax_map = fig.add_subplot(gs[0, 1:3])
+        # one column: the 1D slice has the width of the map above it (the colorbar is attached
+        # to the right of the map instead of taking its width, so that the Qy axes line up)
+        fig, (ax_map, ax_bottom) = plt.subplots(2, 1, figsize=(10, 12))
         split_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, hist_sim, y_edges_sim, z_edges_sim,
                       label_left="D22 measurement", label_right="Simulation", title_text=label_sim, ax=ax_map,
                       intensity_min=intensity_min, intensity_max=intensity_max,
-                      y_range=y_plot_range, z_range=z_plot_range)
+                      y_range=y_plot_range, z_range=z_plot_range, match_horizontal_axes=True)
         map_axes = [ax_map]
-        ax_bottom = fig.add_subplot(gs[1, :])
     else:
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
@@ -327,6 +328,8 @@ def save_comparison_plot(
         axes[1, 0].remove()
         axes[1, 1].remove()
         ax_bottom = fig.add_subplot(gs[1:, :])
+    # zooming one map zooms all of them, and the Qy axis of the 1D slice
+    link_axes(map_axes, ax_bottom)
 
     qz_min_index = np.digitize(q_min, z_edges_sim) - 1
     qz_max_index = np.digitize(q_max, z_edges_sim) - 1
@@ -486,6 +489,7 @@ def save_joint_comparison_plot(
     """
     Save a 3x2 joint comparison plot of experimental and simulated data for two samples (with
     split_view: one 2D map per sample, the measurement for Qy < 0 and the simulation for Qy > 0).
+    The axes of the 2D maps and the Qy axis of the 1D slice are shared.
 
     Parameters
     ----------
@@ -539,7 +543,7 @@ def save_joint_comparison_plot(
         One split 2D map per sample instead of two separate maps.
     """
     import matplotlib.pyplot as plt
-    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d
+    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
 
     intensity_min = 1.0
     vmax1 = hist_nxs1[~np.isnan(hist_nxs1)].max() if np.any(~np.isnan(hist_nxs1)) else 100.0
@@ -582,6 +586,8 @@ def save_joint_comparison_plot(
     axes[bottom_row, 0].remove()
     axes[bottom_row, 1].remove()
     ax_bottom = fig.add_subplot(gs[bottom_row, :])
+    # zooming one map zooms all of them, and the Qy axis of the 1D slice
+    link_axes([ax for ax, _ in map_axes_1 + map_axes_2], ax_bottom)
 
     qz_min_index1 = np.digitize(q_min, edges_sim1_1) - 1
     qz_max_index1 = np.digitize(q_max, edges_sim1_1) - 1
