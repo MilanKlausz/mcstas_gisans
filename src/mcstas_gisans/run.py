@@ -23,7 +23,7 @@ from .hardware import get_available_cores
 from .input_output import get_particles, save_simulation_results_as_scipp
 from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
-from .parameters import pack_parameters, set_outgoing_directions_from_sampling
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling, neutron_angle_windows
 
 def _grid_jitter(angle_range: List[float], n_horizontal: int, n_vertical: int, rand_y: float, rand_z: float) -> Tuple[float, float]:
     """
@@ -137,14 +137,17 @@ def _execute_bornagain_simulation(
     alpha_i: float,
     p: float,
     polarization: List[float],
-    params: Dict[str, Any]
+    params: Dict[str, Any],
+    angle_range: Optional[List[float]] = None
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Setup and run the BornAgain scattering simulation for a single particle.
+    Setup and run the BornAgain scattering simulation for a single particle, with its outgoing directions in
+    angle_range (default: params['angle_range']).
     Returns:
         (weights, alpha_f_grid, phi_f_grid)
     """
-    angle_range = params['angle_range']
+    if angle_range is None:
+        angle_range = params['angle_range']
     outgoing_directions_horizontal = params['outgoing_directions_horizontal']
     outgoing_directions_vertical = params['outgoing_directions_vertical']
 
@@ -259,6 +262,9 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
     """
     Carry out the BornAgain simulation and subsequent processing for a batch of incident particles.
     start_index is the global index of the first particle of the batch (for per-particle seeding).
+    The outgoing directions of every particle cover params['angle_range'], or with params['angle_window_region']
+    (mg_fit --simulate_mask_angle_range_factor auto) the particle's own window of directions that can reach that
+    region (neutron_angle_windows, calculated here from the particles of the batch).
     """
     f_temp = None
     h5_temp_path = None
@@ -276,6 +282,8 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
         buffer_idx = 0
         buffer_capacity = 1_000_000
         random_seed = params.get('random_seed')
+        window_region = params.get('angle_window_region')
+        windows = neutron_angle_windows(window_region, particles, instrument) if window_region is not None else None
 
         if not is_tof:
             pixel_hist = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
@@ -317,7 +325,8 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
                 )
             else:
                 weights, alpha_f_grid, phi_f_grid = _execute_bornagain_simulation(
-                    sample_model, wavelength, alpha_i, p, polarization, params
+                    sample_model, wavelength, alpha_i, p, polarization, params,
+                    angle_range=windows[id] if windows is not None else None
                 )
                 
                 phi_f_total = phi_i + phi_f_grid

@@ -1,4 +1,18 @@
+import argparse
+
 from .run_cli import create_argparser as create_run_parser
+
+def _angle_range_factor(value):
+    """--simulate_mask_angle_range_factor: 'auto' or a positive number."""
+    if value == 'auto':
+        return value
+    try:
+        factor = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected 'auto' or a positive number, got {value!r}")
+    if factor <= 0:
+        raise argparse.ArgumentTypeError(f"the factor must be positive, got {factor}")
+    return factor
 
 def create_fit_parser():
     parser = create_run_parser()
@@ -41,9 +55,9 @@ def create_fit_parser():
     scan_mask_group.add_argument('--mask_include_q_box', action='append', nargs=4, type=float, default=None,
                                  help='Include rectangular Q-region defined by 4 numbers: qy_min qy_max qz_min qz_max [1/nm]. Applied after exclusions. (Can be specified multiple times).')
     scan_mask_group.add_argument('--simulate_mask_angle_range', action='store_true',
-                                 help='Simulate only the outgoing angles that can reach the unmasked detector pixels (faster). The range enclosing the unmasked pixels is widened by the incident beam divergence, the sample size, the detector resolution and the gravity drop.')
-    scan_mask_group.add_argument('--simulate_mask_angle_range_factor', type=float, default=1.0,
-                                 help='Additional expansion factor for the --simulate_mask_angle_range range before the margins are added (default: 1.0).')
+                                 help='Simulate only the outgoing angles that can reach the unmasked detector pixels (faster), see --simulate_mask_angle_range_factor.')
+    scan_mask_group.add_argument('--simulate_mask_angle_range_factor', type=_angle_range_factor, default='auto',
+                                 help="Outgoing angles simulated with --simulate_mask_angle_range. 'auto' (default): every neutron hitting the sample gets its own window of the directions from which its rays can reach the range enclosing the unmasked pixels (as seen from the sample centre), i.e. that range shifted by the neutron's incident horizontal direction, its hit point on the sample and its gravity drop, plus 2 sigma of the detector resolution on every side; the windows have the size of that range (plus the resolution margins), and the outgoing-direction grid covers the window of each neutron. A number: that range scaled by this factor about its centre, simulated for every neutron; a warning is printed if it does not contain the union of the windows (rays reaching the edge of the unmasked region are then missing).")
     fit_group = parser.add_argument_group('Automated optimization / fitting options')
     fit_group.add_argument('--fit', action='append', nargs='+', required=False,
                            help='Parameter to fit with initial guess and optional min/max bounds, e.g., --fit radius 51 40 60')

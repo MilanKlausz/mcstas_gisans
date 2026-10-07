@@ -57,9 +57,20 @@ and without the mask and exits. ``mg_fit`` prints the number of unmasked pixels.
 
 ``--simulate_mask_angle_range`` restricts the simulated outgoing angles to those
 that can reach unmasked pixels, which makes each evaluation faster when a large
-part of the detector is masked. The range is widened by the beam divergence,
-the sample size, the detector resolution and gravity, so no intensity inside the
-unmasked region is lost.
+part of the detector is masked. By default (``--simulate_mask_angle_range_factor
+auto``) every neutron hitting the sample gets its own window of outgoing
+directions: the range enclosing the unmasked pixels, as seen from the sample
+centre, shifted by the neutron's incident horizontal direction, its hit point on
+the sample and its gravity drop, and widened by 2 sigma of the detector
+resolution on every side. The windows of all neutrons have the size of that
+range (plus the resolution margins), smaller than a common range containing all
+of them (which the beam divergence, the beam spot and the wavelength spread
+widen), so the same number of outgoing directions is denser; only rays smeared
+into the region from beyond 2 sigma are lost (about 0.01% for the D22
+examples). The size of the windows and their union
+are printed. With a number instead of ``auto`` the range enclosing the unmasked
+pixels is scaled by it about its centre and simulated for every neutron; a
+warning is printed if it does not contain the union of the windows.
 
 3. Background
 -------------

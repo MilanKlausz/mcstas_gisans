@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Tuple, Optional, Union
 from .run_cli import parse_args as parse_run_args
 from .input_output import get_particles
 from .preconditioning import precondition
-from .parameters import pack_parameters, set_outgoing_directions_from_sampling, build_instrument
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling, build_instrument, angle_window_extent, angle_window_margin
 from .run import process_particles, process_particles_parallelly
 from .hardware import get_available_cores
 from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
@@ -754,50 +754,22 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
         raise ValueError("The mask excludes every detector pixel; nothing is left to compare.")
 
     if getattr(args, 'simulate_mask_angle_range', False):
-        factor = getattr(args, 'simulate_mask_angle_range_factor', 1.0)
-        mask_angle_range = list(instrument.get_masked_angle_range(mask, factor=factor))
-        args.angle_range = mask_angle_range
-        print(f"Mask angle range [deg] (factor={factor:.2f}): horiz=[{mask_angle_range[0]:.4f}, {mask_angle_range[1]:.4f}], vert=[{mask_angle_range[2]:.4f}, {mask_angle_range[3]:.4f}]")
+        # the range enclosing the unmasked pixels as seen from the sample centre; with
+        # --simulate_mask_angle_range_factor auto every neutron gets its own window of directions that can reach it
+        # (neutron_angle_windows, in process_particles), with a numeric factor the range scaled by it is simulated
+        args.mask_angle_range = list(instrument.get_masked_angle_range(mask))
+        factor = getattr(args, 'simulate_mask_angle_range_factor', 'auto')
+        if factor == 'auto':
+            args.angle_window_region = list(args.mask_angle_range)
+            args.angle_range = args.mask_angle_range  # replaced by the union of the windows (_set_simulated_angle_range)
+        else:
+            args.angle_window_region = None  # (args2 of a joint fit is a copy of args)
+            args.angle_range = list(instrument.get_masked_angle_range(mask, factor=factor))
+        fmt = lambda r: f"horiz=[{r[0]:.4f}, {r[1]:.4f}], vert=[{r[2]:.4f}, {r[3]:.4f}]"
+        print(f"Mask angle range [deg] (the unmasked pixels seen from the sample centre): {fmt(args.mask_angle_range)}"
+              + ("" if factor == 'auto' else f"; simulated with factor {factor:g}: {fmt(args.angle_range)}"))
 
     return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
-
-def widen_angle_range_for_simulation(angle_range: List[float], particles: np.ndarray, instrument: Any,
-                                     sample_size_x: float, sample_size_y: float) -> List[float]:
-    """
-    Widen the outgoing-angle range [horiz_min, horiz_max, vert_min, vert_max] (deg, BornAgain
-    frame) that encloses the unmasked pixels as seen from the sample centre, so that every
-    simulated neutron that can reach those pixels is simulated:
-
-    - horizontal: the outgoing horizontal angles are sampled relative to each neutron's incident
-      horizontal direction (the largest absolute ``phi_i`` of the particles), and scattering happens anywhere across
-      the sample width;
-    - both: the detector resolution (3 sigma);
-    - lab-vertical: a neutron launched above the region falls into it (gravity drop over the flight
-      path at the longest wavelength), i.e. the range is extended upwards in the lab frame.
-    """
-    h_min, h_max, v_min, v_max = angle_range
-    L = instrument.sample_detector_distance
-    det = instrument.detector
-    vx, vy, wavelength = particles[:, 4], particles[:, 5], particles[:, 7]
-    phi_i_max = float(np.rad2deg(np.max(np.abs(np.arctan2(vy, vx))))) if len(particles) else 0.0
-    resolution = float(np.rad2deg(3 * max(det.sigma_x_nexus, det.sigma_y_nexus) / L))
-    footprint_h = float(np.rad2deg(0.5 * sample_size_y / L))
-    footprint_v = float(np.rad2deg(0.5 * sample_size_x * np.tan(np.deg2rad(max(abs(v_min), abs(v_max)))) / L))
-    h_margin = phi_i_max + footprint_h + resolution
-    v_margin = footprint_v + resolution
-    h_min, h_max, v_min, v_max = h_min - h_margin, h_max + h_margin, v_min - v_margin, v_max + v_margin
-
-    if not instrument.no_gravity and len(particles):
-        from .particle_calculations import calculate_neutron_velocity
-        t = L / calculate_neutron_velocity(float(np.max(wavelength)))
-        drop_angle = float(np.rad2deg(0.5 * 9.80665 * t**2 / L))
-        up = -det.gravity_acceleration_vector / np.linalg.norm(det.gravity_acceleration_vector)  # lab up in BA frame
-        if abs(up[2]) >= abs(up[1]):   # lab vertical ~ BornAgain z (horizontal sample)
-            v_min, v_max = (v_min, v_max + drop_angle) if up[2] > 0 else (v_min - drop_angle, v_max)
-        else:                          # lab vertical ~ BornAgain y (vertical sample)
-            h_min, h_max = (h_min, h_max + drop_angle) if up[1] > 0 else (h_min - drop_angle, h_max)
-    return [h_min, h_max, v_min, v_max]
-
 
 def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
     """
@@ -1194,7 +1166,7 @@ def run_automated_fit(
         else:
             particles2, particle_type2, mcpl_metadata2 = particles, particle_type, mcpl_metadata
         if getattr(args2, 'simulate_mask_angle_range', False):
-            _widen_simulated_angle_range(args2, particles2, particle_type2)
+            _set_simulated_angle_range(args2, particles2, particle_type2)
         set_outgoing_directions_from_sampling(args2, particles2, particle_type2)  # sample 2: its own particles and range
 
         param_names, x0, bounds, s1_map, s2_map = parse_joint_fit_arguments(args)
@@ -1505,12 +1477,32 @@ def run_parameter_scan(
 
     save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
 
-def _widen_simulated_angle_range(args: Any, particles: np.ndarray, particle_type: str) -> None:
+def _set_simulated_angle_range(args: Any, particles: np.ndarray, particle_type: str) -> None:
+    """
+    --simulate_mask_angle_range, once the particles are known: the per-neutron outgoing-angle windows of the
+    neutrons hitting the sample (neutron_angle_windows) are calculated and their size and union printed. With
+    --simulate_mask_angle_range_factor auto they are simulated (args.angle_range is set to their union, for
+    information); with a numeric factor its range (set by prepare_experimental_data) is kept, and a warning is printed
+    where it does not contain the union, i.e. where rays reaching the unmasked region are not simulated.
+    """
     instrument = build_instrument(args, particle_type)  # the outgoing directions may not be chosen yet (--sampling)
-    args.angle_range = widen_angle_range_for_simulation(args.angle_range, particles, instrument, args.sample_size_x, args.sample_size_y)
-    h_min, h_max, v_min, v_max = args.angle_range
-    print(f"Simulated angle range incl. margins for beam divergence, sample size, resolution and gravity [deg]: "
-          f"horiz=[{h_min:.4f}, {h_max:.4f}], vert=[{v_min:.4f}, {v_max:.4f}]")
+    region = getattr(args, 'mask_angle_range', None) or args.angle_range
+    factor = getattr(args, 'simulate_mask_angle_range_factor', 'auto')
+    union, (size_h, size_v) = angle_window_extent(args, particles, instrument, region)
+    print(f"Outgoing-angle window of each neutron (the directions that can reach the mask angle range, "
+          f"+-{angle_window_margin(instrument):.4f} for the resolution): {size_h:.4f} x {size_v:.4f} deg; "
+          f"their union: horiz=[{union[0]:.4f}, {union[1]:.4f}], vert=[{union[2]:.4f}, {union[3]:.4f}] "
+          f"({union[1] - union[0]:.4f} x {union[3] - union[2]:.4f} deg)")
+    if factor == 'auto':
+        args.angle_range = union
+        return
+    names = ('horizontal minimum', 'horizontal maximum', 'vertical minimum', 'vertical maximum')
+    short = [f"{name} {used:.4f} (union {needed:.4f})" for i, (name, used, needed) in enumerate(zip(names, args.angle_range, union))
+             if (used > needed + 1e-9 if i % 2 == 0 else used < needed - 1e-9)]
+    if short:
+        print(f"WARNING: the simulated angle range of --simulate_mask_angle_range_factor {factor} does not contain the "
+              f"union of the per-neutron windows: {'; '.join(short)} [deg]. Rays reaching the edge of the unmasked "
+              f"region are missing ('auto' simulates the window of each neutron).")
 
 
 def main() -> None:
@@ -1546,7 +1538,7 @@ def main() -> None:
 
     particles, particle_type, mcpl_metadata = load_and_precondition_particles(args)
     if getattr(args, 'simulate_mask_angle_range', False):
-        _widen_simulated_angle_range(args, particles, particle_type)
+        _set_simulated_angle_range(args, particles, particle_type)
     set_outgoing_directions_from_sampling(args, particles, particle_type)  # once, for the final angle range
 
     if args.fit or args.fit2 or args.fit_common:
