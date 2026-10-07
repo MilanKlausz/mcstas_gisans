@@ -421,16 +421,33 @@ def _plot_split_view(args: Any, datasets: List[Any], intensity_min: float, plot_
     """
     One 2D map of the first two datasets: the first for Qy < 0, the second for Qy > 0
     (with --nxs: the measurement left, the simulation right), on a common colour scale.
+    With --overlay, the 1D Qy slices of both datasets (--q_min..--q_max) below, as wide as the map.
     """
     if len(datasets) != 2:
         sys.exit(f"--split_view needs exactly two datasets, got {len(datasets)}.")
     from .plotting_utils import split_plot_2d
     (hist_left, _, y_edges_left, z_edges_left, label_left), (hist_right, _, y_edges_right, z_edges_right, label_right) = datasets
     y_plot_range, z_plot_range, _, _ = get_plot_ranges(datasets, args.y_plot_range, args.z_plot_range)
-    _, ax = plt.subplots(figsize=(10, 8))
+    if args.overlay:
+        _, (ax, ax_slice) = plt.subplots(2, 1, figsize=(10, 12))
+        link_axes([ax], ax_slice)
+    else:
+        _, ax = plt.subplots(figsize=(10, 8))
     split_plot_2d(hist_left, y_edges_left, z_edges_left, hist_right, y_edges_right, z_edges_right,
                   label_left=label_left, label_right=label_right, ax=ax, intensity_min=intensity_min,
-                  y_range=y_plot_range, z_range=z_plot_range)
+                  y_range=y_plot_range, z_range=z_plot_range, match_horizontal_axes=args.overlay)
+    if args.overlay:
+        for line_color, (hist, hist_error, y_edges, z_edges, label) in zip(['blue', 'green'], datasets):
+            qz_min_index = np.digitize(args.q_min, z_edges) - 1
+            qz_max_index = np.digitize(args.q_max, z_edges) - 1
+            values, errors, y_bins, z_limits = extract_range_to_1d(hist, hist_error, y_edges, z_edges, [qz_min_index, qz_max_index])
+            title_text = f" Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]"
+            plot_q_1d(values, errors, y_bins, 'Qy [1/nm]', color=line_color, title_text=title_text, label=label, ax=ax_slice, limits=y_plot_range, savename=args.savename, output='none')
+        for z_limit in z_limits:  # the summed Qz range
+            ax.axhline(z_limit, color='magenta', linestyle='--')
+        ax_slice.set_ylim(bottom=intensity_min)
+        ax_slice.grid()
+        ax_slice.legend(loc='upper left')
     plt.tight_layout()
     show_or_save(plot_output, args.savename)
 

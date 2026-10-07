@@ -101,7 +101,9 @@ def parse_args(parser):
         parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')
 
     if args.split_view:
-        conflicting = [name for name in ('overlay', 'multi2d', 'dual_plot') if getattr(args, name)]
+        conflicting = [name for name in ('multi2d', 'dual_plot') if getattr(args, name)]
+        if args.plot_differences:
+            conflicting.append('plot_differences')
         if conflicting:
             parser.error(f"--split_view cannot be combined with --{', --'.join(conflicting)}.")
         n_datasets = len(args.filename or []) + len(args.nxs or [])

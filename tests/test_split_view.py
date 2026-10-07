@@ -69,7 +69,8 @@ def test_mg_plot_split_view_writes_one_figure(tmp_path):
 
 
 @pytest.mark.parametrize("extra, message", [
-    (["--split_view", "--overlay"], "cannot be combined"),
+    (["--split_view", "--multi2d"], "cannot be combined"),
+    (["--split_view", "--overlay", "--plot_differences", "2"], "cannot be combined"),
     (["--split_view", "--nxs", "data/paper/d22_measurement/073174.nxs"], "exactly two datasets"),
 ])
 def test_mg_plot_split_view_validation(tmp_path, extra, message):

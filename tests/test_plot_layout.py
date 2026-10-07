@@ -3,6 +3,7 @@ Tests for the layout of the multi-panel figures of mg_plot and mg_fit: the width
 relative to the 2D maps above it, and the shared (linked) axes, so that zooming one 2D map zooms
 all maps of the figure and the Qy axis of the 1D slice.
 """
+import os
 import sys
 
 import matplotlib
@@ -181,4 +182,17 @@ def test_mg_plot_overlay_single_map_has_the_width_of_the_slice(monkeypatch):
     (ax_map,), ax_slice = _maps_and_slice(fig)
     assert ax_map.get_position().x0 == pytest.approx(ax_slice.get_position().x0, abs=TOL)
     assert ax_map.get_position().x1 == pytest.approx(ax_slice.get_position().x1, abs=TOL)
+    plt.close('all')
+
+
+def test_mg_plot_split_view_with_overlay(monkeypatch):
+    """--split_view --overlay: one split map and the 1D slices of both datasets below, as wide as the
+    map, with the Qy axes linked."""
+    fig = _mg_plot_figure(monkeypatch, NXS_FILES, ["--split_view", "--overlay"])
+    (ax_map,), ax_slice = _maps_and_slice(fig)
+    assert [text.get_text() for text in ax_map.texts] == [os.path.basename(f) for f in NXS_FILES]
+    assert len(ax_slice.get_legend().get_texts()) == 2
+    assert ax_map.get_position().x0 == pytest.approx(ax_slice.get_position().x0, abs=TOL)
+    assert ax_map.get_position().x1 == pytest.approx(ax_slice.get_position().x1, abs=TOL)
+    _assert_linked([ax_map], ax_slice)
     plt.close('all')
