@@ -67,7 +67,7 @@ e.g.:
 
    Calculated centre_offset [m]:  [X, Y]
 
-(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290855, -0.016063]``;
+(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290838, -0.016061]``;
 the 0.29 m matches the recorded 300 mm sideways detector translation).
 
 Keep this ``[X, Y]`` value — it is reused, unchanged, in steps 3 and 4 below as

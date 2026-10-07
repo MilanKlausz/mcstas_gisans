@@ -15,7 +15,7 @@ maintainers = [
 description = "BornAgain GISANS simulation with beam from McStas"
 requires-python = ">=3.11.0,<3.12.0"
 dependencies = [
-  "numpy>=1.0,<2.0",
+  "numpy>=1.0",
   "mcpl",
   "bornagain>=21.1",
   "scipp",

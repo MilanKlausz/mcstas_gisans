@@ -4,7 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - numpy>=1.0,<2.0
+  - numpy>=1.0,<2.0  # for the bornagain==21.2 PyPI wheel below (built against NumPy 1); not needed with BornAgain 22+
   - mcpl
   - matplotlib
   - h5py

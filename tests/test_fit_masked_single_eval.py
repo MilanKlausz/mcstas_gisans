@@ -33,7 +33,7 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
         "--specular", "include_specular",
         "--use_avg_materials",
         "--sample_orientation", "2",
-        "--instrument_detector_centre_offset", "0.290852", "-0.016066",
+        "--instrument_detector_centre_offset", "0.290838", "-0.016061",
         "--nxs", "data/paper/d22_measurement/073174.nxs",
         "--experiment_time", "10800",
         "--background", "1.6",
@@ -64,9 +64,10 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
     assert list(best) == ["poisson_deviance"], f"Expected the default Poisson deviance loss:\n{res.stdout}"
     deviance = best["poisson_deviance"]
     print(f"Single-evaluation masked Poisson deviance per pixel: {deviance}")
-    # deterministic with the fixed seed (BornAgain 21.2); the value is printed with 4 decimals.
+    # deterministic with the fixed seed (BornAgain 23, detector offset 0.290838 -0.016061 of the current
+    # mg_beam_centre_correction; 3.2862 with the previous 0.290852 -0.016066); printed with 4 decimals.
     # The physical checks (intensity scale, alignment) are in test_d22_regression.py.
-    assert deviance == pytest.approx(3.2862, abs=2e-4)
+    assert deviance == pytest.approx(3.2880, abs=2e-4)
 
 
 def test_specular_box_mask_excludes_the_specular_peak(monkeypatch):
@@ -75,7 +76,7 @@ def test_specular_box_mask_excludes_the_specular_peak(monkeypatch):
     import mcstas_gisans.fit as fit
     from mcstas_gisans.run_cli import parse_args
     argv = ["mg_fit", "--nxs", "data/paper/d22_measurement/073174.nxs", "-i", "d22", "--wavelength_selected", "6.0",
-            "--alpha", "0.24", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290852", "-0.016066",
+            "--alpha", "0.24", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290838", "-0.016061",
             "--mask_exclude_q_box", "-0.035", "0.035", "0.072", "0.102", "--mask_view"]
     monkeypatch.setattr(sys, "argv", argv)
     args = parse_args(fit.create_fit_parser())

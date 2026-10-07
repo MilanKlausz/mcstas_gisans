@@ -94,7 +94,7 @@ calculates the intensity factor, and draws the measured and simulated beams:
 ```bash
   mg_beam_centre_correction data/paper/d22_measurement/073162.nxs --instrument d22 --wavelength 6.0 --sample_orientation 2 --mcpl data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz --experiment_time 60 --figure show
 ```
-It prints the offset `[0.290855, -0.016063]`, an intensity factor of 0.2107 and
+It prints the offset `[0.290838, -0.016061]`, an intensity factor of 0.2107 and
 a centroid residual between the simulated and measured beam of about 0.01 pixel.
 
 ---
@@ -104,7 +104,7 @@ The direct beam can also be simulated with `mg_run`, using the
 *--allow_sample_miss* and *--sample_size_y 0.0* options (in a shell with the
 conda environment activated), and compared with the measurement:
 ```bash
-  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --sample_orientation 2 --instrument_detector_centre_offset 0.290855 -0.016063 --savename "examples/paper/output/direct_beam_d22_1e9"
+  mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 --savename "examples/paper/output/direct_beam_d22_1e9"
   mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.h5" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --verbose
 ```
 The *--verbose* option prints the summed intensities. `mg_plot` takes the
@@ -118,7 +118,7 @@ To check the intensity factor visually, redo the direct beam simulation with
 the *--intensity_factor* option (the simulated intensity is still normalised
 to 1 s), and upscale it to the 60 s measurement time with *--experiment_time*:
 ```bash
-   mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --sample_orientation 2 --instrument_detector_centre_offset 0.290855 -0.016063 --intensity_factor 0.2107 --savename "examples/paper/output/direct_beam_d22_1e9"
+   mg_run "data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz" --instrument d22 --wavelength_selected 6.0 --sample_size_y 0.0 --allow_sample_miss --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 --intensity_factor 0.2107 --savename "examples/paper/output/direct_beam_d22_1e9"
    mg_plot --filename "examples/paper/output/direct_beam_d22_1e9.h5" --label "D22 simulation" --nxs "data/paper/d22_measurement/073162.nxs" --intensity_min 1 --overlay --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min -0.01 --q_max 0.01 --experiment_time 60
 ```
 

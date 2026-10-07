@@ -33,7 +33,7 @@ def test_d22_paper_comparison(tmp_path):
         "--model", "silica_100nm_air", "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
         "--sample_size_y", "0.10", "--sample_size_x", "0.10", "--alpha", "0.24", "--outgoing_directions", "35",
         "--allow_sample_miss", "--specular", "include_specular", "--use_avg_materials",
-        "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290852", "-0.016066",
+        "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290838", "-0.016061",
         "--seed", "3", "--savename", savename,
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
@@ -73,5 +73,6 @@ def test_d22_paper_comparison(tmp_path):
         assert loss(expected, expected_err, shift)['poisson_deviance'] > metrics['poisson_deviance']
 
 
-# seed 3, BornAgain 21.2
-REFERENCE = {'poisson_deviance': 3.28639, 'reduced_chi2': 7.32431}
+# seed 3, BornAgain 23, detector offset 0.290838 -0.016061 of the current mg_beam_centre_correction (with the
+# previous 0.290852 -0.016066: 3.28639 / 7.32431)
+REFERENCE = {'poisson_deviance': 3.28820, 'reduced_chi2': 7.33352}

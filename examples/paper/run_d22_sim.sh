@@ -54,7 +54,7 @@ SAMPLE_ARGS="radius=${PARAM_RADIUS};interferenceRange=${PARAM_INTERFERENCE_RANGE
 ############################## DETECTOR GEOMETRY ##############################
 ###############################################################################
 ## detector position from the direct beam measurement 073162.nxs (mg_beam_centre_correction)
-DETECTOR_CENTRE_OFFSET="0.290855 -0.016063"
+DETECTOR_CENTRE_OFFSET="0.290838 -0.016061"
 
 ###############################################################################
 ############################# SIMULATION SETTINGS #############################

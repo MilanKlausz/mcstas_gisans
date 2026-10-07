@@ -85,7 +85,7 @@ def test_specular_simulation_intensity_is_comparable_to_include_specular(tmp_pat
 
 PAPER_ARGV = ["tests/data/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--intensity_factor", "0.2084",
               "--wavelength_selected", "6.0", "--model", "silica_100nm_air", "--alpha", "0.2353", "--allow_sample_miss",
-              "--use_avg_materials", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290855", "-0.016063",
+              "--use_avg_materials", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290838", "-0.016061",
               "--angle_range", "-0.3", "0.3", "0.15", "0.33", "--seed", "1", "--no_parallel"]
 
 
