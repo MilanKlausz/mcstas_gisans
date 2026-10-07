@@ -11,6 +11,8 @@ import os
 import sys
 import tempfile
 import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from typing import List, Tuple, Dict, Any, Optional
 import numpy as np
 
@@ -420,8 +422,24 @@ def process_particles_parallelly(particles: Any, params: Dict[str, Any], process
 
     starts = np.linspace(0, len(particles), process_number + 1).astype(int)
     tasks = [(particles[starts[i]:starts[i + 1]], params, int(starts[i])) for i in range(process_number)]
-    with multiprocessing.Pool(processes=process_number) as pool:
-        results = pool.starmap(process_particles, tasks)
+    # A worker that raises passes its exception on (f.result()); a worker that is killed (e.g. by the
+    # OOM killer) breaks the pool, which raises BrokenProcessPool. (multiprocessing.Pool replaces a
+    # killed worker and waits forever for its lost task.)
+    executor = ProcessPoolExecutor(max_workers=process_number)
+    futures = [executor.submit(process_particles, *task) for task in tasks]
+    try:
+        results = [f.result() for f in futures]
+    except BaseException as e:
+        executor.shutdown(wait=True, cancel_futures=True)
+        for f in futures:  # temporary TOF event files of the workers that did finish
+            if f.done() and not f.cancelled() and f.exception() is None and f.result().get('temp_h5_path'):
+                if os.path.exists(f.result()['temp_h5_path']):
+                    os.remove(f.result()['temp_h5_path'])
+        if isinstance(e, BrokenProcessPool):
+            raise RuntimeError("A parallel process was terminated abruptly (e.g. killed by the out-of-memory killer "
+                               "or a signal); the run is stopped. Fewer --parallel_processes need less memory.") from e
+        raise
+    executor.shutdown(wait=True)
 
     is_tof = params['instrument'].is_tof_instrument
     pixel_hist = np.zeros((params['instrument'].detector.pixels_x_nexus, params['instrument'].detector.pixels_y_nexus))

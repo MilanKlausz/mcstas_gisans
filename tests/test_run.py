@@ -205,5 +205,43 @@ def test_parallel_tof_events_are_identical_to_sequential_with_same_seed():
     np.testing.assert_array_equal(par_events['weight'], seq_events['weight'])
 
 
+def _run_with_a_failing_worker(tmpdir, failure):
+    """mg_run with 3 processes, the worker of the second batch failing ('raise' or 'kill'); the
+    patched process_particles reaches the workers through fork. Returns the CompletedProcess."""
+    args = ["tests/data/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
+            "--outgoing_directions", "5", "--savename", os.path.join(tmpdir, "fail"),
+            "--parallel_processes", "3", "--seed", "1"]
+    code = ("import os, signal, sys, multiprocessing; multiprocessing.set_start_method('fork', force=True)\n"
+            "import mcstas_gisans.run as run\n"
+            "original = run.process_particles\n"
+            "def process_particles(particles, params, start_index=0):\n"
+            "    if start_index > 0 and start_index < 2 * len(particles):\n"
+            "        if %r == 'raise':\n"
+            "            raise ValueError('failing worker')\n"
+            "        os.kill(os.getpid(), signal.SIGKILL)\n"
+            "    return original(particles, params, start_index)\n"
+            "run.process_particles = process_particles\n"
+            "sys.argv = ['mg_run'] + %r\n"
+            "run.main()\n") % (failure, args)
+    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+
+
+def test_a_parallel_process_that_raises_stops_the_run():
+    """The worker's exception reaches the main process, which stops."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = _run_with_a_failing_worker(tmpdir, 'raise')
+    assert result.returncode != 0
+    assert "failing worker" in result.stderr
+
+
+def test_a_killed_parallel_process_stops_the_run():
+    """A worker killed e.g. by the OOM killer sends no result: the run must stop instead of waiting
+    for it forever (multiprocessing.Pool would wait; the timeout of the subprocess fails the test)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = _run_with_a_failing_worker(tmpdir, 'kill')
+    assert result.returncode != 0
+    assert "the run is stopped" in result.stderr
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
