@@ -239,6 +239,10 @@ simulation itself, adding the sample model and its incident angle
    mg_plot --filename sample_sim.h5 --nxs sample.nxs --overlay \
      --experiment_time <sample measurement time>
 
+With ``--split_view`` instead of ``--overlay``, the measurement and the
+simulation share one 2D map: the measurement for Qy < 0 and the simulation for
+Qy > 0, on a common colour scale.
+
 Like ``mg_beam_centre_correction``, ``mg_run`` defaults the beam angle to
 ``0.0`` (or whatever is configured for the instrument in
 ``instrument_defaults.py``) unless overridden with ``--instrument_beam_angle``

@@ -202,7 +202,9 @@ In ``--output_dir`` (default ``scan_results``):
 - With ``--png``: a comparison plot of the measurement and the simulation for
   every evaluation (``fit_eval_<n>_<parameters>.png`` in fits,
   ``sim_<parameters>.png`` in scans). ``--gif`` turns the fit plots into an
-  animation.
+  animation. With ``--split_view`` the two 2D maps become one, with the
+  measurement for Qy < 0 and the simulation for Qy > 0 on a common colour
+  scale.
 
 The summary with the best parameters, the optimizer's status and the run time
 is also printed. "Maximum number of function evaluations has been exceeded"

@@ -249,10 +249,12 @@ def save_comparison_plot(
     z_plot_range: List[float],
     savename: str,
     label_sim: str,
-    intensity_min: Optional[float] = None
+    intensity_min: Optional[float] = None,
+    split_view: bool = False
 ) -> None:
     """
-    Save a 2x2 comparison plot of experimental and simulated data.
+    Save a 2x2 comparison plot of experimental and simulated data (with split_view: one 2D map
+    with the measurement for Qy < 0 and the simulation for Qy > 0, above the 1D slice).
 
     Parameters
     ----------
@@ -286,30 +288,45 @@ def save_comparison_plot(
         Label for the simulated data plot.
     intensity_min : float, optional
         Minimum intensity for color scaling.
+    split_view : bool, optional
+        One split 2D map instead of two separate maps.
     """
     import matplotlib.pyplot as plt
-    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
+    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d
 
     if intensity_min is not None:
         intensity_min = float(intensity_min)
     else:
         intensity_min = 1.0
+    intensity_max = hist_nxs[~np.isnan(hist_nxs)].max()
 
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    if split_view:
+        fig = plt.figure(figsize=(16, 12))
+        gs = fig.add_gridspec(2, 4)
+        ax_map = fig.add_subplot(gs[0, 1:3])
+        split_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, hist_sim, y_edges_sim, z_edges_sim,
+                      label_left="D22 measurement", label_right="Simulation", title_text=label_sim, ax=ax_map,
+                      intensity_min=intensity_min, intensity_max=intensity_max,
+                      y_range=y_plot_range, z_range=z_plot_range)
+        map_axes = [ax_map]
+        ax_bottom = fig.add_subplot(gs[1, :])
+    else:
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
-    # Plot 2D maps (no grid is added to these)
-    log_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, "D22 measurement", ax=axes[0, 0],
-                intensity_min=intensity_min, intensity_max=hist_nxs[~np.isnan(hist_nxs)].max(),
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
+        # Plot 2D maps (no grid is added to these)
+        log_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, "D22 measurement", ax=axes[0, 0],
+                    intensity_min=intensity_min, intensity_max=intensity_max,
+                    y_range=y_plot_range, z_range=z_plot_range, output='none')
 
-    log_plot_2d(hist_sim, y_edges_sim, z_edges_sim, label_sim, ax=axes[0, 1],
-                intensity_min=intensity_min, intensity_max=hist_nxs[~np.isnan(hist_nxs)].max(),
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
+        log_plot_2d(hist_sim, y_edges_sim, z_edges_sim, label_sim, ax=axes[0, 1],
+                    intensity_min=intensity_min, intensity_max=intensity_max,
+                    y_range=y_plot_range, z_range=z_plot_range, output='none')
+        map_axes = [axes[0, 0], axes[0, 1]]
 
-    gs = axes[1, 0].get_gridspec()
-    axes[1, 0].remove()
-    axes[1, 1].remove()
-    ax_bottom = fig.add_subplot(gs[1:, :])
+        gs = axes[1, 0].get_gridspec()
+        axes[1, 0].remove()
+        axes[1, 1].remove()
+        ax_bottom = fig.add_subplot(gs[1:, :])
 
     qz_min_index = np.digitize(q_min, z_edges_sim) - 1
     qz_max_index = np.digitize(q_max, z_edges_sim) - 1
@@ -330,7 +347,7 @@ def save_comparison_plot(
     plot_q_1d(values_sim, errors_sim, y_bins_sim, 'Qy [1/nm]', color='green',
               label=label_sim, ax=ax_bottom, limits=y_plot_range, output='none')
 
-    for ax in (axes[0, 0], axes[0, 1]):
+    for ax in map_axes:
         for z_limit in z_limits:  # the summed Qz range
             ax.axhline(z_limit, color='magenta', linestyle='--')
 
@@ -463,10 +480,12 @@ def save_joint_comparison_plot(
     z_plot_range: List[float],
     savename: str,
     label_sim1: str = "Sample 1 Sim",
-    label_sim2: str = "Sample 2 Sim"
+    label_sim2: str = "Sample 2 Sim",
+    split_view: bool = False
 ) -> None:
     """
-    Save a 3x2 joint comparison plot of experimental and simulated data for two samples.
+    Save a 3x2 joint comparison plot of experimental and simulated data for two samples (with
+    split_view: one 2D map per sample, the measurement for Qy < 0 and the simulation for Qy > 0).
 
     Parameters
     ----------
@@ -516,36 +535,53 @@ def save_joint_comparison_plot(
         Label for the sample 1 simulated data plot.
     label_sim2 : str, optional
         Label for the sample 2 simulated data plot.
+    split_view : bool, optional
+        One split 2D map per sample instead of two separate maps.
     """
     import matplotlib.pyplot as plt
-    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
+    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d
 
     intensity_min = 1.0
-    fig, axes = plt.subplots(3, 2, figsize=(16, 16))
-
-    # 1. Row 0: Sample 1 NeXus & Sim
     vmax1 = hist_nxs1[~np.isnan(hist_nxs1)].max() if np.any(~np.isnan(hist_nxs1)) else 100.0
-    log_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, "Sample 1 Measurement", ax=axes[0, 0],
-                intensity_min=intensity_min, intensity_max=vmax1,
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
-    log_plot_2d(hist_sim_masked1, edges_sim1_0, edges_sim1_1, label_sim1, ax=axes[0, 1],
-                intensity_min=intensity_min, intensity_max=vmax1,
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
-
-    # 2. Row 1: Sample 2 NeXus & Sim
     vmax2 = hist_nxs2[~np.isnan(hist_nxs2)].max() if np.any(~np.isnan(hist_nxs2)) else 100.0
-    log_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, "Sample 2 Measurement", ax=axes[1, 0],
-                intensity_min=intensity_min, intensity_max=vmax2,
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
-    log_plot_2d(hist_sim_masked2, edges_sim2_0, edges_sim2_1, label_sim2, ax=axes[1, 1],
-                intensity_min=intensity_min, intensity_max=vmax2,
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
+    if split_view:
+        # Row 0: one split map per sample; row 1: the 1D Q-slice overlay
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        split_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, hist_sim_masked1, edges_sim1_0, edges_sim1_1,
+                      label_left="Sample 1 Measurement", label_right=label_sim1, ax=axes[0, 0],
+                      intensity_min=intensity_min, intensity_max=vmax1, y_range=y_plot_range, z_range=z_plot_range)
+        split_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, hist_sim_masked2, edges_sim2_0, edges_sim2_1,
+                      label_left="Sample 2 Measurement", label_right=label_sim2, ax=axes[0, 1],
+                      intensity_min=intensity_min, intensity_max=vmax2, y_range=y_plot_range, z_range=z_plot_range)
+        bottom_row = 1
+        map_axes_1, map_axes_2 = [(axes[0, 0], edges_sim1_1)], [(axes[0, 1], edges_sim2_1)]
+    else:
+        fig, axes = plt.subplots(3, 2, figsize=(16, 16))
 
-    # 3. Row 2: Merged for 1D Q-slice overlay
-    gs = axes[2, 0].get_gridspec()
-    axes[2, 0].remove()
-    axes[2, 1].remove()
-    ax_bottom = fig.add_subplot(gs[2, :])
+        # 1. Row 0: Sample 1 NeXus & Sim
+        log_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, "Sample 1 Measurement", ax=axes[0, 0],
+                    intensity_min=intensity_min, intensity_max=vmax1,
+                    y_range=y_plot_range, z_range=z_plot_range, output='none')
+        log_plot_2d(hist_sim_masked1, edges_sim1_0, edges_sim1_1, label_sim1, ax=axes[0, 1],
+                    intensity_min=intensity_min, intensity_max=vmax1,
+                    y_range=y_plot_range, z_range=z_plot_range, output='none')
+
+        # 2. Row 1: Sample 2 NeXus & Sim
+        log_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, "Sample 2 Measurement", ax=axes[1, 0],
+                    intensity_min=intensity_min, intensity_max=vmax2,
+                    y_range=y_plot_range, z_range=z_plot_range, output='none')
+        log_plot_2d(hist_sim_masked2, edges_sim2_0, edges_sim2_1, label_sim2, ax=axes[1, 1],
+                    intensity_min=intensity_min, intensity_max=vmax2,
+                    y_range=y_plot_range, z_range=z_plot_range, output='none')
+        bottom_row = 2
+        map_axes_1 = [(axes[0, 0], z_edges_nxs1), (axes[0, 1], edges_sim1_1)]
+        map_axes_2 = [(axes[1, 0], z_edges_nxs2), (axes[1, 1], edges_sim2_1)]
+
+    # Last row: merged for the 1D Q-slice overlay
+    gs = axes[bottom_row, 0].get_gridspec()
+    axes[bottom_row, 0].remove()
+    axes[bottom_row, 1].remove()
+    ax_bottom = fig.add_subplot(gs[bottom_row, :])
 
     qz_min_index1 = np.digitize(q_min, edges_sim1_1) - 1
     qz_max_index1 = np.digitize(q_max, edges_sim1_1) - 1
@@ -584,12 +620,10 @@ def save_joint_comparison_plot(
               label=label_sim2, ax=ax_bottom, limits=y_plot_range, output='none')
 
     # Highlight Qz slice on 2D plots
-    for ax, z_edges, qz_min_idx, qz_max_idx in [
-        (axes[0, 0], z_edges_nxs1, qz_min_index1, qz_max_index1),
-        (axes[0, 1], edges_sim1_1, qz_min_index1, qz_max_index1),
-        (axes[1, 0], z_edges_nxs2, qz_min_index2, qz_max_index2),
-        (axes[1, 1], edges_sim2_1, qz_min_index2, qz_max_index2),
-    ]:
+    for ax, z_edges, qz_min_idx, qz_max_idx in (
+        [(ax, z_edges, qz_min_index1, qz_max_index1) for ax, z_edges in map_axes_1] +
+        [(ax, z_edges, qz_min_index2, qz_max_index2) for ax, z_edges in map_axes_2]
+    ):
         ax.axhline(z_edges[min(max(qz_min_idx, 0), len(z_edges) - 2)], color='magenta', linestyle='--')
         ax.axhline(z_edges[min(max(qz_max_idx, 0), len(z_edges) - 2) + 1], color='magenta', linestyle='--')
 
@@ -923,7 +957,7 @@ def run_simulation_evaluation(
             hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
             hist_sim_masked, hist_sim_error_masked, edges[1], edges[2],
             args.q_min, args.q_max, y_plot_range, z_plot_range,
-            plot_path, f"Sim ({param_str})", intensity_min
+            plot_path, f"Sim ({param_str})", intensity_min, split_view=getattr(args, 'split_view', False)
         )
 
     sim_data = {
@@ -1260,7 +1294,7 @@ def run_automated_fit(
                     hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2,
                     sim_data2['hist_sim_masked'], sim_data2['hist_sim_error_masked'], sim_data2['edges'][1], sim_data2['edges'][2],
                     args.q_min, args.q_max, y_plot_range, z_plot_range,
-                    plot_path
+                    plot_path, split_view=getattr(args, 'split_view', False)
                 )
 
         records.append(rec)

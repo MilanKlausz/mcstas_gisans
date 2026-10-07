@@ -26,6 +26,7 @@ def create_fit_parser():
     scan_plot_group.add_argument('--q_min', type=float, default=0.0, help='Minimum Qz value for 1D slice comparison [1/nm].')
     scan_plot_group.add_argument('--q_max', type=float, default=0.0, help='Maximum Qz value for 1D slice comparison [1/nm].')
     scan_plot_group.add_argument('-m', '--intensity_min', default=None, help='Intensity minimum for the 2D q plot colorbar.')
+    scan_plot_group.add_argument('--split_view', action='store_true', help='Comparison plots (--png, --gif): one 2D Q map with the measurement for Qy < 0 and the simulation for Qy > 0 (common colour scale) instead of two separate maps.')
 
 
     scan_mask_group = parser.add_argument_group('Masking options to exclude data ranges for the fitness calculation')

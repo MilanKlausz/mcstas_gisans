@@ -124,6 +124,105 @@ def log_plot_2d(
     show_or_save(output, savename + '_2D')
     return quadmesh
 
+def _finite_max_on_side(hist: np.ndarray, y_edges: np.ndarray, split_qy: float, left: bool) -> float:
+    """Largest finite value of the Qy bins (first axis) whose centre is on the given side of split_qy."""
+    centres = 0.5 * (y_edges[:-1] + y_edges[1:])
+    side = hist[centres < split_qy] if left else hist[centres > split_qy]
+    side = side[np.isfinite(side)]
+    return float(side.max()) if side.size else np.nan
+
+def split_plot_2d(
+    hist_left: np.ndarray,
+    y_edges_left: np.ndarray,
+    z_edges_left: np.ndarray,
+    hist_right: np.ndarray,
+    y_edges_right: np.ndarray,
+    z_edges_right: np.ndarray,
+    label_left: str = 'Measurement',
+    label_right: str = 'Simulation',
+    title_text: Optional[str] = None,
+    ax: Optional[plt.Axes] = None,
+    intensity_min: float = 1e-9,
+    intensity_max: Optional[float] = None,
+    y_range: Optional[List[float]] = None,
+    z_range: Optional[List[float]] = None,
+    split_qy: float = 0.0,
+    add_colorbar: bool = True
+) -> Any:
+    """
+    Plot two 2D histograms in one map with a common logarithmic color scale: the first one
+    (e.g. the measurement) for Qy < split_qy, the second one (e.g. the simulation) for Qy > split_qy.
+
+    Each histogram is clipped exactly at split_qy (a bin across it is cut, not dropped), a vertical
+    line marks the split and the two halves are labelled.
+
+    Parameters
+    ----------
+    hist_left, hist_right : numpy.ndarray
+        The 2D histograms [Qy, Qz] shown left and right of split_qy.
+    y_edges_left, z_edges_left, y_edges_right, z_edges_right : numpy.ndarray
+        Their Qy and Qz bin edges.
+    label_left, label_right : str, optional
+        Labels written into the two halves.
+    title_text : str, optional
+        Title of the plot.
+    ax : matplotlib.axes.Axes, optional
+        Axes to draw on (default: a new figure).
+    intensity_min : float, optional
+        Minimum of the logarithmic color scale.
+    intensity_max : float, optional
+        Maximum of the color scale (default: the largest value shown in either half).
+    y_range, z_range : list of float, optional
+        Axis limits (default: the extent of both histograms).
+    split_qy : float, optional
+        Qy of the split, by default 0.
+    add_colorbar : bool, optional
+        Whether to add a colorbar, by default True.
+
+    Returns
+    -------
+    matplotlib.collections.QuadMesh
+        The QuadMesh of the left half (for a colorbar).
+    """
+    from matplotlib.patches import Rectangle
+    if ax is None:
+        _, ax = plt.subplots()
+    if y_range is None:
+        y_range = [min(y_edges_left[0], y_edges_right[0]), max(y_edges_left[-1], y_edges_right[-1])]
+    if z_range is None:
+        z_range = [min(z_edges_left[0], z_edges_right[0]), max(z_edges_left[-1], z_edges_right[-1])]
+    if intensity_max is None:
+        intensity_max = np.nanmax([_finite_max_on_side(hist_left, y_edges_left, split_qy, left=True),
+                                   _finite_max_on_side(hist_right, y_edges_right, split_qy, left=False)])
+
+    cmap = plt.get_cmap('jet').with_extremes(bad='k')
+    norm = colors.LogNorm(vmin=intensity_min, vmax=intensity_max)
+    quadmesh_left = ax.pcolormesh(y_edges_left, z_edges_left, hist_left.T, norm=norm, cmap=cmap)
+    quadmesh_right = ax.pcolormesh(y_edges_right, z_edges_right, hist_right.T, norm=norm, cmap=cmap)
+    # clip each half to its side of split_qy within the plotted range (a clip path replaces the
+    # clipping to the axes, so the rectangles stay inside the axis limits)
+    y_lo, y_hi = min(y_range), max(y_range)
+    z_lo, z_hi = min(z_range), max(z_range)
+    split = min(max(split_qy, y_lo), y_hi)
+    quadmesh_left.set_clip_path(Rectangle((y_lo, z_lo), split - y_lo, z_hi - z_lo, transform=ax.transData))
+    quadmesh_right.set_clip_path(Rectangle((split, z_lo), y_hi - split, z_hi - z_lo, transform=ax.transData))
+    ax.axvline(split_qy, color='white', linewidth=1)
+
+    text_style = dict(transform=ax.transAxes, va='top', color='white',
+                      bbox=dict(boxstyle='round', facecolor='black', alpha=0.5, edgecolor='none'))
+    ax.text(0.02, 0.98, label_left, ha='left', **text_style)
+    ax.text(0.98, 0.98, label_right, ha='right', **text_style)
+
+    ax.set_xlim(y_range)
+    ax.set_ylim(z_range)
+    ax.set_xlabel('Qy [1/nm]')
+    ax.set_ylabel('Qz [1/nm]')
+    if title_text is not None:
+        ax.set_title(title_text)
+    if add_colorbar:
+        ax.figure.colorbar(quadmesh_left, ax=ax, orientation='vertical')
+    return quadmesh_left
+
 def plot_q_1d(
     values: np.ndarray,
     errors: np.ndarray,

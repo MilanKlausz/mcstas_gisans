@@ -20,6 +20,7 @@ def create_argparser():
     plotParamGroup.add_argument('--font_size', type=int, default=14, help = 'Global font size for plot elements.')
     plotParamGroup.add_argument('-d', '--dual_plot', default=False, action='store_true', help = 'Create a dual plot in a single figure.')
     plotParamGroup.add_argument('--multi2d', default=False, action='store_true', help = 'Create a figue with multiple subplots for 2D Q plots.')
+    plotParamGroup.add_argument('--split_view', default=False, action='store_true', help = 'One 2D Q map of two datasets on a common colour scale: the first dataset for Qy < 0, the second for Qy > 0. The --nxs measurements come first, so with one --nxs file and one simulation the measurement is on the left and the simulation on the right.')
     plotParamGroup.add_argument('-m', '--intensity_min', default=None, help = 'Intensity minimum for the 2D q plot colorbar.')
     plotParamGroup.add_argument('--individual_colorbars', default=False, action='store_true', help = 'Allow different individual colorbars for multiple 2D q plots.')
     plotParamGroup.add_argument('-q', '--q_min', default=0.09, type=float, help = 'Vertical component of the Q values of interest. Used as the minimum of the range if q_max is provided as well.')
@@ -98,5 +99,13 @@ def parse_args(parser):
 
     if args.normalise_to_nxs and not args.nxs:
         parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')
+
+    if args.split_view:
+        conflicting = [name for name in ('overlay', 'multi2d', 'dual_plot') if getattr(args, name)]
+        if conflicting:
+            parser.error(f"--split_view cannot be combined with --{', --'.join(conflicting)}.")
+        n_datasets = len(args.filename or []) + len(args.nxs or [])
+        if n_datasets != 2:
+            parser.error(f"--split_view needs exactly two datasets (--nxs files and simulation files), got {n_datasets}.")
 
     return args

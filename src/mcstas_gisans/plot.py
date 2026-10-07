@@ -414,6 +414,23 @@ def _plot_differences(args: Any,
         ax.set_ylabel('Qz [1/nm]')
         ax.set_title(title_text)
 
+def _plot_split_view(args: Any, datasets: List[Any], intensity_min: float, plot_output: str) -> None:
+    """
+    One 2D map of the first two datasets: the first for Qy < 0, the second for Qy > 0
+    (with --nxs: the measurement left, the simulation right), on a common colour scale.
+    """
+    if len(datasets) != 2:
+        sys.exit(f"--split_view needs exactly two datasets, got {len(datasets)}.")
+    from .plotting_utils import split_plot_2d
+    (hist_left, _, y_edges_left, z_edges_left, label_left), (hist_right, _, y_edges_right, z_edges_right, label_right) = datasets
+    y_plot_range, z_plot_range, _, _ = get_plot_ranges(datasets, args.y_plot_range, args.z_plot_range)
+    _, ax = plt.subplots(figsize=(10, 8))
+    split_plot_2d(hist_left, y_edges_left, z_edges_left, hist_right, y_edges_right, z_edges_right,
+                  label_left=label_left, label_right=label_right, ax=ax, intensity_min=intensity_min,
+                  y_range=y_plot_range, z_range=z_plot_range)
+    plt.tight_layout()
+    show_or_save(plot_output, args.savename)
+
 def _setup_main_plot(args: Any, datasets: List[Any]) -> Tuple[Any, Any, Any, Any, str, Any, Any]:
     """Helper to setup the initial plot variables."""
     match_horizontal_axes = False
@@ -470,6 +487,10 @@ def main() -> None:
     else:
         is_upscaled = args.experiment_time
         intensity_min = 1e-9 if not is_upscaled else 1
+
+    if args.split_view:
+        _plot_split_view(args, datasets, intensity_min, plot_output)
+        return
 
     if args.overlay:
         y_plot_range, z_plot_range, _, max_value = get_plot_ranges(datasets, args.y_plot_range, args.z_plot_range)
