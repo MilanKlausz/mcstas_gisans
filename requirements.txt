@@ -1,5 +1,5 @@
-bornagain>=21.1
-numpy>=1.0,<2.0  # the bornagain 21.x PyPI wheels are built against NumPy 1; drop the limit with BornAgain 22+
+bornagain>=23.0
+numpy>=1.0
 mcpl
 matplotlib
 h5py

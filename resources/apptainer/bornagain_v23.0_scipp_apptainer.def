@@ -1,0 +1,28 @@
+Bootstrap: docker
+From: python:3.11
+
+# BornAgain 23.0 + scipp/scippneutron: the default software environment of mcstas_gisans on the
+# DMSC cluster (the image /users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif).
+# The package versions are pinned to the ones in the earlier bornagain_v23.0_apptainer.sif
+# (built 2026-03-13 from the same python:3.11 base with "pip install bornagain numpy scipy mcpl
+# tqdm h5py"), plus scipp and scippneutron (+ their dependencies).
+# mcstas_gisans itself is not installed in the image: put its src directory on PYTHONPATH
+# (see doc/source/dmsc_cluster.rst).
+# Definition file version: 261007
+#
+# Build (needs root, x86_64 Linux):
+#   sudo singularity build bornagain_v23.0_scipp_apptainer.sif bornagain_v23.0_scipp_apptainer.def
+# Without root (e.g. on the DMSC cluster login node), see build_image_sandbox.sh:
+#   sandbox from docker -> pip install in the writable sandbox -> SIF.
+
+%post
+    pip install --no-cache-dir --root-user-action=ignore \
+        bornagain==23.0 numpy==2.4.3 scipy==1.17.1 matplotlib==3.10.8 h5py==3.16.0 \
+        mcpl==2.2.8 pillow==12.1.1 tqdm==4.67.3 \
+        scipp==26.8.0 scippneutron==26.7.0 scippnexus==26.1.1 plopp==26.9.0
+
+%test
+    MPLCONFIGDIR=/tmp python -c "import bornagain, numpy, scipy, matplotlib, h5py, mcpl, tqdm, PIL, scipp, scippneutron, scippnexus; print('BornAgain', bornagain.version_str, 'numpy', numpy.__version__, 'scipp', scipp.__version__, 'scippneutron', scippneutron.__version__)"
+
+%labels
+    Software BornAgain 23.0 + scipp 26.8.0 + scippneutron 26.7.0

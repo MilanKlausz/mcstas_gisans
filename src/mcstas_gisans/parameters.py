@@ -102,7 +102,7 @@ def neutron_angle_windows(region, particles, instrument, iterations=3):
     instrument : Instrument
         The instrument (detector distance and plane, gravity, resolution).
     iterations : int, optional
-        Number of Newton iterations (each reduces the error by a factor of about |x|/L).
+        Number of Newton iterations (each reduces the error by a factor of about abs(x)/L).
 
     Returns
     -------

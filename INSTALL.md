@@ -7,11 +7,9 @@ Instead of Conda, `mcstas_gisans` can also be installed using `pip` as described
 
 > [!NOTE]
 > **BornAgain Versioning & `conda.yml`**
-> By default, **BornAgain 21.2** (and previous versions) is written in the `conda.yml` file because it is the last universal release distributed as pre-built wheels on PyPI for all operating systems.
+> By default, **BornAgain 23.0** is written in the `conda.yml` file (and BornAgain >= 23.0 in `requirements.txt` and `pyproject.toml`). This is the version `mcstas_gisans` is developed and tested with; older versions are not supported any more. BornAgain 24.1 also runs (a systematic benchmark is pending); to use it, edit the `conda.yml` file before creating the environment.
 >
-> If you wish to use a more recent version of BornAgain (e.g. v22+, v23+, v24+), you can edit the `conda.yml` file before creating the environment.
->
-> **Warning (macOS Users):** In order to install recent BornAgain versions (v22+) on macOS, pre-built PyPI wheels are not available, so extra build steps are required as described in [# Installing Recent BornAgain Versions (macOS Build Guide)](#installing-recent-bornagain-versions-macos-build-guide).
+> **Warning (macOS Users):** PyPI provides pre-built BornAgain 23.0 (and 24.1) wheels only for Linux (x86_64, glibc >= 2.31); for macOS only the unsupported 21.x versions are available there. On macOS, BornAgain therefore has to be built from source into a local wheel, as described in [# Installing BornAgain on macOS (Build Guide)](#installing-bornagain-on-macos-build-guide), and the `- bornagain==23.0` line in `conda.yml` replaced with the path of that wheel (with `pip`, install the wheel before `requirements.txt`).
 
 To create the environment using Conda, run:
 ```bash
@@ -33,7 +31,7 @@ python -m venv myenv
 source myenv/bin/activate
 ```
 
-The required Python packages can be installed using the `requirements.txt` file:
+The required Python packages can be installed using the `requirements.txt` file (on macOS, first install a locally built BornAgain wheel with `pip install <path to the .whl file>`, see [# Installing BornAgain on macOS (Build Guide)](#installing-bornagain-on-macos-build-guide)):
 ```bash
 pip install -r requirements.txt
 ```
@@ -49,9 +47,9 @@ pip install -e .
 
 ---
 
-# Installing Recent BornAgain Versions (macOS Build Guide)
+# Installing BornAgain on macOS (Build Guide)
 
-To install BornAgain versions newer than 21.2 (such as v22, v23, v24, or v25) on macOS:
+PyPI has no macOS wheels of BornAgain 23.0 or newer, so on macOS the default BornAgain 23.0 (or a newer version, e.g. 24.1) has to be built from source:
 
 1. **Build the Python wheel:** Follow the official BornAgain build-from-source instructions for Unix systems up to the step that creates the Python wheel file (`ninja ba_wheel` or `make ba_wheel`).
 
@@ -61,11 +59,11 @@ To install BornAgain versions newer than 21.2 (such as v22, v23, v24, or v25) on
    ```
 
 3. **Edit `conda.yml` to point to the local wheel:**
-   In `conda.yml`, locate the `- pip:` block. Replace the default `- bornagain==21.2` line with the path to your local wheel file, for example:
+   In `conda.yml`, locate the `- pip:` block. Replace the default `- bornagain==23.0` line with the path to your local wheel file, for example:
    ```yaml
      - pip:
-       # - bornagain==21.2
-       - ./bornagain_versions/ba24/bornagain-24.1-cp311-cp311-macosx_11_0_x86_64.whl
+       # - bornagain==23.0
+       - ./bornagain_versions/ba23/bornagain-23.0-cp311-cp311-macosx_11_0_x86_64.whl
    ```
 
 4. **Create and activate the environment:**

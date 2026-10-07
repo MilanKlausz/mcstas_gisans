@@ -176,5 +176,5 @@ Run the tests with ``pytest`` from the repository root (the regression tests cal
 7. BornAgain Compatibility
 ---------------------------
 
-The core ``mcstas_gisans`` framework is compatible with **BornAgain 21.2, 22.2, 23.0 and 24.1**.
-*(Note: individual custom sample models defined in the ``bornagain_samples/`` directory may require minor syntax adjustments depending on the specific BornAgain version being used, due to deprecations in BornAgain's Python API across these versions — see the version-specific ``silica_100nm_air_ba22_ba23``/``silica_100nm_air_ba24`` built-in models for examples. See :doc:`installation_and_usage` for how to select a BornAgain version.)*
+``mcstas_gisans`` is developed and tested with **BornAgain 23.0** (the version in the default container on the DMSC cluster, see :doc:`dmsc_cluster`), which is also the minimum required version; versions older than 23.0 are not supported any more. **BornAgain 24.1** runs as well (a container with it exists), but a systematic benchmark against 23.0 is still pending.
+*(Note: individual custom sample models defined in the ``bornagain_samples/`` directory may require minor syntax adjustments depending on the specific BornAgain version being used, due to deprecations in BornAgain's Python API across versions — the built-in ``silica_100nm_air`` model works with BornAgain 23.0, and the ``silica_100nm_air_ba22_ba23``/``silica_100nm_air_ba24`` built-in models are kept as version-specific examples. See :doc:`installation_and_usage` for how to select a BornAgain version.)*

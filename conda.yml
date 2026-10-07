@@ -4,7 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - numpy>=1.0,<2.0  # for the bornagain==21.2 PyPI wheel below (built against NumPy 1); not needed with BornAgain 22+
+  - numpy>=1.0
   - mcpl
   - matplotlib
   - h5py
@@ -13,12 +13,14 @@ dependencies:
   - scippneutron
   - pip
   - pip:
-    # Default BornAgain version (PyPI release for all operating systems):
-    - bornagain==21.2
+    # Default (and minimum) BornAgain version. PyPI provides Linux wheels for BornAgain 23.0;
+    # on macOS (PyPI has wheels only for the unsupported 21.x there) replace this line with a
+    # locally built wheel, see INSTALL.md:
+    - bornagain==23.0
 
-    # Example for installing a specific local BornAgain wheel (e.g. BornAgain 24.1 built for macOS):
-    # Replace '- bornagain==21.2' above with a line pointing to your local .whl file, for example:
-    # - ./bornagain_versions/ba24/bornagain-24.1-cp311-cp311-macosx_11_0_x86_64.whl
+    # Example for installing a specific local BornAgain wheel (e.g. BornAgain 23.0 built for macOS):
+    # Replace '- bornagain==23.0' above with a line pointing to your local .whl file, for example:
+    # - ./bornagain_versions/ba23/bornagain-23.0-cp311-cp311-macosx_11_0_x86_64.whl
 
     # Install mcstas_gisans in editable/development mode (changes to source code take effect immediately):
     - -e .

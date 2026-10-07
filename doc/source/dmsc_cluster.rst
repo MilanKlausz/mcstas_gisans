@@ -79,14 +79,26 @@ Notes:
 Running BornAgain simulation on DMSC
 ------------------------------------
 
-BornAgain can be installed as a Python package from the PyPI repository, but it requires *glibc* version 2.31 or higher (`https://bornagainproject.org/21/installation/install/linux/ <https://bornagainproject.org/21/installation/install/linux/>`__). As even *quarkcompile* has only version 2.28, it is not possible to directly install BornAgain as a python package on the cluster -- not even in a Conda environment. The currently working solution -- suggested by DMSC support in April 2024 -- is using `Singularity <https://docs.sylabs.io/guides/3.3/user-guide/index.html>`__ (newer versions are called `Apptainer <https://apptainer.org/>`__), a sandboxed container that is safe to run in a shared environment.
+BornAgain can be installed as a Python package from the PyPI repository, but its Linux wheels require *glibc* version 2.31 or higher (`https://bornagainproject.org/21/installation/install/linux/ <https://bornagainproject.org/21/installation/install/linux/>`__). As even *quarkcompile* has only version 2.28, it is not possible to directly install BornAgain as a python package on the cluster -- not even in a Conda environment. The currently working solution -- suggested by DMSC support in April 2024 -- is using `Singularity <https://docs.sylabs.io/guides/3.3/user-guide/index.html>`__ (newer versions are called `Apptainer <https://apptainer.org/>`__), a sandboxed container that is safe to run in a shared environment.
 
-The general idea is building a singularity container with the software environment required to run the BornAgain scripts, and running the BornAgain script in this container.
+The general idea is building a singularity container with the software environment required to run the BornAgain scripts, and running the ``mcstas_gisans`` code in this container.
+
+Container images
+~~~~~~~~~~~~~~~~
+
+The definition files of the containers used on the DMSC cluster are in the `resources/apptainer <https://github.com/MilanKlausz/mcstas_gisans/tree/master/resources/apptainer>`__ directory of the repository:
+
+- *bornagain_v23.0_scipp_apptainer.def* → **BornAgain 23.0** (the default version, see :doc:`installation_and_usage`) with numpy 2.4.3, scipy, matplotlib, h5py, mcpl, scipp 26.8, scippneutron 26.7, pillow and tqdm (all versions pinned)
+- *bornagain_v24_scipp_apptainer.def* → **BornAgain 24.1** with the same packages (latest releases at build time; not benchmarked systematically yet)
+
+Built images are available on the cluster as */users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif* and */users/milan.klausz/rt_181019/bornagain_v24_scipp_apptainer.sif*, so building a container is only needed for a different software environment.
+
+The images contain only the dependencies: ``mcstas_gisans`` itself is **not** installed in them. Instead, the *src* directory of a checkout of the repository is put on the ``PYTHONPATH`` inside the container, and the scripts are run as Python modules (``python -m mcstas_gisans.run`` instead of ``mg_run``, ``python -m mcstas_gisans.plot`` instead of ``mg_plot``, ``python -m mcstas_gisans.fit`` instead of ``mg_fit``, etc.). This way, changes of the code take effect without rebuilding the container, and different versions (branches) of the code can be used with the same image.
 
 Building a singularity container
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Building the container requires a `definition (*.def*) file <https://docs.sylabs.io/guides/3.3/user-guide/definition_files.html>`__ that describes what software needs to be installed. The following content in a (e.g., in a file named *bornagain_apptainer.def* file) can be used to create a suitable container with all the necessary Python packages:
+Building the container requires a `definition (*.def*) file <https://docs.sylabs.io/guides/3.3/user-guide/definition_files.html>`__ that describes what software needs to be installed. The content of *bornagain_v23.0_scipp_apptainer.def* (without its comments) is:
 
 .. code-block:: dockerfile
 
@@ -94,38 +106,54 @@ Building the container requires a `definition (*.def*) file <https://docs.sylabs
    From: python:3.11
 
    %post
+       pip install --no-cache-dir --root-user-action=ignore \
+           bornagain==23.0 numpy==2.4.3 scipy==1.17.1 matplotlib==3.10.8 h5py==3.16.0 \
+           mcpl==2.2.8 pillow==12.1.1 tqdm==4.67.3 \
+           scipp==26.8.0 scippneutron==26.7.0 scippnexus==26.1.1 plopp==26.9.0
 
-   # Install mcstas_gisans with all its dependencies (BornAgain, scipp, MCPL, ...) and console
-   # scripts (mg_run, mg_plot, mg_fit, ...). Append @<branch or tag> to the URL for a specific version.
-   pip install --root-user-action=ignore bornagain==21.2
-   pip install --root-user-action=ignore "mcstas_gisans @ git+https://github.com/MilanKlausz/mcstas_gisans.git"
+   %test
+       MPLCONFIGDIR=/tmp python -c "import bornagain, numpy, scipy, matplotlib, h5py, mcpl, tqdm, PIL, scipp, scippneutron, scippnexus; print('BornAgain', bornagain.version_str, 'numpy', numpy.__version__, 'scipp', scipp.__version__, 'scippneutron', scippneutron.__version__)"
 
-After changing ``mcstas_gisans`` the container has to be rebuilt (or ``mcstas_gisans`` installed from a local checkout bound into the container with ``pip install --user -e``).
-
-The command to build the container (with the *bornagain_v21.1_apptainer.sif* output name) is:
+**With root permissions** (on one's own Linux system), the command to build the container (with the *bornagain_v23.0_scipp_apptainer.sif* output name) is:
 
 .. code-block:: bash
 
-   singularity build bornagain_v21.1_apptainer.sif bornagain_apptainer.def
+   sudo singularity build bornagain_v23.0_scipp_apptainer.sif bornagain_v23.0_scipp_apptainer.def
 
-Building a singularity container on the DMSC cluster might require root user permissions, so if it doesn't work there, it should be done on one's own (linux) system and then copy and run it on the DMSC cluster. Be sure that it is being built for *x86_64* -- i.e., building on Apple silicon (e.g., M1) architecture will likely cause some issues. This requires `installing singularity <https://docs.sylabs.io/guides/3.3/user-guide/quick_start.html#quick-installation-steps>`__ locally, and then copying the created *bornagain_v21.1_apptainer.sif* file to the cluster. This can be avoided by getting a working container file from someone else.
+and the created *.sif* file has to be copied to the cluster. Be sure that it is being built for *x86_64* -- i.e., building on Apple silicon (e.g., M1) architecture will likely cause some issues. This requires `installing singularity <https://docs.sylabs.io/guides/3.3/user-guide/quick_start.html#quick-installation-steps>`__ (or Apptainer) locally.
+
+**Without root permissions** (on the DMSC cluster login node), ``singularity build x.sif x.def`` does not work (it needs root, and ``--fakeroot`` is not available), but the image can be built with the *build_image_sandbox.sh* script from the same directory:
+
+.. code-block:: bash
+
+   resources/apptainer/build_image_sandbox.sh \
+     resources/apptainer/bornagain_v23.0_scipp_apptainer.def ~/bornagain_v23.0_scipp_apptainer.sif
+
+The script pulls the base image of the definition file (*python:3.11*) by its *linux/amd64* digest into a writable sandbox directory (``singularity build --sandbox SB docker://python@sha256:<digest>``; the old singularity version on the cluster cannot read the multi-architecture index of the image), runs the ``%post`` section of the definition file in it (``singularity exec --writable --contain --no-home --workdir ... SB``), writes the installed package versions to a *bornagain_v23.0_scipp_apptainer_pip_freeze.txt* file next to the image, runs the ``%test`` section, and finally converts the sandbox into the *.sif* image (``singularity build out.sif SB``). Only the ``%post`` and ``%test`` sections of the definition file are used.
 
 Running in a singularity container
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The command to run a *test.py* Python script in a *bornagain_v21.1_apptainer.sif* container is:
+The command to run a *test.py* Python script in the *bornagain_v23.0_scipp_apptainer.sif* container is:
 
 .. code-block:: bash
 
-   singularity run bornagain_v21.1_apptainer.sif python test.py
+   singularity exec --unsquash /users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif python test.py
 
-A common issue encountered is that, by default, only one's *$HOME* and */tmp* is available inside the singularity container (e.g., by default it will not be able to find something on *groupdata*), so additional bindings are needed to be set during execution with the `\--bind <https://docs.sylabs.io/guides/3.3/user-guide/bind_paths_and_mounts.html#user-defined-bind-paths>`__ option.
+The ``--unsquash`` option is needed for jobs on the *quark* nodes, where mounting the image with FUSE (*squashfuse*) fails; with ``--unsquash`` the image is extracted into a temporary sandbox directory instead.
 
-As an example, using a *test_events.mcpl.gz* file in the */mnt/groupdata/something/mcstas_dir* directory would require the following binding:
+A common issue encountered is that, by default, only one's *$HOME* and */tmp* is available inside the singularity container (e.g., by default it will not be able to find something on *groupdata*), so additional bindings are needed to be set during execution with the `\--bind <https://docs.sylabs.io/guides/3.3/user-guide/bind_paths_and_mounts.html#user-defined-bind-paths>`__ option -- both for the data directories and for the ``mcstas_gisans`` code (if it is not in the home directory).
+
+As an example, with the code checked out in */mnt/groupdata/something/mcstas_gisans*, using a *test_events.mcpl.gz* file in the */mnt/groupdata/something/mcstas_dir* directory would require the following bindings:
 
 .. code-block:: bash
 
-   singularity run --bind /mnt/groupdata/something/mcstas_dir bornagain_v21.1_apptainer.sif mg_run /mnt/groupdata/something/mcstas_dir/test_events.mcpl.gz
+   singularity exec --unsquash \
+     --bind /mnt/groupdata/something/mcstas_gisans/src \
+     --bind /mnt/groupdata/something/mcstas_dir \
+     /users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif \
+     env PYTHONPATH=/mnt/groupdata/something/mcstas_gisans/src \
+     python -m mcstas_gisans.run /mnt/groupdata/something/mcstas_dir/test_events.mcpl.gz
 
 Of course, running anything that is not supposed to finish in seconds should be done using the Slurm Workload Manager, so an example batch file (e.g., *submit.batch*) could look like the following:
 
@@ -144,6 +172,8 @@ Of course, running anything that is not supposed to finish in seconds should be 
    ## SBATCH --time=12:00:00
    #SBATCH --exclusive
 
+   IMAGE="/users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif"
+   CODE="/mnt/groupdata/somewhere/mcstas_gisans/src"
    COMMON_BASE="/mnt/groupdata/somewhere/gisans"
    MCSTAS_BASE="${COMMON_BASE}/mcstas_output"
    OUTPUT_BASE="${COMMON_BASE}/bornagain_output"
@@ -156,15 +186,15 @@ Of course, running anything that is not supposed to finish in seconds should be 
    MCPL_FILE_PATH="${MCSTAS_BASE}/${MCSTAS_DIR_NAME}/${MCPL_FILENAME}"
    OUTPUT_FILE_PATH="${OUTPUT_BASE}/${OUTPUT_FILENAME}"
 
-   singularity run --bind $COMMON_BASE \
-     ~/bornagain_v21.1_apptainer_new.sif mg_run \
+   singularity exec --unsquash --bind $CODE --bind $COMMON_BASE \
+     $IMAGE env PYTHONPATH=$CODE python -m mcstas_gisans.run \
      $MCPL_FILE_PATH --instrument=$INSTRUMENT \
      -n 100 -s $OUTPUT_FILE_PATH \
      --alpha=$INCIDENT_ANGLE --parallel_processes=32 --bornagain_number_of_threads=1 \
      --input_tof_range_factor=1 --wavelength=$WAVELENGTH \
      --model="lamellas_and_spheres"
 
-Assuming that a *bornagain_v21.1_apptainer_new.sif* singularity container file is available (e.g. in one's home directory, *~*) with ``mcstas_gisans`` (and its ``mg_run``/``mg_plot``/... console scripts) installed inside it. Note ``--bornagain_number_of_threads=1`` above: since ``--parallel_processes=32`` already parallelises across MCPL particles, disabling BornAgain's own internal threading avoids oversubscribing the node's CPU cores (see also the note on partition core counts below).
+Note ``--bornagain_number_of_threads=1`` above: since ``--parallel_processes=32`` already parallelises across MCPL particles, disabling BornAgain's own internal threading avoids oversubscribing the node's CPU cores (see also the note on the number of cores of the nodes above). Fits (``python -m mcstas_gisans.fit ...``) are submitted the same way.
 
 Creating plots would also be more convenient with a batch file (e.g., *submitPlot.batch*) with content like the following:
 
@@ -182,10 +212,12 @@ Creating plots would also be more convenient with a batch file (e.g., *submitPlo
    #SBATCH --ntasks-per-node=1
    #SBATCH --exclusive
 
+   IMAGE="/users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif"
+   CODE="/mnt/groupdata/somewhere/mcstas_gisans/src"
    HDF5_BASE="sagawfm_srcl7p4to7p6_1e12_lamellas_and_speheres_alpha0p35"
 
-   singularity run --bind /mnt/groupdata/somewhere/gisans/bornagain_output \
-     ~/bornagain_v21.1_apptainer_new.sif mg_plot \
+   singularity exec --unsquash --bind $CODE --bind /mnt/groupdata/somewhere/gisans/bornagain_output \
+     $IMAGE env PYTHONPATH=$CODE python -m mcstas_gisans.plot \
      -f "${HDF5_BASE}.h5" --label "sagawfm 7p5" --q_min=0.15 \
      --q_max=0.15 -m1e-8 -d -s "${HDF5_BASE}" --png
 
