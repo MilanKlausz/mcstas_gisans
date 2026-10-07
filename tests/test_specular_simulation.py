@@ -1,7 +1,8 @@
 """
-Regression test for the --specular specular_simulation mode.
+Tests for the --specular specular_simulation mode: the specular reflection is one extra ray per particle
+hitting the sample, in the exact mirror direction, with the reflectivity of the sample.
 
-Guards against a bug where the per-particle hit-accumulation block in
+The first tests guard against a bug where the per-particle hit-accumulation block in
 run.py's process_particles() was nested one level too deep, inside the
 `else` branch of `if specular == 'specular_simulation':` instead of being
 a sibling of that if/else. As a result, --specular specular_simulation
@@ -12,7 +13,9 @@ import os
 import subprocess
 import sys
 
+import mcpl
 import numpy as np
+import pytest
 import scipp as sc
 
 
@@ -77,6 +80,106 @@ def test_specular_simulation_intensity_is_comparable_to_include_specular(tmp_pat
         f"specular_simulation total intensity ({specular_sim_intensity:.3e}) is not within a reasonable "
         f"factor of include_specular ({include_specular_intensity:.3e}), ratio={ratio:.3f}"
     )
+
+
+
+PAPER_ARGV = ["tests/data/d22_1e8/test_events.mcpl.gz", "-i", "d22", "--intensity_factor", "0.2084",
+              "--wavelength_selected", "6.0", "--model", "silica_100nm_air", "--alpha", "0.2353", "--allow_sample_miss",
+              "--use_avg_materials", "--sample_orientation", "2", "--instrument_detector_centre_offset", "0.290855", "-0.016063",
+              "--angle_range", "-0.3", "0.3", "0.15", "0.33", "--seed", "1", "--no_parallel"]
+
+
+def _pixel_image(tmp_path, name, extra):
+    """Run mg_run on the paper MCPL file and return the (x_nexus, y_nexus) pixel image."""
+    savename = str(tmp_path / name)
+    result = subprocess.run([sys.executable, "-m", "mcstas_gisans.run", *PAPER_ARGV, *extra, "--savename", savename],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, f"mg_run failed:\n{result.stderr}"
+    data = sc.io.hdf5.load_hdf5(savename + ".h5")["data"]
+    return data.values.reshape(128, 256)  # detector_id = ix * 256 + iy (D22: 128 tubes x 256 pixels)
+
+
+def _specular_profile(image, spot=None):
+    """Centre and RMS width (in 8 mm tubes) of the specular spot along the sample normal (x_nexus for orientation 2),
+    its intensity, and its (tube, pixel) position: within 9 tubes and +-12 pixels (+-48 mm) around the spot."""
+    i, j = np.unravel_index(np.argmax(image), image.shape) if spot is None else spot
+    profile = image[:, j - 12:j + 13].sum(1)
+    x, w = np.arange(i - 4, i + 5), profile[i - 4:i + 5]
+    centre = (w * x).sum() / w.sum()
+    return centre, np.sqrt((w * (x - centre) ** 2).sum() / w.sum()), w.sum(), (i, j)
+
+
+def test_specular_ray_is_the_mirror_reflection_independent_of_the_grid(tmp_path):
+    """With include_specular the specular lies in the grid bin containing it and is smeared over one bin; the
+    specular_simulation ray goes to the exact mirror direction: a coarse grid (bins of 0.09 deg = 3.5 tubes along the
+    normal) gives the same narrow spot as a fine grid (0.35 tube), at the same place and with the same intensity."""
+    fine = _specular_profile(_pixel_image(tmp_path, "include_fine", ["--specular", "include_specular",
+                             "--outgoing_directions_horizontal", "10", "--outgoing_directions_vertical", "20"]))
+    coarse_incl = _specular_profile(_pixel_image(tmp_path, "include_coarse", ["--specular", "include_specular",
+                                    "--outgoing_directions_horizontal", "10", "--outgoing_directions_vertical", "2"]), spot=fine[3])
+    coarse_sim = _specular_profile(_pixel_image(tmp_path, "sim_coarse", ["--specular", "specular_simulation",
+                                   "--outgoing_directions_horizontal", "10", "--outgoing_directions_vertical", "2"]), spot=fine[3])
+    assert abs(coarse_sim[0] - fine[0]) < 0.1                  # the same position
+    assert abs(coarse_sim[1] - fine[1]) < 0.1                  # the same width, not smeared by the coarse grid
+    assert coarse_incl[1] > fine[1] + 0.3                      # (include_specular is smeared by the coarse grid)
+    assert abs(coarse_sim[2] / fine[2] - 1) < 0.02             # the same specular intensity
+
+
+def test_particles_missing_the_sample_are_not_duplicated(tmp_path):
+    """A particle missing the sample goes straight to the detector once, without a specular or transmitted ray."""
+    tiny = ["--sample_size_y", "0.0001", "--sample_size_x", "0.0001", "--outgoing_directions", "4"]  # (almost) all miss
+    plain = _pixel_image(tmp_path, "none", tiny + ["--specular", "none"])
+    sim = _pixel_image(tmp_path, "sim", tiny + ["--specular", "specular_simulation"])
+    with mcpl.MCPLFile(PAPER_ARGV[0], blocklength=100000) as mcpl_file:
+        incident = 0.2084 * sum(block.weight.sum() for block in mcpl_file.particle_blocks)  # --intensity_factor 0.2084
+    assert plain.sum() == pytest.approx(incident, rel=1e-6)  # all of them miss the sample and land on the detector once
+    np.testing.assert_allclose(sim, plain, rtol=1e-12, atol=0)
+
+
+def _single_particle_image(monkeypatch, orientation, specular, particle):
+    """The pixel image of one preconditioned particle (BornAgain frame), without gravity and detector smearing."""
+    from mcstas_gisans.run_cli import create_argparser, parse_args
+    from mcstas_gisans.parameters import pack_parameters
+    from mcstas_gisans.run import process_particles
+    monkeypatch.setattr(sys, "argv", ["mg_run", "dummy.mcpl.gz", "-i", "d22", "--wavelength_selected", "6.0",
+                                      "--model", "silica_100nm_air", "--alpha", "0.24", "--sample_size_y", "0.1",
+                                      "--sample_size_x", "0.1", "--sample_orientation", str(orientation), "--no_gravity",
+                                      "--specular", specular, "--outgoing_directions", "2",
+                                      "--instrument_detector_resolution", "0.0", "0.0", "--seed", "1"])
+    params = pack_parameters(parse_args(create_argparser()), "neutron")
+    return process_particles(np.array([particle]), params)['pixelHist']
+
+
+@pytest.mark.parametrize("orientation", [0, 1, 2])
+def test_specular_ray_keeps_the_horizontal_direction(monkeypatch, orientation):
+    """A specular reflection only reverses the velocity component along the surface normal (z in the BornAgain frame),
+    so a particle arriving 0.1 deg off-axis horizontally leaves 0.1 deg off-axis on the same side: the specular ray
+    hits the detector at the horizontal position of the unscattered ray, L*tan(0.1 deg) = 31 mm off-centre, and
+    L*tan(2 alpha) away from it along the normal. (A ray mirrored horizontally would land 2*L*tan(0.1 deg) = 61 mm away.)"""
+    v = 3956.0 / 6.0
+    a, phi = np.radians(0.24), np.radians(0.1)
+    particle = [1.0, 0.0, 0.0, 0.0, v * np.cos(a) * np.cos(phi), v * np.cos(a) * np.sin(phi), -v * np.sin(a), 6.0, 0.0]
+    with_specular = _single_particle_image(monkeypatch, orientation, "specular_simulation", particle)
+    without = _single_particle_image(monkeypatch, orientation, "none", particle)
+    specular_pixels = np.argwhere(with_specular != without)  # the same seed: only the specular ray differs
+    assert len(specular_pixels) == 1
+    # the unscattered ray: the same particle 1 um above the surface misses the sample and goes straight on
+    def straight(phi_sign):
+        missing = [1.0, 0.0, 0.0, 1e-6, particle[4], phi_sign * particle[5], particle[6], 6.0, 0.0]
+        pixels = np.argwhere(_single_particle_image(monkeypatch, orientation, "none", missing))
+        assert len(pixels) == 1
+        return pixels[0]
+    # raw detector axes (x_nexus: 128 tubes of 8 mm, y_nexus: 256 pixels of 4 mm); the normal is along y_nexus for a
+    # horizontal sample (1) and along x_nexus for a vertical one (0, 2)
+    horizontal, normal = (0, 1) if orientation == 1 else (1, 0)
+    pixel_size = (0.008, 0.004)
+    L = 17.6
+    shift = specular_pixels[0] - straight(+1)
+    assert shift[horizontal] == 0  # the same side (and column) as the incident offset
+    assert abs(shift[normal]) == pytest.approx(L * np.tan(2 * a) / pixel_size[normal], abs=1)  # 2 alpha off the beam
+    # (the mirrored side is resolved: the unscattered ray at -0.1 deg lands 2*L*tan(0.1 deg) away)
+    mirrored = abs(straight(-1)[horizontal] - straight(+1)[horizontal])
+    assert mirrored == pytest.approx(2 * L * np.tan(phi) / pixel_size[horizontal], abs=1)
 
 
 def _include_specular_bin_and_reflectivity(alpha, use_avg_materials, polarization=None, analyzer=None):

@@ -243,5 +243,26 @@ def test_a_killed_parallel_process_stops_the_run():
     assert "the run is stopped" in result.stderr
 
 
+def _seeded_pixel_image(tmp_path, name, seed):
+    """A small mg_run simulation (paper MCPL file, 5x5 outgoing directions); returns its pixel image."""
+    import scipp as sc
+    savename = str(tmp_path / name)
+    argv = [sys.executable, "-m", "mcstas_gisans.run", "tests/data/d22_1e8/test_events.mcpl.gz", "-i", "d22",
+            "--wavelength_selected", "6.0", "--outgoing_directions", "5", "--no_parallel", "--seed", str(seed),
+            "--savename", savename]
+    result = subprocess.run(argv, capture_output=True, text=True)
+    assert result.returncode == 0, f"mg_run failed:\n{result.stderr}"
+    return sc.io.hdf5.load_hdf5(savename + ".h5")["data"].values
+
+
+def test_different_seeds_give_different_monte_carlo_samples(tmp_path):
+    """The Monte Carlo sampling (outgoing-direction jitter, resolution smearing) follows --seed."""
+    a = _seeded_pixel_image(tmp_path, "a", 1)
+    b = _seeded_pixel_image(tmp_path, "b", 2)
+    assert a.sum() > 0 and not np.allclose(a, b)
+    # (the difference comes from the seed: the same seed again gives the same sample)
+    np.testing.assert_array_equal(_seeded_pixel_image(tmp_path, "a_again", 1), a)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

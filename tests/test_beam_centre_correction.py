@@ -108,6 +108,17 @@ def test_incident_angle_is_measured_from_the_specular_spot():
     assert alpha == pytest.approx(0.24, rel=0.05)
 
 
+def test_incident_angle_of_the_paper_data_and_figure(tmp_path):
+    """073174 (orientation 2, nominal 0.24 deg): the specular lies 144.5 mm from the direct beam along the
+    sample normal, 0.5 * arctan(0.1445 / 17.6) = 0.2353 deg (the --alpha of the paper example); the
+    figure is written next to it."""
+    from mcstas_gisans.beam_centre_correction import measure_incident_angle
+    alpha = measure_incident_angle("data/paper/d22_measurement/073174.nxs", DIRECT_BEAM_FILE, sample_orientation=2,
+                                   alpha=0.24, figure='png', savename=str(tmp_path / "angle"))
+    assert alpha == pytest.approx(0.2353, abs=2e-4)
+    assert (tmp_path / "angle.png").exists()
+
+
 def test_incident_angle_uses_the_whole_flat_topped_specular(tmp_path):
     """A wide beam gives a flat-topped specular spot, here 5 rows tall and 20 tubes wide with its brightest
     row at the lower edge: its position is the centroid of the whole spot, not of the brightest pixels."""

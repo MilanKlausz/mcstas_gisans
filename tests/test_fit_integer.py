@@ -147,6 +147,43 @@ def test_differential_evolution_budget_and_integers(monkeypatch, tmp_path):
         assert isinstance(point["radius"], float)
 
 
+@pytest.mark.parametrize("max_evals, popsize", [(40, 2), (100, 3), (7, 2)])
+def test_differential_evolution_respects_the_evaluation_budget(monkeypatch, tmp_path, max_evals, popsize):
+    """DE evaluates (maxiter + 1) populations; the total must not exceed --max_evals (except that
+    the initial population is always evaluated), and a noisy loss (never converging) uses all of it."""
+    rng = np.random.default_rng(0)
+    calls = _mock_evaluation(monkeypatch, loss_of_point=lambda p: (p["radius"] - 47.0) ** 2 + rng.normal(0, 1.0))
+    _run(_args(tmp_path, fit=[["radius", "50.0", "40.0", "60.0"], ["height", "10.0", "5.0", "20.0"]],
+               optimizer="differential-evolution", popsize=popsize, max_evals=max_evals, fatol=1e-9))
+    population = max(5, popsize * 2)  # scipy uses at least 5 population members
+    assert len(calls) == max(population, (max_evals // population) * population)
+
+
+@pytest.mark.parametrize("optimizer", ["nelder-mead", "powell"])
+def test_bounds_are_passed_to_the_optimizer(monkeypatch, tmp_path, capsys, optimizer):
+    """The optimum lies outside the bounds: no evaluation may leave them (no 1e9-penalty evaluations),
+    and the optimizer walks up to the bound."""
+    calls = _mock_evaluation(monkeypatch, loss_of_point=lambda p: (p["a"] - 9.0) ** 2)
+    _run(_args(tmp_path, fit=[["a", "4", "0", "5"]], optimizer=optimizer, max_evals=40, fatol=1e-6))
+    # an out-of-bounds point never reaches the simulation: run_automated_fit returns the penalty instead
+    assert "Penalty applied" not in capsys.readouterr().out
+    assert all(0 <= point["a"] <= 5 for point, _ in calls)
+    assert max(point["a"] for point, _ in calls) == pytest.approx(5.0, abs=0.05)
+
+
+def test_parameters_of_very_different_magnitude_are_fitted_together(monkeypatch, tmp_path):
+    """Like the microgel fits: a volume fraction, a position [nm] and an SLD in one fit."""
+    target = {"vf": 0.62, "z_pos": -150.0, "sld": 5.0e-6}
+    loss = lambda p: ((p["vf"] - 0.62) / 0.1) ** 2 + ((p["z_pos"] + 150.0) / 20.0) ** 2 + ((p["sld"] - 5.0e-6) / 1e-6) ** 2
+    calls = _mock_evaluation(monkeypatch, loss_of_point=loss)
+    _run(_args(tmp_path, fit=[["vf", "0.5", "0.4", "0.9"], ["z_pos", "-120", "-180", "-10"], ["sld", "5.56e-6", "2e-6", "6.35e-6"]],
+               max_evals=300, fatol=1e-6))
+    best = min((point for point, _ in calls), key=loss)
+    assert best["vf"] == pytest.approx(target["vf"], abs=0.01)
+    assert best["z_pos"] == pytest.approx(target["z_pos"], abs=2.0)
+    assert best["sld"] == pytest.approx(target["sld"], rel=0.02)
+
+
 def test_tiny_valued_parameter_is_fitted(monkeypatch, tmp_path):
     """Parameters on the 1e-6 scale (SLDs) must converge; with absolute tolerances they stopped at once."""
     target = 5.3e-6
