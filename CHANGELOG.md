@@ -88,8 +88,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 
 ### Changed
 - **Dependencies**: BornAgain 22 or 23 (`bornagain>=22.0,<24`; 23.0 is the default in `conda.yml`;
-  the built-in models run with BornAgain 24 too (helpers in `mcstas_gisans.ba_compat`), but its results
-  are not validated yet;
+  the built-in models run with BornAgain 24 too (helpers in `mcstas_gisans.ba_compat`), with the same
+  results as 23 when `--use_avg_materials` is used, but not without it yet;
   PyPI provides Linux wheels, on macOS a locally built wheel is needed, see
   `INSTALL.md`); NumPy 2 is supported. scipp, scippneutron, h5py, matplotlib
   and scipy are required.
