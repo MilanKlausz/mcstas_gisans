@@ -20,7 +20,7 @@ dependencies:
 
     # Example for installing a specific local BornAgain wheel (e.g. BornAgain 23.0 built for macOS):
     # Replace '- bornagain==23.0' above with a line pointing to your local .whl file, for example:
-    # - ./bornagain_versions/ba23/bornagain-23.0-cp311-cp311-macosx_11_0_x86_64.whl
+    # - /path/to/wheels/bornagain-23.0-cp311-cp311-macosx_11_0_x86_64.whl  (self-contained, see INSTALL.md)
 
     # Install mcstas_gisans in editable/development mode (changes to source code take effect immediately):
     - -e .

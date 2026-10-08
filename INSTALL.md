@@ -7,9 +7,9 @@ Instead of Conda, `mcstas_gisans` can also be installed using `pip` as described
 
 > [!NOTE]
 > **BornAgain Versioning & `conda.yml`**
-> By default, **BornAgain 23.0** is written in the `conda.yml` file (and BornAgain >= 23.0 in `requirements.txt` and `pyproject.toml`). This is the version `mcstas_gisans` is developed and tested with; older versions are not supported any more. BornAgain 24.1 also runs (a systematic benchmark is pending); to use it, edit the `conda.yml` file before creating the environment.
+> By default, **BornAgain 23.0** is written in the `conda.yml` file (and BornAgain >= 23.0 in `requirements.txt` and `pyproject.toml`). This is the version `mcstas_gisans` is developed and tested with; older versions are not supported any more. BornAgain 24 changed the Python API of materials and layouts (e.g. `MaterialBySLD` and `ParticleLayout` were removed), so with BornAgain 24.1 only the `silica_100nm_air_ba24` example model runs; the default model, the liquid-surface models and part of the test suite need BornAgain 23.
 >
-> **Warning (macOS Users):** PyPI provides pre-built BornAgain 23.0 (and 24.1) wheels only for Linux (x86_64, glibc >= 2.31); for macOS only the unsupported 21.x versions are available there. On macOS, BornAgain therefore has to be built from source into a local wheel, as described in [# Installing BornAgain on macOS (Build Guide)](#installing-bornagain-on-macos-build-guide), and the `- bornagain==23.0` line in `conda.yml` replaced with the path of that wheel (with `pip`, install the wheel before `requirements.txt`).
+> **Warning (macOS Users):** PyPI provides pre-built BornAgain 23.0 wheels for Linux (x86_64, glibc >= 2.31; 24.1: glibc >= 2.35) and Windows (x86_64); for macOS only the unsupported 21.x versions are available there. On macOS, BornAgain therefore has to be built from source into a local wheel, as described in [# Installing BornAgain on macOS (Build Guide)](#installing-bornagain-on-macos-build-guide), and the `- bornagain==23.0` line in `conda.yml` replaced with the path of that wheel (with `pip`, install the wheel before `requirements.txt`).
 
 To create the environment using Conda, run:
 ```bash
@@ -49,24 +49,37 @@ pip install -e .
 
 # Installing BornAgain on macOS (Build Guide)
 
-PyPI has no macOS wheels of BornAgain 23.0 or newer, so on macOS the default BornAgain 23.0 (or a newer version, e.g. 24.1) has to be built from source:
+PyPI has no macOS wheels of BornAgain 23.0 or newer, so on macOS the default BornAgain 23.0 has to be built from source. The official BornAgain instructions for building from source on Unix systems (https://bornagainproject.org, "Build and install") describe the dependencies; in short:
 
-1. **Build the Python wheel:** Follow the official BornAgain build-from-source instructions for Unix systems up to the step that creates the Python wheel file (`ninja ba_wheel` or `make ba_wheel`).
+1. **Build and install the two BornAgain libraries, then BornAgain** (each with CMake and Ninja, installing into one prefix directory and passing it to the next build with `-DCMAKE_PREFIX_PATH=<prefix>`). The library versions must match the BornAgain version:
 
-2. **Locate the generated `.whl` file:**
+   | BornAgain | libheinz | libformfactor |
+   |---|---|---|
+   | 23.0 | v2.0.1 | v0.3.2 |
+   | 24.1 | v4.1.0 | v0.4.0 |
+
+   Configure BornAgain with the Python interpreter of the target environment (`-DPython3_EXECUTABLE=<python 3.11>`), then build the wheel with `ninja ba_wheel`.
+
+2. **Locate the generated `.whl` file** (in `<build_directory>/py/wheel/`):
    ```bash
    find <build_directory> -name "*.whl"
    ```
 
-3. **Edit `conda.yml` to point to the local wheel:**
-   In `conda.yml`, locate the `- pip:` block. Replace the default `- bornagain==23.0` line with the path to your local wheel file, for example:
+3. **Make the wheel self-contained.** On macOS the wheel made by `ba_wheel` does not include the external libraries (libformfactor, GSL, FFTW, libcerf, ...) and, for 24.1, not even all of BornAgain's own libraries: it loads them from the build and prefix directories by absolute path. If these directories are moved or deleted later, `import bornagain` fails (e.g. `libformfactor.*.dylib` not found). Either keep the build directory, the prefix directory and the dependency environment where they are, or bundle the libraries into the wheel with [delocate](https://github.com/matthew-brett/delocate):
+   ```bash
+   delocate-wheel --exclude libpython3.11.dylib --exclude libomp.dylib --exclude libc++.1 -w <output_dir> <wheel>
+   ```
+   Do not bundle `libomp`: a second copy next to the one of the Conda environment (used by SciPy) aborts with `OMP: Error #15`. For 24.1, the references between BornAgain's own modules (`@rpath/_libBornAgain*.24.1.so`) have to be redirected to the copies inside the wheel (`install_name_tool -change ... @loader_path/...`) before running delocate, otherwise both copies are loaded.
+
+4. **Edit `conda.yml` to point to the local wheel:**
+   In `conda.yml`, locate the `- pip:` block. Replace the default `- bornagain==23.0` line with the path to your local wheel file (keep the wheel outside the repository), for example:
    ```yaml
      - pip:
        # - bornagain==23.0
-       - ./bornagain_versions/ba23/bornagain-23.0-cp311-cp311-macosx_11_0_x86_64.whl
+       - /path/to/wheels/bornagain-23.0-cp311-cp311-macosx_11_0_x86_64.whl
    ```
 
-4. **Create and activate the environment:**
+5. **Create and activate the environment:**
    ```bash
    conda env create -f conda.yml
    conda activate mcstas_gisans
