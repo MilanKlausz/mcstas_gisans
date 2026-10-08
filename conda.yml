@@ -13,7 +13,7 @@ dependencies:
   - scippneutron
   - pip
   - pip:
-    # Default (and minimum) BornAgain version. PyPI provides Linux wheels for BornAgain 23.0;
+    # Default BornAgain version (22.x also works, 24 does not yet). PyPI provides Linux wheels for BornAgain 23.0;
     # on macOS (PyPI has wheels only for the unsupported 21.x there) replace this line with a
     # locally built wheel, see INSTALL.md:
     - bornagain==23.0

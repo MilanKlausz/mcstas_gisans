@@ -82,7 +82,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   regression tests on the D22 paper data.
 
 ### Changed
-- **Dependencies**: BornAgain 23.0 or newer (the default in `conda.yml`;
+- **Dependencies**: BornAgain 22 or 23 (`bornagain>=22.0,<24`; 23.0 is the default in `conda.yml`;
+  BornAgain 24 changed the material and layout API and is not supported yet;
   PyPI provides Linux wheels, on macOS a locally built wheel is needed, see
   `INSTALL.md`); NumPy 2 is supported. scipp, scippneutron, h5py, matplotlib
   and scipy are required.

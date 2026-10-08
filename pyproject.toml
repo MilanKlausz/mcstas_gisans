@@ -1,7 +1,7 @@
 
 [project]
 name = "mcstas_gisans"
-version = "2.0.0"
+version = "3.0.0.dev0"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -17,7 +17,7 @@ requires-python = ">=3.11.0,<3.12.0"
 dependencies = [
   "numpy>=1.0",
   "mcpl",
-  "bornagain>=23.0",
+  "bornagain>=22.0,<24",
   "scipp",
   "scippneutron",
   "h5py",
