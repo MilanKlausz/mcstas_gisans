@@ -200,7 +200,17 @@ same outgoing directions; with ``--sampling``, use the printed
 ``--outgoing_directions_horizontal``/``--outgoing_directions_vertical`` numbers
 to repeat a run with exactly the same grid.
 ``mg_fit`` warns if the Monte Carlo variance exceeds the counting variance in
-more than 5% of the pixels.
+more than 5% of the pixels, or if it lowers the loss of the fit by more than
+10% compared with the loss without it. The second case happens also when only
+a few pixels are affected: where the pattern is steep compared with the
+outgoing-direction grid, the simulated counts are noisy, and a model that
+misses the data there (e.g. overshoots it 2-3x) is hardly penalised. In a fit
+of the high-resolution microgel data, about 6% of the pixels lowered the
+Poisson deviance from 4.0 to 2.6 on a 41x33 grid, while a 123x99 grid gave
+3.1-3.2 (3.5-3.8 without the Monte Carlo term). The warning states the loss
+with and without the Monte Carlo term; increase ``--outgoing_directions``
+(especially along the direction in which the pattern is steep) or the number
+of simulated neutrons until the two are close.
 
 7. Outputs
 ----------

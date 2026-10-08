@@ -85,6 +85,10 @@ def format_fit_value(v: float) -> str:
 
 LOSS_FUNCTIONS = ('poisson_deviance', 'reduced_chi2', 'log_residual')
 MC_TO_POISSON_WARNING_RATIO = 1.0  # warn if the MC variance exceeds the counting variance in >5% of the pixels
+MC_DISCOUNT_WARNING_FRACTION = 0.1  # warn if the MC variance lowers the fitted loss by more than 10%
+MC_DIAGNOSTICS = ('mc_to_poisson_variance', 'mc_dominated_fraction',
+                  'poisson_deviance_without_mc', 'reduced_chi2_without_mc',
+                  'mc_discount_poisson_deviance', 'mc_discount_reduced_chi2')
 
 
 def poisson_deviance_with_mc(counts: np.ndarray, expected: np.ndarray, mc_variance: np.ndarray) -> np.ndarray:
@@ -155,11 +159,17 @@ def calculate_fitness(
         - ``log_residual``: mean of (log10 N - log10 m)^2 over pixels where both are positive.
         - ``mc_to_poisson_variance``: 95th percentile of sigma_MC^2 / m over the pixels, i.e. how
           large the Monte Carlo variance of the simulation is compared to the counting variance.
+        - ``mc_dominated_fraction``: fraction of the pixels where sigma_MC^2 > m.
+        - ``poisson_deviance_without_mc``, ``reduced_chi2_without_mc``: the same losses with
+          sigma_MC = 0.
+        - ``mc_discount_poisson_deviance``, ``mc_discount_reduced_chi2``: 1 - loss / loss without
+          MC, i.e. how much the Monte Carlo variance lowers the loss. A large value means that the
+          comparison is limited by the simulation statistics, not by the counting statistics.
     """
     keep = np.isfinite(hist_nxs) & np.isfinite(hist_sim)
     n_valid = int(np.sum(keep))
     if n_valid == 0:
-        return {key: np.nan for key in LOSS_FUNCTIONS + ('mc_to_poisson_variance',)}
+        return {key: np.nan for key in LOSS_FUNCTIONS + MC_DIAGNOSTICS}
 
     counts = hist_nxs[keep]
     expected = hist_sim[keep]
@@ -182,11 +192,22 @@ def calculate_fitness(
     ratio = ratio[np.isfinite(ratio)]
     mc_to_poisson_variance = float(np.percentile(ratio, 95)) if ratio.size else np.nan
 
+    # the same losses without the Monte Carlo variance: how much does it lower them?
+    poisson_deviance_without_mc = float(np.sum(poisson_deviance_with_mc(counts, expected, np.zeros_like(expected))) / n_valid)
+    variance = np.where(expected > 0, expected, 1.0)
+    reduced_chi2_without_mc = float(np.sum((counts - expected) ** 2 / variance) / n_valid)
+    discount = lambda loss, loss_without_mc: 1.0 - loss / loss_without_mc if loss_without_mc > 0 else 0.0
+
     return {
         'poisson_deviance': poisson_deviance,
         'reduced_chi2': reduced_chi2,
         'log_residual': log_residual,
         'mc_to_poisson_variance': mc_to_poisson_variance,
+        'mc_dominated_fraction': float(np.mean(mc_variance > expected)),
+        'poisson_deviance_without_mc': poisson_deviance_without_mc,
+        'reduced_chi2_without_mc': reduced_chi2_without_mc,
+        'mc_discount_poisson_deviance': discount(poisson_deviance, poisson_deviance_without_mc),
+        'mc_discount_reduced_chi2': discount(reduced_chi2, reduced_chi2_without_mc),
     }
 
 def fit_flat_background(
@@ -951,14 +972,34 @@ _MC_WARNING_ISSUED = [False]
 
 
 def _warn_if_mc_uncertainty_large(metrics: Dict[str, float], args: Any) -> None:
-    """Warn once per run if the simulation's Monte Carlo variance is not small compared to the counting variance."""
+    """
+    Warn once per run if the simulation's Monte Carlo variance is not small compared to the
+    counting variance: in more than 5% of the pixels (95th percentile of sigma_MC^2 / m above
+    MC_TO_POISSON_WARNING_RATIO), or in few pixels where it lowers the loss of the fit
+    (poisson_deviance, reduced_chi2) by more than MC_DISCOUNT_WARNING_FRACTION, which hides misfit
+    there (e.g. where the pattern is steep compared to the outgoing-direction grid).
+    """
+    if _MC_WARNING_ISSUED[0]:
+        return
     ratio = metrics.get('mc_to_poisson_variance', np.nan)
-    if not _MC_WARNING_ISSUED[0] and np.isfinite(ratio) and ratio > MC_TO_POISSON_WARNING_RATIO:
-        _MC_WARNING_ISSUED[0] = True
-        print(f"WARNING: in more than 5% of the unmasked pixels the Monte Carlo variance of the simulation exceeds "
-              f"the expected counting (Poisson) variance (95th percentile of their ratio: {ratio:.2f}). The loss "
-              f"accounts for it, but the comparison is limited by the simulation statistics there; consider more "
-              f"simulated statistics (more incident neutrons, or more --outgoing_directions).")
+    loss_function = getattr(args, 'loss_function', 'poisson_deviance')
+    discount = metrics.get(f'mc_discount_{loss_function}', np.nan)
+    many_pixels = np.isfinite(ratio) and ratio > MC_TO_POISSON_WARNING_RATIO
+    large_discount = np.isfinite(discount) and discount > MC_DISCOUNT_WARNING_FRACTION
+    if not (many_pixels or large_discount):
+        return
+    _MC_WARNING_ISSUED[0] = True
+    fraction = metrics.get('mc_dominated_fraction', np.nan)
+    loss_str = ''
+    if np.isfinite(discount):
+        loss_str = (f" Including it lowers the {loss_function} from {metrics[f'{loss_function}_without_mc']:.4g} "
+                    f"to {metrics[loss_function]:.4g} ({discount:.0%} lower).")
+    print(f"WARNING: the Monte Carlo variance of the simulation exceeds the expected counting (Poisson) variance "
+          f"in {fraction:.1%} of the unmasked pixels (95th percentile of their ratio: {ratio:.2f}).{loss_str} "
+          f"The loss accounts for it, but the comparison is limited by the simulation statistics there and a "
+          f"misfit of the model is penalised less; consider more simulated statistics (more --outgoing_directions, "
+          f"especially along the direction in which the pattern is steep, or more incident neutrons). Loss values "
+          f"from different outgoing-direction grids or MCPL files are not directly comparable.")
 
 def save_summary_csv(records: List[Dict[str, Any]], output_dir: str, filename: str) -> None:
     """

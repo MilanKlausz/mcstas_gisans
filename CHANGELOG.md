@@ -20,7 +20,10 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   (`--nxs2`, `--fit2`, `--fit_common`), summed multi-file measurements
   (several `--nxs` files), CSV summaries, comparison plots and fit animations
   (`--png`, `--gif`). The default loss, a Poisson deviance with the Monte Carlo
-  uncertainty of the simulation folded in, is unbiased also at low counts.
+  uncertainty of the simulation folded in, is unbiased also at low counts. A
+  warning is printed if the Monte Carlo variance exceeds the counting variance
+  in more than 5% of the pixels, or if it lowers the loss of the fit by more
+  than 10% (with the loss with and without it).
 - `mg_fit --simulate_mask_angle_range`: only the outgoing directions that can
   reach the unmasked pixels are simulated. With
   `--simulate_mask_angle_range_factor auto` (default) every neutron hitting the

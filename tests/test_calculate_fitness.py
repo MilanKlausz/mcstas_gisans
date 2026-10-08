@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from scipy.optimize import minimize_scalar
 
-from mcstas_gisans.fit import calculate_fitness, poisson_deviance_with_mc
+from mcstas_gisans.fit import LOSS_FUNCTIONS, calculate_fitness, poisson_deviance_with_mc
 
 RNG = np.random.default_rng(20260924)
 
@@ -110,3 +110,72 @@ def test_fully_masked_gives_nan():
 def test_zero_prediction_for_measured_counts_is_heavily_penalised():
     metrics = calculate_fitness(np.array([5.0]), np.array([0.0]), np.array([0.0]))
     assert np.isfinite(metrics['poisson_deviance']) and metrics['poisson_deviance'] > 100
+
+
+def _few_mc_dominated_pixels(n_pixels=1000, n_bad=40):
+    """
+    A model that matches the counts (MC variance 0.1 m) except in 4% of the pixels, where it
+    overshoots the counts 2.5x and the MC variance is 10x the counting variance (a steep part of the
+    pattern on a coarse outgoing-direction grid). The 95th percentile of sigma^2 / m is only 0.1.
+    """
+    model = np.full(n_pixels, 50.0)
+    counts = model.copy()
+    mc_variance = 0.1 * model
+    counts[:n_bad] = 20.0
+    mc_variance[:n_bad] = 10 * model[:n_bad]
+    return counts, model, np.sqrt(mc_variance)
+
+
+def test_mc_discount_of_few_mc_dominated_pixels():
+    counts, model, mc_error = _few_mc_dominated_pixels()
+    metrics = calculate_fitness(counts, model, mc_error)
+    without = calculate_fitness(counts, model, np.zeros_like(model))
+    assert metrics['mc_to_poisson_variance'] == pytest.approx(0.1)
+    assert metrics['mc_dominated_fraction'] == pytest.approx(0.04)
+    # chi^2: only the 40 bad pixels contribute, (20 - 50)^2 / 50 without and / (50 + 500) with MC
+    assert metrics['reduced_chi2_without_mc'] == pytest.approx(0.04 * 900 / 50)
+    assert metrics['mc_discount_reduced_chi2'] == pytest.approx(1 - 50 / 550)
+    assert metrics['poisson_deviance_without_mc'] == pytest.approx(without['poisson_deviance'])
+    assert metrics['mc_discount_poisson_deviance'] == pytest.approx(1 - metrics['poisson_deviance'] / without['poisson_deviance'])
+    assert metrics['mc_discount_poisson_deviance'] > 0.5
+    # without MC variance there is nothing to discount
+    assert without['mc_discount_poisson_deviance'] == pytest.approx(0.0, abs=1e-12)
+    assert without['mc_discount_reduced_chi2'] == 0.0
+
+
+@pytest.mark.parametrize("loss_function", ['poisson_deviance', 'reduced_chi2'])
+def test_mc_warning_when_few_pixels_lower_the_loss(monkeypatch, capsys, loss_function):
+    from types import SimpleNamespace
+    from mcstas_gisans import fit
+    monkeypatch.setattr(fit, '_MC_WARNING_ISSUED', [False])
+    metrics = calculate_fitness(*_few_mc_dominated_pixels())
+    assert metrics['mc_to_poisson_variance'] < fit.MC_TO_POISSON_WARNING_RATIO  # the 5% criterion alone is silent
+    args = SimpleNamespace(loss_function=loss_function)
+    fit._warn_if_mc_uncertainty_large(metrics, args)
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "4.0% of the unmasked pixels" in out
+    assert f"lowers the {loss_function} from {metrics[f'{loss_function}_without_mc']:.4g}" in out
+    fit._warn_if_mc_uncertainty_large(metrics, args)  # once per run
+    assert capsys.readouterr().out == ""
+
+
+def test_no_mc_warning_for_small_mc_variance(monkeypatch, capsys):
+    from types import SimpleNamespace
+    from mcstas_gisans import fit
+    monkeypatch.setattr(fit, '_MC_WARNING_ISSUED', [False])
+    counts, model, _ = _few_mc_dominated_pixels()  # the same misfit, but small MC variance everywhere
+    metrics = calculate_fitness(counts, model, np.sqrt(0.01 * model))
+    assert metrics['mc_discount_poisson_deviance'] < fit.MC_DISCOUNT_WARNING_FRACTION
+    for loss_function in LOSS_FUNCTIONS:
+        fit._warn_if_mc_uncertainty_large(metrics, SimpleNamespace(loss_function=loss_function))
+    assert capsys.readouterr().out == ""
+
+
+def test_mc_warning_for_many_mc_dominated_pixels_also_with_log_residual(monkeypatch, capsys):
+    from types import SimpleNamespace
+    from mcstas_gisans import fit
+    monkeypatch.setattr(fit, '_MC_WARNING_ISSUED', [False])
+    counts, model = _poisson_data(50.0, size=1000)
+    fit._warn_if_mc_uncertainty_large(calculate_fitness(counts, model, np.sqrt(2 * model)),
+                                      SimpleNamespace(loss_function='log_residual'))
+    assert "95th percentile of their ratio: 2.00" in capsys.readouterr().out

@@ -147,7 +147,7 @@ With :math:`N_i` the measured counts and :math:`m_i` the simulated expected coun
 - ``reduced_chi2``: :math:`\frac{1}{n}\sum_i (N_i - m_i)^2/(m_i + \sigma_i^2)`. About 1 for a perfect model at high counts, but biased at low counts (a few counts per pixel).
 - ``log_residual``: the mean squared difference of :math:`\log_{10}` intensities over the pixels where both are positive.
 
-All three are reported for every evaluation (``fit_summary.csv``/``scan_summary.csv``, sorted by the selected loss). If the Monte Carlo variance of the simulation exceeds the counting variance in more than 5% of the pixels, a warning suggests increasing the simulated statistics. Regions the sample model does not describe (the specular peak, the transmitted/direct beam) must be masked, otherwise they dominate any loss.
+All three are reported for every evaluation (``fit_summary.csv``/``scan_summary.csv``, sorted by the selected loss). If the Monte Carlo variance of the simulation exceeds the counting variance in more than 5% of the pixels, or if it lowers the selected loss (``poisson_deviance`` or ``reduced_chi2``) by more than 10% compared with the same loss without it (:math:`\sigma_i = 0`), a warning suggests increasing the simulated statistics. Regions the sample model does not describe (the specular peak, the transmitted/direct beam) must be masked, otherwise they dominate any loss.
 
 **Usage Example:**
 Each ``--fit`` takes the parameter name followed by the initial value (``--fit radius 51``), the bounds (``--fit radius 40 60``, starting from the midpoint), or both (``--fit radius 51 40 60``). The instrument configuration (incident angle, orientation, detector offset, intensity factor) must match the measurement, as described in :doc:`replicating_measurements`.
