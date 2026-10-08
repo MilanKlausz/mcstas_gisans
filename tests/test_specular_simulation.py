@@ -186,8 +186,8 @@ def _include_specular_bin_and_reflectivity(alpha, use_avg_materials, polarizatio
     """The value include_specular puts into the grid bin of the specular direction (BornAgain sets that bin to the
     reflectivity, for a beam intensity of 1), and the reflectivity of get_simulation_specular, for the paper sample."""
     from mcstas_gisans.run import get_simulation, get_simulation_specular, get_result_intensities
-    from mcstas_gisans.bornagain_samples import silica_100nm_air
-    sample = silica_100nm_air.get_sample(radius=49.22, latticeParameter=112.85, interferenceRange=5, positionVariance=35.74)
+    from mcstas_gisans.sample import Sample
+    sample = Sample(0.1, 0.1, 'silica_100nm_air', None).get_module().get_sample(radius=49.22, latticeParameter=112.85, interferenceRange=5, positionVariance=35.74)
     direction, efficiency, transmission = analyzer if analyzer else (None, None, None)
     angle_range = [-0.1, 0.1, alpha - 0.1, alpha + 0.1]  # 3 x 3 bins: the specular in the centre bin
     values = []

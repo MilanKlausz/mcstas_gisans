@@ -46,10 +46,10 @@ def test_outgoing_directions_validation_errors(monkeypatch, parser, argv):
 
 def _substrate():
     import bornagain as ba
-    from mcstas_gisans.ba_compat import refractive_material
-    sample = ba.Sample()
-    sample.addLayer(ba.Layer(refractive_material("Vacuum", 0.0, 0.0)))
-    sample.addLayer(ba.Layer(refractive_material("Si", 7.6e-6, 1.7e-10)))
+    sample = ba.MultiLayer() if hasattr(ba, 'MultiLayer') else ba.Sample()  # ba.Sample from BornAgain 22 on
+    color = () if hasattr(ba, 'ParticleLayout') else ((0.5, 0.5, 0.5),)  # BornAgain 24: a material colour
+    sample.addLayer(ba.Layer(ba.RefractiveMaterial("Vacuum", *color, 0.0, 0.0)))
+    sample.addLayer(ba.Layer(ba.RefractiveMaterial("Si", *color, 7.6e-6, 1.7e-10)))
     return sample
 
 

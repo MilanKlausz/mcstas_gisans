@@ -14,6 +14,10 @@ from mcstas_gisans.sample import Sample
 NP_MODEL = 'gisans_model_air_d2o_interface'
 MICROGEL_MODEL = 'gisans_model_air_d2o_interface_microgel'
 
+# the liquid models have no BornAgain 21 implementation (they need ba.Sample and ba.SphericalSegment)
+pytestmark = pytest.mark.skipif(NP_MODEL not in Sample.list_builtin_samples(),
+                                reason='the liquid models are not available for the installed BornAgain version')
+
 # (model, --sample_arguments, fitted parameter values): the joint nanoparticle fit (sample 1), the lattice_size=7
 # high-resolution microgel fit, and the nanoparticles with a shell
 SCRIPT_PARAMETERS = [

@@ -1,0 +1,103 @@
+{
+ "depthsensitivitysample": {
+  "ba21": {
+   "avg_materials": 170376113741.68573,
+   "bornagain": "21.2",
+   "plain": 1209700038197.9846
+  },
+  "ba22": {
+   "avg_materials": 170547788642.52075,
+   "bornagain": "23.0",
+   "plain": 1210262173522.795
+  }
+ },
+ "gisans_model_air_d2o_interface": {
+  "ba22": {
+   "avg_materials": 17019119.81039475,
+   "bornagain": "23.0",
+   "plain": 3164481.3760330235
+  },
+  "ba24": {
+   "avg_materials": 17019119.81039475,
+   "bornagain": "24.1",
+   "plain": 245477.22483622667
+  }
+ },
+ "gisans_model_air_d2o_interface_microgel": {
+  "ba22": {
+   "avg_materials": 8262207.58780294,
+   "bornagain": "23.0",
+   "plain": 3004841.055053128
+  },
+  "ba24": {
+   "avg_materials": 8262207.587802939,
+   "bornagain": "24.1",
+   "plain": 208580.55502508674
+  }
+ },
+ "hexagonal_spheres": {
+  "ba21": {
+   "avg_materials": 143767027.08847466,
+   "bornagain": "21.2",
+   "plain": 245765065.83857828
+  },
+  "ba22": {
+   "avg_materials": 143735861.3358243,
+   "bornagain": "23.0",
+   "plain": 245901252.05660892
+  }
+ },
+ "lamellas_and_spheres": {
+  "ba21": {
+   "avg_materials": 190718377.75919288,
+   "bornagain": "21.2",
+   "plain": 172722665.6721626
+  },
+  "ba22": {
+   "avg_materials": 190201028.54294437,
+   "bornagain": "23.0",
+   "plain": 171259724.41294143
+  }
+ },
+ "silica_100nm_D2O": {
+  "ba21": {
+   "avg_materials": 107974777.50061132,
+   "bornagain": "21.2",
+   "plain": 72807517.49166657
+  },
+  "ba22": {
+   "avg_materials": 108010130.83673398,
+   "bornagain": "23.0",
+   "plain": 72848443.35650624
+  }
+ },
+ "silica_100nm_air": {
+  "ba21": {
+   "avg_materials": 7910651.171925066,
+   "bornagain": "21.2",
+   "plain": 113137011.9589433
+  },
+  "ba22": {
+   "avg_materials": 7911206.697483951,
+   "bornagain": "23.0",
+   "plain": 113135665.96769132
+  },
+  "ba24": {
+   "avg_materials": 7911206.697483951,
+   "bornagain": "24.1",
+   "plain": 113135665.96769132
+  }
+ },
+ "silica_air": {
+  "ba21": {
+   "avg_materials": 4935.706863550841,
+   "bornagain": "21.2",
+   "plain": 4935.706863550841
+  },
+  "ba22": {
+   "avg_materials": 4936.044278591788,
+   "bornagain": "23.0",
+   "plain": 4936.044278591788
+  }
+ }
+}

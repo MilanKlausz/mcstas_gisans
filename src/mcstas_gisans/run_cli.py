@@ -7,7 +7,7 @@ from typing import List
 from .instrument_defaults import instrument_defaults, required_keys_for_wfm, set_instrument_parameters
 from .sample import Sample
 
-builtin_samples: List[str] = Sample.list_builtin_samples()
+builtin_samples: List[str] = Sample.describe_builtin_samples()
 builtin_str: str = ', '.join(builtin_samples)
 DEFAULT_OUTGOING_DIRECTIONS: int = 20
 # Sampling presets: target number of rays a detector pixel collects over the run, counted with the effective number of
@@ -55,7 +55,8 @@ def create_argparser() -> argparse.ArgumentParser:
     outputGroup.add_argument('--temp_read_chunk_size', type=int, default=1000000, help='Chunk size for reading temporary intermediate files at the end of the simulation (default: 1000000)')
 
     sampleGroup = parser.add_argument_group('Sample', 'Sample related parameters and options.')
-    sampleGroup.add_argument('--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in model options: {builtin_str}"))
+    sampleGroup.add_argument('--model', default="silica_100nm_air", help=(f"BornAgain model to use. Can be: the name of a built-in model (e.g. 'silica_100nm_air'), or a path to custom a Python file defining a sample model. Built-in models (and the BornAgain major versions they are tested with): {builtin_str}"))
+    sampleGroup.add_argument('--allow_untested_bornagain_version', default=False, action='store_true', help='Use a built-in sample model also if it has no implementation for the installed BornAgain version (all its implementations declare other BORNAGAIN_VERSIONS) (the implementation for the newest older version is used, with a warning; its results may be wrong). Without this option such a model stops the run with an error. The tested versions of each built-in model are listed with --model.')
     sampleGroup.add_argument('--sample_arguments', help='Input arguments of the sample model in format: "arg1=value1;arg2=value2"')
     sampleGroup.add_argument('--sample_orientation', default=1, choices=[0,1,2], type=int, help='Orientation of the sample, by the direction of its surface normal (looking along the beam): 1 - horizontal sample, normal up (reflection goes up); 0 - vertical sample, normal pointing right (reflection goes right, towards lower raw detector x index); 2 - vertical sample, normal pointing left (reflection goes left, towards higher raw detector x index).')
     sampleGroup.add_argument('--sample_size_y', default=0.06, type=float, help='Size of sample perpendicular to beam (along y-axis in BornAgain geometry). [m]')

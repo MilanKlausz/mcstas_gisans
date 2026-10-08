@@ -136,7 +136,8 @@ def hits_sample(args, particles):
     """Boolean array: which of the (preconditioned) particles hit the sample, i.e. are scattered."""
     if not len(particles):
         return np.zeros(0, dtype=bool)
-    sample = Sample(args.sample_size_y, args.sample_size_x, args.model, None)
+    sample = Sample(args.sample_size_y, args.sample_size_x, args.model, None,
+                    getattr(args, 'allow_untested_bornagain_version', False))
     columns = np.asarray(particles).T  # p, x, y, z, vx, vy, vz, ... (BornAgain frame)
     return ~np.asarray(sample.sample_missed(columns[1], columns[2], columns[3], columns[6]), dtype=bool)
 
@@ -215,7 +216,8 @@ def pack_parameters(args, particle_type):
         else:
             print(f"Simulated angle range [deg]: horiz=[{angle_range[0]:.4f}, {angle_range[1]:.4f}], vert=[{angle_range[2]:.4f}, {angle_range[3]:.4f}]")
 
-    sample = Sample(args.sample_size_y, args.sample_size_x, args.model, args.sample_arguments)
+    sample = Sample(args.sample_size_y, args.sample_size_x, args.model, args.sample_arguments,
+                    getattr(args, 'allow_untested_bornagain_version', False))
 
     if getattr(args, 'outgoing_directions_horizontal', None) is not None:
         outgoing_directions_horizontal = args.outgoing_directions_horizontal

@@ -1,25 +1,25 @@
 """
-Model for silica nanoparticles (with or without a shell) at the air/D2O interface (liquid surface, D22).
+Model for pNIPAM microgel particles at the air/D2O interface (liquid surface, D22).
 
-A finite hexagonal 2D lattice of spheres (radius, lattice constant 2*radius + lattice_a_2_radius_plus)
-partly immersed in D2O (z_pos: bottom of the sphere relative to the interface). A fraction vf_si_np of the
-lattice sites holds a SiO2 sphere; the other sites hold a 'void' sphere of air above and D2O below the
-interface. For BornAgain 22, 23 and 24 (mcstas_gisans.ba_compat).
+The geometry of gisans_model_air_d2o_interface: a finite hexagonal 2D lattice of spheres (radius, lattice
+constant 2*radius + lattice_a_2_radius_plus) partly immersed in D2O (z_pos: bottom of the sphere relative to
+the interface). A fraction vf_si_np of the lattice sites holds a microgel sphere of SLD microgel_sld; the other
+sites hold a 'void' sphere of air above and D2O below the interface. For BornAgain 22 and 23 (ba.Sample).
 
-Default parameter values: the silica nanoparticle sample at high surface pressure (281836.nxs), sample 1 of the
-joint high/low-pressure fit (differential evolution, alpha 0.4318, specular_simulation, poisson_deviance 5.43;
-best evaluation of a run stopped by the time limit), with pos_var=60 and lattice_size=2 as in that fit.
-The same model is used for the nanoparticles with a pNIPAM shell with other parameter values.
+Default parameter values: the best fit of the high-resolution microgel measurement at 30 mN/m (8 summed NeXus
+files, alpha 0.4341, specular_simulation, fitted background; differential evolution, second round, with
+lattice_size=7 and pos_var=60: evaluation 321, poisson_deviance 2.6344).
 
 Author: Nicolo Paracini (created on 1 May 2026).
 """
+
+# BornAgain versions this implementation is tested with (first, last major version); see Sample in sample.py
+BORNAGAIN_VERSIONS = (22, 23)
 
 import numpy as np
 
 import bornagain as ba
 from bornagain import deg, nm, R3
-
-from mcstas_gisans.ba_compat import sld_material, basic_lattice, finite_lattice, add_particles
 
 
 # ============================================================
@@ -75,9 +75,6 @@ def build_interface_matched_void(radius, z_pos, material_air, material_d2o):
     z0 = float(z_pos)
 
     h_sub = np.clip(-z0, 0.0, 2.0 * R)
-    # the compound's own origin is its lowest point (the D2O cap at z0, or the air cap at the interface), and the
-    # compound is moved there: the reference point of a particle must be its bottom (mcstas_gisans.ba_compat)
-    z_bottom = z0 if h_sub > 0 else 0.0
 
     components = []
 
@@ -88,7 +85,7 @@ def build_interface_matched_void(radius, z_pos, material_air, material_d2o):
             0 * nm,
         )
         p_d2o = ba.Particle(material_d2o, ff_d2o)
-        p_d2o.translate(R3(0 * nm, 0 * nm, (z0 - z_bottom) * nm))
+        p_d2o.translate(R3(0 * nm, 0 * nm, z0 * nm))
         components.append(p_d2o)
 
     if h_sub < 2.0 * R:
@@ -98,14 +95,12 @@ def build_interface_matched_void(radius, z_pos, material_air, material_d2o):
             h_sub * nm,
         )
         p_air = ba.Particle(material_air, ff_air)
-        p_air.translate(R3(0 * nm, 0 * nm, -z_bottom * nm))
         components.append(p_air)
 
     compound = ba.Compound()
 
     for comp in components:
         compound.addComponent(comp)
-    compound.translate(R3(0 * nm, 0 * nm, z_bottom * nm))
 
     return compound, h_sub
 
@@ -115,25 +110,26 @@ def build_interface_matched_void(radius, z_pos, material_air, material_d2o):
 # ============================================================
 
 def get_sample(
-    vf_si_np=0.6537,
-    radius=52.36,
-    z_pos=-90.41,
-    lattice_a_2_radius_plus=19.09,
+    vf_si_np=0.9449,
+    radius=69.45,
+    z_pos=-143.02,
+    lattice_a_2_radius_plus=31.95,
     # lattice_a=108, #make this 2*radius + epsilon(where epsilon is a different parameter that can be fitted) (reasonable limit for NP: lower:0 -- upper:2 radius) (limit for with shell: lower: 0 (which would mean no shell:D)-- upper: 2radius] (todo check that the math adds up for the R85 lattica_a=205)
     # lattice_b=108, #this should be the same as lattice_a, remove this variable!
     lattice_alpha=120,
     lattice_rot=0,
     pos_var=60,
-    lattice_size=2,
+    lattice_size=7,
     surface_density=7.39008344563e-05,
+    microgel_sld=5.116e-6
 ):
     """
-    Get the BornAgain sample of the (core-shell) silica nanoparticles at the air/D2O interface.
+    Get the BornAgain sample of the microgel particles at the air/D2O interface.
 
     Parameters
     ----------
     vf_si_np : float
-        Fraction of the lattice sites holding a SiO2 sphere (the rest hold an air/D2O 'void' sphere).
+        Fraction of the lattice sites holding a microgel sphere (the rest hold an air/D2O 'void' sphere).
     radius : float
         Sphere radius [nm].
     z_pos : float
@@ -148,11 +144,14 @@ def get_sample(
         Number of lattice sites along each lattice axis of the finite 2D lattice.
     surface_density : float
         No effect (kept for existing calls): the particle surface density is one particle per lattice
-        cell (BornAgain 22/23 ignored the explicit density of a layout with a 2D lattice).
+        cell (BornAgain 22/23 ignore the explicit density of a layout with a 2D lattice).
+    microgel_sld : float
+        Scattering length density of the microgel spheres [1/A^2].
     """
-    material_Air = sld_material("Air", 0.0, 0.0)
-    material_D2O = sld_material("D2O", 6.35e-06, 0.0)
-    material_SiO2 = sld_material("SiO2", 3.47e-06, 0.0)
+    material_Air = ba.MaterialBySLD("Air", 0.0, 0.0)
+    material_D2O = ba.MaterialBySLD("D2O", 6.35e-06, 0.0)
+    # material_SiO2 = ba.MaterialBySLD("SiO2", 3.47e-06, 0.0)
+    material_SiO2 = ba.MaterialBySLD("SiO2", microgel_sld, 0.0)
 
     vf_void = 1.0 - vf_si_np
 
@@ -175,22 +174,32 @@ def get_sample(
         )
 
     lattice_a = 2*radius + lattice_a_2_radius_plus
-    lattice = basic_lattice(
+    lattice = ba.BasicLattice2D(
         lattice_a * nm,
         lattice_a * nm, #lattice_b * nm,
         lattice_alpha * deg,
         lattice_rot * deg,
     )
 
-    order = finite_lattice(lattice, lattice_size, lattice_size, integrate_xi=True,
-                           position_variance=pos_var * nm * nm)
+    iff = ba.InterferenceFinite2DLattice(
+        lattice,
+        lattice_size,
+        lattice_size,
+    )
+    iff.setIntegrationOverXi(True)
+    iff.setPositionVariance(pos_var * nm * nm)
+
+    layout = ba.ParticleLayout()
+    layout.addParticle(particle_sio2, vf_si_np)
+    layout.addParticle(void_compound, vf_void)
+    layout.setInterference(iff)
+    layout.setTotalParticleSurfaceDensity(surface_density)
 
     layer_1 = ba.Layer(material_Air)
 
-    # the particles hang below the top of the D2O layer (the air/D2O interface)
     layer_2 = ba.Layer(material_D2O)
     layer_2.setNumberOfSlices(1)
-    add_particles(layer_2, [(particle_sio2, vf_si_np), (void_compound, vf_void)], order)
+    layer_2.addLayout(layout)
 
     sample = ba.Sample()
     sample.addLayer(layer_1)

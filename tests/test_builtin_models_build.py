@@ -1,6 +1,6 @@
 """
 Every built-in sample model builds a BornAgain sample with its defaults and simulates a tiny detector with the
-installed BornAgain version (22, 23 or 24: the models use mcstas_gisans.ba_compat).
+installed BornAgain version (the models available for it: see the version folders of bornagain_samples).
 """
 import bornagain as ba
 import numpy as np
