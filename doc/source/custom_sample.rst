@@ -92,6 +92,7 @@ Under the hood, ``mg_fit`` selects an optimizer with ``--optimizer``: ``nelder-m
 ``powell``, or ``differential-evolution`` (which requires finite bounds on every fitted
 parameter). Each iteration re-runs the full McStas-particles-through-BornAgain simulation and
 scores it against the experimental NeXus data over the *unmasked* detector region only, using a
-loss function selected with ``--loss_function`` (``reduced_chi2`` by default, or
-``log_residual``) — see :doc:`main_workflow` for how ``--mask_*`` options control which region
-counts towards the loss, and for the simpler grid-search alternative, ``--scan``.
+loss function selected with ``--loss_function`` (``poisson_deviance`` by default, or
+``reduced_chi2``/``log_residual``; see :ref:`loss-functions` for which to choose) — see
+:doc:`main_workflow` for how ``--mask_*`` options control which region counts towards the loss,
+and for the simpler grid-search alternative, ``--scan``.

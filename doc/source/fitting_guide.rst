@@ -115,7 +115,7 @@ fit, and compare it with the measured floor. Two more points:
 
 - Use it with the default ``poisson_deviance``: minimising ``reduced_chi2``
   (whose variance, the expected counts, is in the denominator) overestimates
-  the background by about 0.5 counts per pixel.
+  the background by about 0.5 counts per pixel (see :ref:`loss-functions`).
 - The background is flat. A background that varies across the detector (e.g.
   from the subphase, or from the sample environment) is not described by it;
   mask such regions or keep them in mind when judging the fit.
@@ -169,15 +169,156 @@ separate (``--fit``/``--fit2``) parameters are described in :doc:`main_workflow`
 6. Loss function and Monte Carlo noise
 --------------------------------------
 
-The default loss, ``poisson_deviance``, is the per-pixel deviance of a Poisson
-likelihood, with the Monte Carlo uncertainty of the simulation included. It is
-about 1 per pixel for a model that describes the data within counting
-statistics, and it gives unbiased parameters also at a few counts per pixel.
-``reduced_chi2`` and ``log_residual`` are reported as well
-(see :ref:`the loss definitions <loss-functions>`); compare loss values only
-within one loss function. A value well above 1 means the model (or the mask, or
-the instrument setup) does not describe the data; the fitted parameters are
-then the best compromise, not necessarily the true values.
+.. _loss-functions:
+
+6.1 Choosing the loss function (``--loss_function``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The loss is the single number that the optimizer minimises: it measures how
+well the simulation describes the measurement over the :math:`n` unmasked
+pixels. Below, :math:`N_i` is the measured number of counts in pixel :math:`i`,
+:math:`m_i` the simulated *expected* counts over ``--experiment_time``
+(including the flat background, ``--background`` or ``--fit_background``) and
+:math:`\sigma_i^2` the Monte Carlo variance of :math:`m_i`, which comes from the
+finite number of simulated rays (section 6.2). All three losses are calculated
+for every evaluation and written to ``fit_summary.csv``/``scan_summary.csv``;
+``--loss_function`` selects the one that is minimised (and by which the
+summaries are sorted).
+
+**poisson_deviance** (default). The measured counts are Poisson distributed: a
+pixel with expected counts :math:`m` records :math:`N` counts with probability
+:math:`P(N|m) = m^N e^{-m}/N!`. The Poisson deviance compares the probability of
+the measurement under the model with that under a *saturated* model, which
+predicts every pixel exactly (:math:`m_i = N_i`), the best any model can do:
+
+.. math::
+
+   D = \frac{2}{n}\sum_i \left[\ln P(N_i|N_i) - \ln P(N_i|m_i)\right]
+     = \frac{2}{n}\sum_i \left[m_i - N_i + N_i \ln\frac{N_i}{m_i}\right]
+
+(a pixel with :math:`N_i = 0` contributes :math:`2m_i`). Each term is zero where
+the model predicts the measured counts and positive otherwise. Minimising
+:math:`D` is the same as maximising the Poisson likelihood of the measurement,
+i.e. it is the maximum-likelihood fit for counting data. Unlike the reduced
+:math:`\chi^2` below, it does not push the model towards too high counts in pixels
+with few counts (also at 0, 1 or 2 counts per pixel).
+For many counts each term approaches :math:`(N_i - m_i)^2/m_i`, so :math:`D`
+becomes the reduced :math:`\chi^2` below. This is a standard statistic under
+several names: the (Poisson) deviance of generalised linear models [1]_, the
+Cash statistic or C-statistic of X-ray astronomy [2]_ and the likelihood
+:math:`\chi^2` of Baker and Cousins in particle physics [3]_. For a model that
+describes the data within counting statistics, :math:`D` is about 1 per pixel:
+its expectation is 1.00 at 20 counts per pixel, 1.03 at 8 and about 1.15 at 1
+to 2 counts, and it drops below 1 for less than one count per pixel (0.47 at
+0.1 counts). A value well above 1 means that the model does not describe the
+data.
+
+``mg_fit`` includes the Monte Carlo uncertainty of the simulation in this
+likelihood: the true expectation of a pixel is taken as gamma distributed with
+mean :math:`m_i` and variance :math:`\sigma_i^2`, which makes :math:`N_i`
+negative-binomially distributed with mean :math:`m_i` and variance
+:math:`m_i + \sigma_i^2` [4]_:
+
+.. math::
+
+   P(N|m,\sigma^2) = \frac{\Gamma(N+\alpha)}{\Gamma(\alpha)\,N!}
+     \left(\frac{m}{m+\sigma^2}\right)^{\alpha}
+     \left(\frac{\sigma^2}{m+\sigma^2}\right)^{N},
+   \qquad \alpha = \frac{m^2}{\sigma^2} .
+
+It replaces :math:`P(N_i|m_i)` in :math:`D` (the saturated term stays Poisson)
+and becomes the Poisson probability for :math:`\sigma \to 0`. At high counts
+each term approaches :math:`(N-m)^2/(m+\sigma^2) + \ln(1+\sigma^2/m)`, so a
+perfect model gives about :math:`1 + \ln(1+\sigma^2/m)` per pixel.
+
+**reduced_chi2**. Pearson's :math:`\chi^2` per pixel, the squared residual in
+units of its expected standard deviation (the Poisson variance of the model
+plus the Monte Carlo variance):
+
+.. math::
+
+   \chi^2_\mathrm{red} = \frac{1}{n}\sum_i \frac{(N_i - m_i)^2}{m_i + \sigma_i^2}
+
+(divided by the number of pixels, not by the number of pixels minus the number
+of fitted parameters, a negligible difference for thousands of pixels). For the
+true model its expectation is 1 (without Monte Carlo variance) at any number of
+counts, which makes it a familiar measure of the goodness of fit. Its *minimum*,
+however, is biased when the pixels have few counts: the model is in the
+denominator, so a higher :math:`m_i` lowers the penalty of the pixels with more
+counts than predicted. For example, the flat level that minimises
+:math:`\chi^2_\mathrm{red}` for Poisson counts of mean :math:`\mu` is
+:math:`\sqrt{\langle N^2\rangle} \approx \mu + 1/2`, while :math:`D` gives the
+mean, :math:`\mu`. This bias of about half a count per pixel is negligible at
+hundreds of counts, but not at a few. In fits of the high-resolution microgel
+data, where the median unmasked pixel has about 8 counts, ``reduced_chi2``
+fitted a flat background about 0.5 counts per pixel higher than
+``poisson_deviance``; both found the same range of lattice sizes.
+
+**log_residual**. The mean of :math:`(\log_{10} N_i - \log_{10} m_i)^2` over the
+pixels where both are positive. It compares relative deviations, so weak
+regions weigh as much as bright ones, as on a logarithmic colour scale. It
+ignores the counting statistics (a pixel with 3 counts weighs as much as one
+with 3000, and pixels without counts are left out), does not include the Monte
+Carlo variance, and has no reference value for a perfect model.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 26 27 27
+
+   * - Loss
+     - Perfect model
+     - Few counts per pixel
+     - Monte Carlo variance
+   * - ``poisson_deviance``
+     - about 1 per pixel
+     - unbiased
+     - included
+   * - ``reduced_chi2``
+     - 1 per pixel
+     - biased (about +0.5 counts per pixel)
+     - included
+   * - ``log_residual``
+     - no reference value
+     - empty pixels left out, noisy
+     - not included
+
+Which one to use:
+
+- ``poisson_deviance`` (default): the recommended choice for all fits. It is
+  correct for counts at any level, which matters in GISANS, where much of the
+  unmasked detector has only a few counts per pixel, and it is the loss to use
+  with ``--fit_background``.
+- ``reduced_chi2``: when a familiar :math:`\chi^2` is preferred, e.g. to compare
+  with other analyses. With hundreds of counts in most pixels it gives the same
+  parameters as ``poisson_deviance`` and a similar value; with few counts its
+  fit is biased towards too high expected counts. Since every loss is written
+  to the summary, a fit can minimise ``poisson_deviance`` and still report the
+  reduced :math:`\chi^2` of the best evaluation.
+- ``log_residual``: for a first look at the shape of the pattern over orders of
+  magnitude (e.g. in a scan), not for final parameters.
+
+Compare loss values only within one loss function, and only between runs with
+the same simulation statistics (section 6.2). A value well above 1 means that
+the model (or the mask, or the instrument setup) does not describe the data;
+the fitted parameters are then the best compromise, not necessarily the true
+values.
+
+.. [1] P. McCullagh and J. A. Nelder, *Generalized Linear Models*, 2nd ed.,
+   Chapman & Hall, London (1989).
+.. [2] W. Cash, Parameter estimation in astronomy through application of the
+   likelihood ratio, ApJ 228 (1979) 939,
+   `doi:10.1086/156922 <https://doi.org/10.1086/156922>`__.
+.. [3] S. Baker and R. D. Cousins, Clarification of the use of chi-square and
+   likelihood functions in fits to histograms, Nucl. Instrum. Meth. 221 (1984)
+   437, `doi:10.1016/0167-5087(84)90016-4 <https://doi.org/10.1016/0167-5087(84)90016-4>`__.
+.. [4] C. A. Argüelles, A. Schneider and T. Yuan, A binned likelihood for
+   stochastic models, JHEP 06 (2019) 030,
+   `doi:10.1007/JHEP06(2019)030 <https://doi.org/10.1007/JHEP06(2019)030>`__.
+
+.. _fit-monte-carlo-noise:
+
+6.2 Monte Carlo noise
+~~~~~~~~~~~~~~~~~~~~~
 
 The simulation is deterministic within a fit: expected counts are compared (no
 Poisson sampling), and every evaluation uses the same random seed (``--seed``,
@@ -192,25 +333,44 @@ loss changes as much as the differences between the best evaluations, more
 statistics (more McStas neutrons, or more outgoing directions: ``-n``, or a
 higher ``--sampling`` preset, see :ref:`sampling_presets`) are needed before
 the parameters can be told apart.
-The loss includes the Monte Carlo variance of the simulation, so a noisier
-simulation scores a *lower* loss for the same pattern (for the D22 paper data
-the Poisson deviance rose from 16 to 44 when the rays per pixel went from about
-250 to 7000). Compare losses only between runs with the same MCPL file and the
-same outgoing directions; with ``--sampling``, use the printed
+
+``poisson_deviance`` and ``reduced_chi2`` include the Monte Carlo variance of
+the simulation, so a noisier simulation scores a *lower* loss for the same
+pattern (for the D22 paper data the Poisson deviance rose from 16 to 44 when
+the rays per pixel went from about 250 to 7000). Compare losses only between
+runs with the same MCPL file and the same outgoing directions; with
+``--sampling``, use the printed
 ``--outgoing_directions_horizontal``/``--outgoing_directions_vertical`` numbers
 to repeat a run with exactly the same grid.
+
 ``mg_fit`` warns if the Monte Carlo variance exceeds the counting variance in
 more than 5% of the pixels, or if it lowers the loss of the fit by more than
-10% compared with the loss without it. The second case happens also when only
-a few pixels are affected: where the pattern is steep compared with the
-outgoing-direction grid, the simulated counts are noisy, and a model that
-misses the data there (e.g. overshoots it 2-3x) is hardly penalised. In a fit
-of the high-resolution microgel data, about 6% of the pixels lowered the
-Poisson deviance from 4.0 to 2.6 on a 41x33 grid, while a 123x99 grid gave
-3.1-3.2 (3.5-3.8 without the Monte Carlo term). The warning states the loss
-with and without the Monte Carlo term; increase ``--outgoing_directions``
-(especially along the direction in which the pattern is steep) or the number
-of simulated neutrons until the two are close.
+10% compared with the loss without it (:math:`\sigma_i = 0`). The second case
+happens also when only a few pixels are affected: where the pattern is steep
+compared with the outgoing-direction grid, the simulated counts are noisy, and
+a model that misses the data there (e.g. overshoots it 2-3x) is hardly
+penalised. In a fit of the high-resolution microgel data (about 6% of the
+pixels affected on the 41 x 33 grid), the losses near the best parameters were
+(without the Monte Carlo term in brackets):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Outgoing directions
+     - ``poisson_deviance``
+     - ``reduced_chi2``
+   * - 41 x 33
+     - 2.53-2.80 (3.9-4.4)
+     - 2.73-3.15 (4.0-4.6)
+   * - 123 x 99
+     - 3.06-3.24 (3.5-3.8)
+     - 3.33-3.45 (3.7-4.0)
+
+The coarse grid scores lower only because its simulation is noisier. The
+warning states the loss with and without the Monte Carlo term; increase
+``--outgoing_directions`` (especially along the direction in which the pattern
+is steep) or the number of simulated neutrons until the two are close.
 
 7. Outputs
 ----------
@@ -273,6 +433,6 @@ Yoneda region) is masked:
 (here the ``quick`` preset) and, for every evaluation, the parameters, the loss
 and the fitted background; ``fit_summary.csv`` lists them sorted by the loss.
 If the best evaluations differ by less than the Monte Carlo noise of the loss
-(repeat the best one with a few ``--seed`` values, section 6), more simulated
+(repeat the best one with a few ``--seed`` values, section 6.2), more simulated
 statistics (``--sampling standard``) are needed to pin the parameters down more
 precisely.

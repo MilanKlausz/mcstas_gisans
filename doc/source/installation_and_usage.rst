@@ -33,7 +33,7 @@ Installation of the *mcstas_gisans* package provides 5 main scripts that can be 
 
 2) **mg_plot** – plots the output of the sample simulation (this command executes the *main* function of the `src/mcstas_gisans/plot.py <https://github.com/MilanKlausz/mcstas_gisans/blob/master/src/mcstas_gisans/plot.py>`__ script). Supports both plotting simulation outputs and comparing against experimental NeXus files.
 
-3) **mg_fit** – runs either a manual parameter *scan* (``--scan``) or an automated optimization (``--fit``) between the simulation and experimental NeXus data (this command executes the *main* function of the `src/mcstas_gisans/fit.py <https://github.com/MilanKlausz/mcstas_gisans/blob/master/src/mcstas_gisans/fit.py>`__ script). Optimization uses the Nelder-Mead, Powell, or Differential Evolution algorithms (SciPy) to minimize a loss metric such as reduced chi-squared.
+3) **mg_fit** – runs either a manual parameter *scan* (``--scan``) or an automated optimization (``--fit``) between the simulation and experimental NeXus data (this command executes the *main* function of the `src/mcstas_gisans/fit.py <https://github.com/MilanKlausz/mcstas_gisans/blob/master/src/mcstas_gisans/fit.py>`__ script). Optimization uses the Nelder-Mead, Powell, or Differential Evolution algorithms (SciPy) to minimize a loss metric: the Poisson deviance (default) or the reduced chi-squared (see :ref:`loss-functions`).
 
 4) **mg_fit_monitor** – fits Gaussian function to a *TOFLambda_monitor* (this command executes the *main* function of the `src/mcstas_gisans/fit_monitor.py <https://github.com/MilanKlausz/mcstas_gisans/blob/master/src/mcstas_gisans/fit_monitor.py>`__ script)
 

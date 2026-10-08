@@ -137,17 +137,15 @@ Mode 2: Automated fitting (``--fit``)
 - The flat background is either fixed (``--background``, counts per pixel over the measurement time) or fitted for every evaluation (``--fit_background``, no extra simulation); see the background section of the :doc:`fitting_guide`.
 - Use ``--fit_integer`` to constrain specific parameters (e.g. a discrete layer count) to integer values (Nelder-Mead starts with a step of at least one unit for them), and ``--gif`` to render an animation of the fit's progress.
 
-.. _loss-functions:
-
 Loss functions (``--loss_function``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-With :math:`N_i` the measured counts and :math:`m_i` the simulated expected counts (including the flat background, ``--background`` or ``--fit_background``) with Monte Carlo variance :math:`\sigma_i^2` in the :math:`n` unmasked pixels:
+The simulated expected counts :math:`m_i` (including the flat background, ``--background`` or ``--fit_background``, with Monte Carlo variance :math:`\sigma_i^2`) are compared with the measured counts :math:`N_i` in the :math:`n` unmasked pixels with one of three losses:
 
-- ``poisson_deviance`` (default): the per-pixel deviance :math:`\frac{2}{n}\sum_i[\ln P(N_i|N_i) - \ln P(N_i|m_i,\sigma_i^2)]` of a Poisson likelihood in which the finite simulation statistics are included (the expectation is gamma distributed with mean :math:`m_i` and variance :math:`\sigma_i^2`, making :math:`N_i` negative-binomially distributed; cf. Argüelles, Schneider & Yuan, JHEP 06 (2019) 030). Without Monte Carlo uncertainty it is the Poisson deviance :math:`\frac{2}{n}\sum_i[m_i - N_i + N_i\ln(N_i/m_i)]`. It gives unbiased parameters also at low counts. For a perfect model it is about 1 per pixel (at high counts :math:`1 + \ln(1+\sigma^2/m)`).
-- ``reduced_chi2``: :math:`\frac{1}{n}\sum_i (N_i - m_i)^2/(m_i + \sigma_i^2)`. About 1 for a perfect model at high counts, but biased at low counts (a few counts per pixel).
-- ``log_residual``: the mean squared difference of :math:`\log_{10}` intensities over the pixels where both are positive.
+- ``poisson_deviance`` (default, recommended): the Poisson likelihood-ratio statistic per pixel (the Poisson deviance, also known as the Cash statistic), with the Monte Carlo uncertainty of the simulation included. About 1 per pixel for a model that describes the data within counting statistics, and unbiased also when the pixels have only a few counts.
+- ``reduced_chi2``: Pearson's :math:`\chi^2` per pixel, :math:`\frac{1}{n}\sum_i (N_i - m_i)^2/(m_i + \sigma_i^2)`. Familiar and equivalent at high counts, but its fit is biased when the pixels have few counts.
+- ``log_residual``: the mean squared difference of :math:`\log_{10}` intensities; shape-oriented, it ignores the counting statistics.
 
-All three are reported for every evaluation (``fit_summary.csv``/``scan_summary.csv``, sorted by the selected loss). If the Monte Carlo variance of the simulation exceeds the counting variance in more than 5% of the pixels, or if it lowers the selected loss (``poisson_deviance`` or ``reduced_chi2``) by more than 10% compared with the same loss without it (:math:`\sigma_i = 0`), a warning suggests increasing the simulated statistics. Regions the sample model does not describe (the specular peak, the transmitted/direct beam) must be masked, otherwise they dominate any loss.
+The definitions, a comparison and a recommendation are in :ref:`loss-functions` of the :doc:`fitting_guide`. All three are reported for every evaluation (``fit_summary.csv``/``scan_summary.csv``, sorted by the selected loss). ``poisson_deviance`` and ``reduced_chi2`` depend on the simulated statistics, so their values can be compared only between runs with the same MCPL file and outgoing directions; a warning suggests more simulated statistics if the Monte Carlo variance is not small (see :ref:`fit-monte-carlo-noise`). Regions the sample model does not describe (the specular peak, the transmitted/direct beam) must be masked, otherwise they dominate any loss.
 
 **Usage Example:**
 Each ``--fit`` takes the parameter name followed by the initial value (``--fit radius 51``), the bounds (``--fit radius 40 60``, starting from the midpoint), or both (``--fit radius 51 40 60``). The instrument configuration (incident angle, orientation, detector offset, intensity factor) must match the measurement, as described in :doc:`replicating_measurements`.

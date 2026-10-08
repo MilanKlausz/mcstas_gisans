@@ -101,7 +101,10 @@ def poisson_deviance_with_mc(counts: np.ndarray, expected: np.ndarray, mc_varian
     m + sigma^2 (effective likelihood for weighted Monte Carlo, cf. Arguelles, Schneider & Yuan,
     JHEP 06 (2019) 030). Limits: sigma -> 0 gives the Poisson deviance 2 [m - N + N ln(N/m)]
     (unbiased also at low counts); at high counts it approaches (N - m)^2 / (m + sigma^2).
-    P(N | N) is the saturated Poisson term, so a perfect model gives ~1 per pixel.
+    P(N | N) is the saturated Poisson term, so a perfect model gives ~1 per pixel. Without Monte
+    Carlo variance this is the Poisson deviance of generalised linear models, also known as the
+    Cash statistic (Cash, ApJ 228 (1979) 939) or the Baker-Cousins likelihood chi-square (Baker &
+    Cousins, NIM 221 (1984) 437). See the fitting guide of the documentation.
     """
     from scipy.special import gammaln, betaln, xlogy
     counts = np.asarray(counts, dtype=float)
