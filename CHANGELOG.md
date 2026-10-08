@@ -13,6 +13,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mcstas_gisans.ba_compat`: helpers that build the same sample with BornAgain
+  22, 23 and 24 (materials, roughness, 2D lattices and paracrystals, particle
+  mixtures; BornAgain 24 replaced `ParticleLayout` and `MaterialBySLD`). All
+  built-in sample models use them, and a test builds and simulates every
+  built-in model with the installed BornAgain version.
 - `mg_fit`: parameter scans (`--scan`) and automated fits (`--fit`) of sample
   model parameters against measured NeXus data, with Nelder-Mead, Powell and
   Differential Evolution optimizers, Q-space masks (`--mask_*`, `--mask_view`),
@@ -83,7 +88,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 
 ### Changed
 - **Dependencies**: BornAgain 22 or 23 (`bornagain>=22.0,<24`; 23.0 is the default in `conda.yml`;
-  BornAgain 24 changed the material and layout API and is not supported yet;
+  the built-in models run with BornAgain 24 too (helpers in `mcstas_gisans.ba_compat`), but its results
+  are not validated yet;
   PyPI provides Linux wheels, on macOS a locally built wheel is needed, see
   `INSTALL.md`); NumPy 2 is supported. scipp, scippneutron, h5py, matplotlib
   and scipy are required.
@@ -149,6 +155,9 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 - `mg_plot`: `--bins` and the other options of the raw Q-event `.npz` workflow.
 
 ### Fixed
+- The built-in models `silica_air`, `silica_100nm_D2O`, `lamellas_and_spheres`,
+  `hexagonal_spheres` and `depthsensitivitysample` used the BornAgain 21 API
+  (`ba.MultiLayer`, `ba.LayerRoughness`) and failed with BornAgain 22 and later.
 - A parallel process killed e.g. by the out-of-memory killer made the run wait
   forever; the run now stops with an error.
 - Identical random numbers in all worker processes on Linux (the outgoing

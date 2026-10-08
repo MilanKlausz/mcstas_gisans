@@ -1,15 +1,17 @@
 import bornagain as ba
 from bornagain import deg, nm
 
+from mcstas_gisans.ba_compat import sld_material, basic_lattice, paracrystal, add_particles
+
 
 def get_sample():
     # Define materials
-    material_D2O = ba.MaterialBySLD("D2O", 6.36e-06, 0.0)
-    material_Generic_organic_material = ba.MaterialBySLD(
+    material_D2O = sld_material("D2O", 6.36e-06, 0.0)
+    material_Generic_organic_material = sld_material(
         "Generic organic material", 1e-06, 0.0
     )
-    material_SiO2 = ba.MaterialBySLD("SiO2", 3.47e-06, 0.0)
-    material_Silicon = ba.MaterialBySLD("Silicon", 2.07e-06, 0.0)
+    material_SiO2 = sld_material("SiO2", 3.47e-06, 0.0)
+    material_Silicon = sld_material("Silicon", 2.07e-06, 0.0)
 
     # Define form factors
     ff = ba.Sphere(25 * nm)
@@ -18,22 +20,11 @@ def get_sample():
     particle = ba.Particle(material_Generic_organic_material, ff)
 
     # Define 2D lattices
-    lattice = ba.BasicLattice2D(50 * nm, 50 * nm, 120 * deg, 0 * deg)
+    lattice = basic_lattice(50 * nm, 50 * nm, 120 * deg, 0 * deg)
+    order = paracrystal(lattice, 0 * nm, 20000 * nm, 20000 * nm,
+                        ba.Profile2DCauchy(1 * nm, 1 * nm, 0 * deg), ba.Profile2DCauchy(1 * nm, 1 * nm, 0 * deg),
+                        integrate_xi=True)
 
-    # Define interference functions
-    iff = ba.Interference2DParacrystal(lattice, 0 * nm, 20000 * nm, 20000 * nm)
-    iff.setIntegrationOverXi(True)
-    iff_pdf_1 = ba.Profile2DCauchy(1 * nm, 1 * nm, 0 * deg)
-    iff_pdf_2 = ba.Profile2DCauchy(1 * nm, 1 * nm, 0 * deg)
-    iff.setProbabilityDistributions(iff_pdf_1, iff_pdf_2)
-
-    # Define particle layouts
-    layout = ba.ParticleLayout()
-    layout.addParticle(particle, 1.0)
-    layout.setInterference(iff)
-    layout.setTotalParticleSurfaceDensity(0.000461880215352)
-
-    # Define roughness
     autocorrelation_3 = ba.SelfAffineFractalModel(0.5 * nm, 0.7, 25 * nm, 0.5 / nm)
     autocorrelation_4 = ba.SelfAffineFractalModel(0.5 * nm, 0.7, 25 * nm, 0.5 / nm)
     autocorrelation_6 = ba.SelfAffineFractalModel(0.5 * nm, 0.7, 25 * nm, 0.5 / nm)
@@ -53,7 +44,7 @@ def get_sample():
     layer_4 = ba.Layer(material_Generic_organic_material, 5 * nm, roughness_4)
     layer_5 = ba.Layer(material_D2O, 50 * nm)
     layer_6 = ba.Layer(material_D2O, roughness_6)
-    layer_6.addLayout(layout)
+    add_particles(layer_6, [(particle, 1.0)], order)
 
     # Define periodic stacks
     stack = ba.LayerStack(25)

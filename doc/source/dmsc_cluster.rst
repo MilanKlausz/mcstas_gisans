@@ -89,7 +89,7 @@ Container images
 The definition files of the containers used on the DMSC cluster are in the `resources/apptainer <https://github.com/MilanKlausz/mcstas_gisans/tree/master/resources/apptainer>`__ directory of the repository:
 
 - *bornagain_v23.0_scipp_apptainer.def* → **BornAgain 23.0** (the default version, see :doc:`installation_and_usage`) with numpy 2.4.3, scipy, matplotlib, h5py, mcpl, scipp 26.8, scippneutron 26.7, pillow and tqdm (all versions pinned)
-- *bornagain_v24_scipp_apptainer.def* → **BornAgain 24.1** with the same packages (latest releases at build time; only the ``silica_100nm_air_ba24`` example model runs with BornAgain 24, see :doc:`technical_details`)
+- *bornagain_v24_scipp_apptainer.def* → **BornAgain 24.1** with the same packages (latest releases at build time; the built-in models run with it, but its results are not validated yet, see :doc:`technical_details`)
 
 Built images are available on the cluster as */users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif* and */users/milan.klausz/rt_181019/bornagain_v24_scipp_apptainer.sif*, so building a container is only needed for a different software environment.
 
