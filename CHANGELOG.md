@@ -99,10 +99,12 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   reflection and transmission use the effective refractive index of layers with
   particles); `--no_use_avg_materials` switches it off (the previous default, and
   the default of BornAgain 21-23). All fit scripts used the option already.
-- **Dependencies**: BornAgain 22 to 24 (`bornagain>=22.0,<25`; 23.0 is the default in
-  `conda.yml`; with BornAgain 24, `silica_100nm_air` and the liquid-surface models are
-  available, with the same results as 23 with average materials; PyPI
-  provides Linux wheels, on macOS a locally built wheel is needed, see `INSTALL.md`);
+- **Dependencies**: BornAgain 21 to 24 (`bornagain>=21.0,<25`; 23.0 is the default in
+  `conda.yml`; not every built-in sample model is available with every version: all with
+  22 and 23, the `ba21/` models with 21, `silica_100nm_air` and the liquid-surface models
+  with 24, with the same results as 23 with average materials; BornAgain 21 needs
+  `numpy<2`; PyPI provides Linux wheels of 23 and 24, on macOS only of 21, otherwise a
+  locally built wheel is needed, see `INSTALL.md`);
   NumPy 2 is supported. scipp, scippneutron, h5py, matplotlib
   and scipy are required.
 - **Output format**: `mg_run` writes a Scipp HDF5 file (`.h5`) with the
@@ -160,6 +162,15 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   buffers, the NeXus/simulation loaders of `plot.py`). No change of behaviour;
   verified with the D22 regression tests.
 
+- Example data: the stored simulation of the paper example
+  (`data/paper/bornagain_output`) is a detector image (`.h5`, `--sampling long`)
+  instead of a Q histogram (`.npz`), so `examples/paper/run_paper_plot.sh` plots the
+  differences to the measurement as well. `*.h5` files are ignored by git, except
+  this example.
+- Documentation: the D22 measurement of the paper (`data/paper`) is the example
+  throughout (quickstart, command reference, workflow, calibration, custom sample
+  template, cluster); TOF figures use a SAGA simulation.
+
 ### Removed
 - `mg_run`: `--raw_output`, `--quick_plot`, `--bins`, `--x_range`,
   `--y_range`, `--z_range` (the output is a detector image; binning and ranges
@@ -171,6 +182,7 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   different `depthsensitivitysample` sample is removed).
 
 ### Fixed
+- `mg_plot --dual_plot` cut off the axis labels of the tall figure.
 - The built-in models `silica_air`, `silica_100nm_D2O`, `lamellas_and_spheres`,
   `hexagonal_spheres` and `depthsensitivitysample` used the BornAgain 21 API
   (`ba.MultiLayer`, `ba.LayerRoughness`) and failed with BornAgain 22 and later;

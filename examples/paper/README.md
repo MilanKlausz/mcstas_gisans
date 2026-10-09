@@ -20,7 +20,7 @@ The first two steps can be computationally intensive, so intermediate results ar
 `run_paper_plot.sh` script.
 
 ### Available Data
-- **Simulation result:** `data/paper/bornagain_output`
+- **Simulation result:** `data/paper/bornagain_output/d22_1e9_silica_100nm_air_sampling_long.h5`, the simulation of `run_d22_sim.sh` with `--sampling long` (about 10000 rays per detector pixel, `--seed 1`)
 - **Measured data:** `data/paper/d22_measurement`
 
 ---
@@ -44,10 +44,10 @@ The full workflow can be done by first doing the McStas simulation using the `ru
 
 The McStas instrument model of D22(ILL) yields higher intensity than what is measured, so the simulated intensity has to be scaled to the measured intensity.
 This can be easily done by comparing the simulated and measured intensity at some point of the instrument. 
-Practically this can be a monitor data, or - as in out case - the result of a direct beam measurement.
+Practically this can be a monitor data, or - as in our case - the result of a direct beam measurement.
 The result of the direct beam measurement done at the D22 instrument (`data/paper/d22_measurement/073162.nxs`) shows a total detected intensity of **120538 neutrons** for the **60 second measurement time**.
 In comparison, the simulated neutron intensity at the sample position (at the end of the McStas simulation) is **9533.86 neutrons/second**.
-(Note that due to he neutron source definition, the result of the McStas simulation is normalised to 1 second.)
+(Note that due to the neutron source definition, the result of the McStas simulation is normalised to 1 second.)
 This intensity at the sample position is equal to the simulated detected intensity because all neutrons reaching the sample position also hit the detector, and currently the detector efficiency is not simulated.
 Therefore, the intensity factor needed to normalise the simulation to the measurement is: 
 ```

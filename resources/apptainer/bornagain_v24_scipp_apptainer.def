@@ -1,8 +1,7 @@
 Bootstrap: docker
 From: python:3.11
 
-# BornAgain 24.x (latest on PyPI: 24.1) + scipp/scippneutron for mcstas_gisans
-# (the image /users/milan.klausz/rt_181019/bornagain_v24_scipp_apptainer.sif on the DMSC cluster).
+# BornAgain 24.1 + scipp/scippneutron for mcstas_gisans (e.g. on the DMSC cluster).
 # Same package list as bornagain_v23.0_scipp_apptainer.def (bornagain numpy scipy mcpl tqdm h5py,
 # matplotlib/pillow as their deps, scipp and scippneutron); bornagain pinned to 24.1, everything
 # else the latest compatible release at build time (build_image_sandbox.sh writes the exact

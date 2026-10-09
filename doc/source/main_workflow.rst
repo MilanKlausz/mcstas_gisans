@@ -34,7 +34,7 @@ The outgoing rays are transformed back into the NeXus (laboratory) frame and pro
 
 Output Data
 ~~~~~~~~~~~
-The result is a **detector image**, not a Q histogram: a Scipp HDF5 file (``.h5``, see :doc:`scipp_output_format`) with the simulated intensity (a rate, with Monte Carlo variances) per detector pixel, together with the full instrument, sample and provenance metadata. Q is calculated afterwards from the pixels, exactly as for a measurement.
+The result is a **detector image**: a Scipp HDF5 file (``.h5``, see :doc:`scipp_output_format`) with the simulated intensity (a rate, with Monte Carlo variances) per detector pixel, together with the full instrument, sample and provenance metadata. Q is calculated afterwards from the pixels, exactly as for a measurement.
 
 - For non-TOF simulations: one value per pixel.
 - For TOF simulations: the individual events with their time of flight, per pixel, so the wavelength range can be chosen when plotting.
@@ -42,7 +42,7 @@ The result is a **detector image**, not a Q histogram: a Scipp HDF5 file (``.h5`
 2. Beam Alignment (``beam_centre_correction``)
 ----------------------------------------------
 
-Before comparing simulated scattering with experimental NeXus measurements, the position of the detector relative to the beam must be known. The detector is often not centred on the beam (on D22 it is moved sideways by up to hundreds of millimetres), and the measured Q axes depend directly on this position.
+Before comparing simulated scattering with experimental NeXus measurements, the position of the detector relative to the beam must be known. The detector is often not centred on the beam (it can be translated sideways or vertically, by a different amount in every measurement setup), and the measured Q axes depend directly on this position.
 
 The ``mg_beam_centre_correction`` utility is used to align the instrument based on an **Experimental Direct Beam NeXus File**. 
 
@@ -154,25 +154,28 @@ Each ``--fit`` takes the parameter name followed by the initial value (``--fit r
 
 .. code-block:: bash
 
-   mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 \
-     --model my_custom_sample --wavelength_selected 6.0 --experiment_time 10800 \
-     -a 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
-     --intensity_factor 0.21 \
-     --fit radius 51 40 60 \
-     --fit height 30 20 50 \
-     --mask_qz_min_cut 0.14 --mask_exclude_q_box -0.05 0.05 0.072 0.102
+   mg_fit data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz \
+     --nxs data/paper/d22_measurement/073174.nxs --experiment_time 10800 --fit_background \
+     --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2107 \
+     --model silica_100nm_air --sample_arguments "interferenceRange=5" \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
+     --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
+     --specular specular_simulation --mask_qz_min_cut 0.14 \
+     --fit radius 51 45 57 --fit latticeParameter 114 100 130
 
-Segmented measurement example (multiple ``--nxs`` files, summed, with the matching cumulative experiment time):
+This fits the sphere radius and the lattice parameter of the built-in ``silica_100nm_air`` model to the D22 measurement
+included in the repository (``data/paper``; the settings are explained in :doc:`quickstart`, the fit in section 9 of
+the :doc:`fitting_guide`).
+
+A measurement recorded in several files (e.g. three runs of one hour) is passed as multiple ``--nxs`` files: they are
+summed, and ``--experiment_time`` is their total time. With the other options as above:
 
 .. code-block:: bash
 
-   mg_fit mcstas_output.mcpl.gz --nxs d22_run1.nxs d22_run2.nxs d22_run3.nxs \
-     --experiment_time 10800 --instrument d22 \
-     --model my_custom_sample --wavelength_selected 6.0 \
-     --fit radius 51 40 60
+   mg_fit ... --nxs run1.nxs run2.nxs run3.nxs --experiment_time 10800 ...
 
 **Custom Sample Models:**
-The ``--model`` argument dynamically imports either a built-in Python script from the ``bornagain_samples/`` directory, or a local file (absolute path, or relative to your current working directory). To create a custom parameterized sample for fitting, add a Python file containing a ``get_sample(**kwargs)`` function that builds and returns a ``ba.MultiLayer``. The framework automatically parses the ``--fit``/``--scan``/``--sample_arguments`` CLI flags and passes the corresponding values as kwargs into your function (any kwarg not accepted by your ``get_sample`` signature — unless it declares ``**kwargs`` — is ignored with a warning).
+The ``--model`` argument dynamically imports either a built-in Python script from the ``bornagain_samples/`` directory, or a local file (absolute path, or relative to your current working directory). To create a custom parameterized sample for fitting, add a Python file containing a ``get_sample(**kwargs)`` function that builds and returns a BornAgain sample (``ba.Sample``). The framework automatically parses the ``--fit``/``--scan``/``--sample_arguments`` CLI flags and passes the corresponding values as kwargs into your function (any kwarg not accepted by your ``get_sample`` signature — unless it declares ``**kwargs`` — is ignored with a warning).
 
 Joint / dual-sample fitting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

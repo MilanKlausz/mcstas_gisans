@@ -13,6 +13,13 @@ The procedure assumes you have (or can obtain) a **direct beam NeXus measurement
 taken with the same instrument configuration (slits, wavelength, detector distance)
 as your sample measurement, but without a sample in the beam.
 
+The example values on this page come from the D22 measurement of silica nanoparticles on silicon included in the repository (``data/paper``, the data of the mcstas_gisans paper, see :doc:`cite`): the direct beam
+``data/paper/d22_measurement/073162.nxs`` and the sample measurement ``073174.nxs``, with the McStas output
+``data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz``. That sample is vertical with its surface normal
+pointing left (``--sample_orientation 2``). The commands below use these files and the values found for them; for
+your own measurement, replace the files, the orientation, the incident angle and the values. In this example, one
+McStas simulation (with the slits of the measurement) serves both the direct beam and the sample simulations.
+
 0. McStas simulation matching the measurement
 ----------------------------------------------
 
@@ -42,7 +49,7 @@ step):
 
 .. code-block:: bash
 
-   mg_beam_centre_correction path/to/direct_beam.nxs --instrument d22 --wavelength 6.0
+   mg_beam_centre_correction data/paper/d22_measurement/073162.nxs --instrument d22 --wavelength 6.0 --sample_orientation 2
 
 The offset is the position of the detector centre relative to the undeflected
 beam axis through the sample. It is computed in real space: the tool takes the
@@ -56,8 +63,7 @@ lowered by the gravity drop at ``--wavelength``. It therefore requires:
   6.0 Å; it enters only through the gravity drop), and
 - the beam angle, if the incident beam is not along the nominal axis
   (``--beam_angle`` in degrees, positive towards the sample surface normal, in
-  the plane of incidence of the ``--sample_orientation`` used; opposite sign to
-  the former ``--beam_declination``). Use the same value in ``mg_run``.
+  the plane of incidence of the ``--sample_orientation`` used). Use the same value in ``mg_run``.
 
 The offset does not depend on the sample orientation, so one direct-beam
 measurement serves horizontal and vertical samples alike. The tool prints it,
@@ -67,8 +73,8 @@ e.g.:
 
    Calculated centre_offset [m]:  [X, Y]
 
-(for the D22 paper direct beam ``073162.nxs`` at 6 Å: ``[0.290838, -0.016061]``;
-the 0.29 m matches the recorded 300 mm sideways detector translation).
+(for the example direct beam ``073162.nxs`` at 6 Å: ``[0.290838, -0.016061]``;
+the 0.29 m matches the 300 mm sideways detector translation recorded in that measurement).
 
 Keep this ``[X, Y]`` value — it is reused, unchanged, in steps 3 and 4 below as
 ``--instrument_detector_centre_offset X Y``. With it, the measured direct beam
@@ -107,7 +113,7 @@ along the normal (a flat sample images the direct beam, slightly broadened);
 ``--specular_window HALF_ALONG HALF_ACROSS`` (m) sets it (the size used is
 printed). The window has to hold the whole spot: the specular of a wide beam is
 flat-topped, and a window around its brightest pixels alone is biased (by up to
-one pixel for the D22 big beam). With ``--alpha`` the search starts near the
+one pixel for a wide beam). With ``--alpha`` the search starts near the
 expected position :math:`L\tan(2\alpha)`, otherwise at the brightest spot
 beyond the direct beam along the normal. The measured angle assumes the nominal
 sample-detector distance :math:`L`: the specular fixes :math:`L\tan(2\alpha)`,
@@ -117,12 +123,12 @@ beam and the sample image with the found centres and both windows:
 
 .. code-block:: bash
 
-   mg_beam_centre_correction direct_beam.nxs --instrument d22 --wavelength 6.0 --sample_orientation 2 \
-     --mcpl direct_beam.mcpl.gz --experiment_time 60 --figure png \
-     --sample_nxs sample.nxs --alpha 0.24
+   mg_beam_centre_correction data/paper/d22_measurement/073162.nxs --instrument d22 --wavelength 6.0 --sample_orientation 2 \
+     --mcpl data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz --experiment_time 60 --figure png \
+     --sample_nxs data/paper/d22_measurement/073174.nxs --alpha 0.24
 
-For the D22 paper data this gives a residual of 0.01 pixel, an intensity
-factor of 0.2107, and a measured incident angle of 0.235° for the nominal 0.24°.
+For the example data this gives a residual of 0.02 pixel, an intensity factor of 0.2107, and a measured incident
+angle of 0.235° for the nominal 0.24°.
 
 2. Direct beam simulation and the intensity factor
 -----------------------------------------------------
@@ -142,9 +148,9 @@ found in step 1:
 
 .. code-block:: bash
 
-   mg_run direct_beam.mcpl.gz --instrument d22 --wavelength_selected 6.0 \
+   mg_run data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz --instrument d22 --wavelength_selected 6.0 \
      --sample_size_x 0.0 --sample_size_y 0.0 --allow_sample_miss \
-     --instrument_detector_centre_offset X Y --sample_orientation 2 \
+     --instrument_detector_centre_offset 0.290838 -0.016061 --sample_orientation 2 \
      --savename direct_beam_sim
 
 This should already produce a beam spot at the correct position (thanks to the
@@ -154,7 +160,7 @@ intensity of both datasets:
 
 .. code-block:: bash
 
-   mg_plot --filename direct_beam_sim.h5 --nxs direct_beam.nxs --overlay --verbose --sample_orientation 2
+   mg_plot --filename direct_beam_sim.h5 --nxs data/paper/d22_measurement/073162.nxs --overlay --verbose
 
 The intensity factor can then be calculated directly, without any further
 simulation, from three numbers:
@@ -176,14 +182,13 @@ simulation, from three numbers:
 
   .. code-block:: bash
 
-     pymcpltool --stats direct_beam.mcpl.gz
+     pymcpltool --stats data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz
 
   This equals the simulated intensity at the detector, since (absent detector
   efficiency modeling) every neutron reaching the sample position in a direct
   beam simulation also reaches the detector.
 
-**Worked example** (from ``examples/paper``, reproducing the paper's D22 comparison):
-a 60 second direct beam measurement recorded 120538 total counts, and
+For the example data, the 60 second direct beam measurement recorded 120538 total counts, and
 ``pymcpltool --stats`` on the corresponding MCPL file reported ``sum(weights):
 9533.86``, giving:
 
@@ -210,13 +215,12 @@ and this time upscale the plot comparison to the real measurement time with
 
 .. code-block:: bash
 
-   mg_run direct_beam.mcpl.gz --instrument d22 --wavelength_selected 6.0 \
+   mg_run data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz --instrument d22 --wavelength_selected 6.0 \
      --sample_size_x 0.0 --sample_size_y 0.0 --allow_sample_miss \
-     --instrument_detector_centre_offset X Y --intensity_factor 0.2107 \
+     --instrument_detector_centre_offset 0.290838 -0.016061 --intensity_factor 0.2107 \
      --sample_orientation 2 --savename direct_beam_sim
 
-   mg_plot --filename direct_beam_sim.h5 --nxs direct_beam.nxs --overlay \
-     --experiment_time 60 --sample_orientation 2
+   mg_plot --filename direct_beam_sim.h5 --nxs data/paper/d22_measurement/073162.nxs --overlay --experiment_time 60
 
 This should now show good agreement in both beam position and total intensity.
 If it does not, revisit the offset (step 1) and/or the intensity factor
@@ -226,18 +230,21 @@ inputs (step 2) before proceeding.
 -----------------------------------
 
 With the detector offset and intensity factor calibrated, run the sample
-simulation itself, adding the sample model and its incident angle
+simulation itself, adding the sample model, its size and its incident angle
 (``--alpha``):
 
 .. code-block:: bash
 
-   mg_run sample.mcpl.gz --instrument d22 --wavelength_selected 6.0 \
-     --model my_sample_model --alpha 0.4 \
-     --instrument_detector_centre_offset X Y --intensity_factor 0.2107 \
-     --sample_orientation 2 --savename sample_sim
+   mg_run data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz --instrument d22 --wavelength_selected 6.0 \
+     --model silica_100nm_air --sample_arguments "radius=51;interferenceRange=5;latticeParameter=114" \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss --alpha 0.24 \
+     --instrument_detector_centre_offset 0.290838 -0.016061 --intensity_factor 0.2107 \
+     --sample_orientation 2 --specular specular_simulation --savename sample_sim
 
-   mg_plot --filename sample_sim.h5 --nxs sample.nxs --overlay \
-     --experiment_time <sample measurement time>
+   mg_plot --filename sample_sim.h5 --nxs data/paper/d22_measurement/073174.nxs --overlay \
+     --experiment_time 10800 --background 1.6 --q_min 0.072 --q_max 0.102
+
+This is the comparison of :doc:`quickstart` (step 5), which shows the resulting figure.
 
 With ``--split_view`` instead of ``--overlay``, the measurement and the
 simulation share one 2D map: the measurement for Qy < 0 and the simulation for
@@ -275,26 +282,27 @@ without running any simulation:
 
 .. code-block:: bash
 
-   mg_fit --nxs sample.nxs --instrument d22 --wavelength_selected 6.0 \
-     --alpha 0.4 --sample_orientation 2 --instrument_detector_centre_offset X Y \
-     --mask_exclude_q_box -0.05 0.05 -0.02 0.02 --mask_view
+   mg_fit --nxs data/paper/d22_measurement/073174.nxs --instrument d22 --wavelength_selected 6.0 \
+     --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
+     --mask_qz_min_cut 0.14 --mask_view
 
-The mask is defined in Q, so the preview needs the same wavelength, incident
-angle, orientation and detector offset as the fit itself.
+This masks everything below :math:`Q_z = 0.14\,\mathrm{nm}^{-1}` (the transmitted beam, the specular reflection
+and the Yoneda region). The mask is defined in Q, so the preview needs the same wavelength, incident angle,
+orientation and detector offset as the fit itself.
 
 5b. Run the fit
 ~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-   mg_fit sample.mcpl.gz --nxs sample.nxs --instrument d22 --wavelength_selected 6.0 \
-     --model my_sample_model --alpha 0.4 \
-     --instrument_detector_centre_offset X Y --intensity_factor 0.2107 \
-     --sample_orientation 2 --experiment_time <sample measurement time> \
-     --mask_exclude_q_box -0.05 0.05 -0.02 0.02 \
-     --fit radius 51 40 60 \
-     --fit height 30 20 50
+   mg_fit data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz --nxs data/paper/d22_measurement/073174.nxs --instrument d22 --wavelength_selected 6.0 \
+     --model silica_100nm_air --sample_arguments "interferenceRange=5" \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss --alpha 0.24 \
+     --instrument_detector_centre_offset 0.290838 -0.016061 --intensity_factor 0.2107 \
+     --sample_orientation 2 --experiment_time 10800 --fit_background \
+     --specular specular_simulation --mask_qz_min_cut 0.14 \
+     --fit radius 51 45 57 --fit latticeParameter 114 100 130
 
 See :doc:`fitting_guide` for choosing masks, optimizers and loss functions, judging
-the result, and a worked example on the D22 data, and :doc:`main_workflow`
+the result, and this fit in detail (section 9), and :doc:`main_workflow`
 (section 4) for joint/dual-sample fitting.

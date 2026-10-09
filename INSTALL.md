@@ -7,9 +7,9 @@ Instead of Conda, `mcstas_gisans` can also be installed using `pip` as described
 
 > [!NOTE]
 > **BornAgain Versioning & `conda.yml`**
-> By default, **BornAgain 23.0** is written in the `conda.yml` file (and `bornagain>=22.0,<25` in `requirements.txt` and `pyproject.toml`). This is the version `mcstas_gisans` is developed and tested with; BornAgain 22 (22.2) passes the test suite as well, older versions are not supported any more. BornAgain 24 (24.1) changed the Python API of the sample models: the built-in models have one implementation per BornAgain API (`src/mcstas_gisans/bornagain_samples/README.md`), and with BornAgain 24 `silica_100nm_air` and the two liquid-surface models are available. They give the same results as with 23.0 with average materials (the default of `mcstas_gisans`, see `--use_avg_materials`), and `--specular specular_simulation` gives the same reflectivity. Two differences of BornAgain 24 remain: `--specular include_specular` puts a value differing by up to a few per cent into the specular bin, and without average materials (`--no_use_avg_materials`), particles inside a lower layer (e.g. the liquid-surface models) give a much lower intensity. BornAgain 25 is excluded until it is tested.
+> By default, **BornAgain 23.0** is written in the `conda.yml` file, the version `mcstas_gisans` is mainly developed and tested with. `mcstas_gisans` works with BornAgain 21 to 24, but the Python API of the sample models differs between BornAgain versions, so not every built-in sample model is available with every version (`src/mcstas_gisans/bornagain_samples/README.md`): all of them with BornAgain 22 and 23 (22.2 passes the test suite as well); `silica_100nm_air`, `silica_100nm_D2O`, `silica_air`, `hexagonal_spheres`, `lamellas_and_spheres` and `depthsensitivitysample` with BornAgain 21 (whose wheels need NumPy 1: replace `numpy>=1.0` by `numpy<2` in `conda.yml`); `silica_100nm_air` and the two liquid-surface models with BornAgain 24 (24.1). With BornAgain 24 these give the same results as with 23.0 with average materials (the default of `mcstas_gisans`, see `--use_avg_materials`), and `--specular specular_simulation` gives the same reflectivity; `--specular include_specular` puts a value differing by up to a few per cent into the specular bin, and without average materials (`--no_use_avg_materials`) particles inside a lower layer give a much lower intensity. The requirement of the package is `bornagain>=21.0,<25` (`requirements.txt`, `pyproject.toml`); BornAgain 25 is excluded until it is tested.
 >
-> **Warning (macOS Users):** PyPI provides pre-built BornAgain 23.0 wheels for Linux (x86_64, glibc >= 2.31; 24.1: glibc >= 2.35) and Windows (x86_64); for macOS only the unsupported 21.x versions are available there. On macOS, BornAgain therefore has to be built from source into a local wheel, as described in [# Installing BornAgain on macOS (Build Guide)](#installing-bornagain-on-macos-build-guide), and the `- bornagain==23.0` line in `conda.yml` replaced with the path of that wheel (with `pip`, install the wheel before `requirements.txt`).
+> **Warning (macOS Users):** PyPI provides pre-built BornAgain 23.0 wheels for Linux (x86_64, glibc >= 2.31; 24.1: glibc >= 2.35) and Windows (x86_64); for macOS only BornAgain 21.x is available there (with the limitations above). On macOS, BornAgain therefore has to be built from source into a local wheel, as described in [# Installing BornAgain on macOS (Build Guide)](#installing-bornagain-on-macos-build-guide), and the `- bornagain==23.0` line in `conda.yml` replaced with the path of that wheel (with `pip`, install the wheel before `requirements.txt`).
 
 To create the environment using Conda, run:
 ```bash
@@ -35,6 +35,8 @@ The required Python packages can be installed using the `requirements.txt` file 
 ```bash
 pip install -r requirements.txt
 ```
+
+Without a locally built wheel, `pip` installs BornAgain 21.2 on macOS (the only version on PyPI there), which needs NumPy 1: install with `pip install "numpy<2" -r requirements.txt` in that case.
 
 `mcstas_gisans` can then be installed with:
 ```bash

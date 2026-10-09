@@ -1,4 +1,4 @@
-bornagain>=22.0,<25
+bornagain>=21.0,<25
 numpy>=1.0
 mcpl
 matplotlib

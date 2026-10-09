@@ -66,8 +66,8 @@ resolution on every side. The windows of all neutrons have the size of that
 range (plus the resolution margins), smaller than a common range containing all
 of them (which the beam divergence, the beam spot and the wavelength spread
 widen), so the same number of outgoing directions is denser; only rays smeared
-into the region from beyond 2 sigma are lost (about 0.01% for the D22
-examples). The size of the windows and their union
+into the region from beyond 2 sigma are lost (about 0.01% in the D22 example
+of section 9). The size of the windows and their union
 are printed. With a number instead of ``auto`` the range enclosing the unmasked
 pixels is scaled by it about its centre and simulated for every neutron; a
 warning is printed if it does not contain the union of the windows.
@@ -80,12 +80,13 @@ describe: room and instrument background, detector noise, incoherent scattering
 (e.g. from a liquid subphase). In a GISANS measurement much of the unmasked
 region is at, or close to, the background level, so the background has a large
 effect on the loss. If it is set too low, the fit compensates with a pattern
-that is too intense. In the D22 microgel measurement used in the example below,
-the flat floor is 6.1 counts per pixel (the same far from the pattern, at high
-:math:`Q_z` and below the sample horizon, with a Poisson-like spread), while an
-earlier fit used 1.0: re-scored with 6.1, its loss dropped from 6.14 to 4.68
-(reduced :math:`\chi^2` from 8.67 to 3.55), and its pattern turned out to be
-about 1.7 times too intense.
+that is too intense. For example, in a D22 measurement of pNIPAM microgels at
+the air/D2O interface (not included in the repository), the flat floor was 6.1
+counts per pixel (the same far from the pattern, at high :math:`Q_z` and below
+the sample horizon, with a Poisson-like spread). A fit with a fixed background
+of 1.0 counts per pixel compensated with a pattern about 1.7 times too intense:
+re-scored with 6.1, its loss dropped from 6.14 to 4.68 (reduced
+:math:`\chi^2` from 8.67 to 3.55).
 
 The background is an expected value, like the simulated counts: it is not
 Poisson-sampled, because the counting noise of the measurement is already part
@@ -108,8 +109,8 @@ of the loss. Two ways to set it (they cannot be combined):
 
 The fitted value is conditional on the simulated pattern: where a pattern is
 too intense, a lower background reduces the excess, so far from the optimum
-the fitted background also absorbs errors of the model. In the microgel
-example, the first evaluations of a fit gave 1.1 to 4.1 counts per pixel (the
+the fitted background also absorbs errors of the model. In a fit of the
+microgel measurement above, the first evaluations gave 1.1 to 4.1 counts per pixel (the
 best of them was the 1.7 times too intense pattern above), and it approaches
 the floor of the data only as the pattern improves. Judge the value at the best
 fit, and compare it with the measured floor. Two more points:
@@ -129,6 +130,9 @@ A scan evaluates listed parameter values without optimisation:
 .. code-block:: bash
 
    mg_fit ... --scan radius 48 50 52 54 --scan latticeParameter 110 114 118
+
+(``radius`` and ``latticeParameter`` are parameters of the built-in
+``silica_100nm_air`` model, used in the example of section 9.)
 
 Repeating ``--scan`` for several parameters evaluates all combinations. The loss
 values in ``scan_summary.csv`` (in ``--output_dir``) show how sensitive the loss
@@ -251,10 +255,10 @@ counts than predicted. For example, the flat level that minimises
 :math:`\chi^2_\mathrm{red}` for Poisson counts of mean :math:`\mu` is
 :math:`\sqrt{\langle N^2\rangle} \approx \mu + 1/2`, while :math:`D` gives the
 mean, :math:`\mu`. This bias of about half a count per pixel is negligible at
-hundreds of counts, but not at a few. In fits of the high-resolution microgel
-data, where the median unmasked pixel has about 8 counts, ``reduced_chi2``
-fitted a flat background about 0.5 counts per pixel higher than
-``poisson_deviance``; both found the same range of lattice sizes.
+hundreds of counts, but not at a few. In fits of the microgel measurement of
+section 3 (median unmasked pixel about 8 counts), ``reduced_chi2`` fitted a flat
+background about 0.5 counts per pixel higher than ``poisson_deviance``, while
+the fitted sample parameters agreed.
 
 **log_residual**. The mean of :math:`(\log_{10} N_i - \log_{10} m_i)^2` over the
 pixels where both are positive. It compares relative deviations, so weak
@@ -338,7 +342,7 @@ the parameters can be told apart.
 
 ``poisson_deviance`` and ``reduced_chi2`` include the Monte Carlo variance of
 the simulation, so a noisier simulation scores a *lower* loss for the same
-pattern (for the D22 paper data the Poisson deviance rose from 16 to 44 when
+pattern (in the example of section 9 the Poisson deviance rose from 16 to 44 when
 the rays per pixel went from about 250 to 7000). Compare losses only between
 runs with the same MCPL file and the same outgoing directions; with
 ``--sampling``, use the printed
@@ -351,9 +355,10 @@ more than 5% of the pixels, or if it lowers the loss of the fit by more than
 happens also when only a few pixels are affected: where the pattern is steep
 compared with the outgoing-direction grid, the simulated counts are noisy, and
 a model that misses the data there (e.g. overshoots it 2-3x) is hardly
-penalised. In a fit of the high-resolution microgel data (about 6% of the
-pixels affected on the 41 x 33 grid), the losses near the best parameters were
-(without the Monte Carlo term in brackets):
+penalised. In a fit of the microgel measurement of section 3 (41 x 33 and
+123 x 99 outgoing directions; about 6% of the pixels affected with 41 x 33),
+the losses near the best parameters were (without the Monte Carlo term in
+brackets):
 
 .. list-table::
    :header-rows: 1
@@ -401,7 +406,7 @@ pixel. A sum of Poisson counts is Poisson distributed, so the losses of section
 one unmasked pixel of the band (bins without are left out). They are printed
 with every evaluation and written to the summaries as ``poisson_deviance_1d``,
 ``reduced_chi2_1d`` and ``log_residual_1d``, next to the losses of the detector
-image (whose column names do not change); in joint fits, like the 2D losses,
+image (``poisson_deviance``, ``reduced_chi2``, ``log_residual``); in joint fits, like the 2D losses,
 per measurement (``..._1d_sample1``, ``..._1d_sample2``) and summed.
 
 ``--fit_objective`` selects the comparison whose ``--loss_function`` is
@@ -428,7 +433,7 @@ compare 1D values only with 1D values.
 
 Summing the pixels also adds their Monte Carlo variances, and in the bright
 bins of the profile they can exceed the counting variance even where they do
-not in the single pixels. In the high-resolution microgel example (band
+not in the single pixels. In a fit of the microgel measurement of section 3 (band
 0.149-0.170 nm\ :sup:`-1`, 40 Qy bins of 9 pixels, 41 x 33 outgoing
 directions), the Monte Carlo term lowered the 2D Poisson deviance from 4.79 to
 2.61, but the 1D one from 26.1 to 5.64: the peak bins, where the model was
@@ -471,12 +476,14 @@ parallel processes; with many processes use ``--bornagain_number_of_threads 1``.
 A scan with a few points is usually worth more than a long fit from a poor
 starting point.
 
-9. Worked example (D22 paper data)
-----------------------------------
+9. Worked example: silica nanoparticles on silicon (D22)
+--------------------------------------------------------
 
-The silica nanoparticle measurement of the paper (``073174.nxs``, 3 hours at
-0.24°, vertical sample with its normal pointing left) with the McStas beam of
-the paper included in the repository. The detector offset and the intensity
+The data of this example are included in the repository (``data/paper``): the
+D22 measurement of silica nanoparticles on a silicon substrate in air published
+in the mcstas_gisans paper (:doc:`cite`; ``073174.nxs``, 3 hours at 0.24°,
+vertical sample with its normal pointing left), and the McStas simulation of
+the beam of that measurement. The detector offset and the intensity
 factor come from the direct beam measurement ``073162.nxs``
 (see :doc:`replicating_measurements`); the region below
 :math:`Q_z = 0.14\,\mathrm{nm}^{-1}` (transmitted beam, specular reflection and
@@ -489,7 +496,7 @@ Yoneda region) is masked:
      --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2107 \
      --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
      --model silica_100nm_air --sample_arguments "interferenceRange=5" \
-     --sample_size_y 0.10 --sample_size_x 0.10 --allow_sample_miss \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
      --specular specular_simulation --use_avg_materials \
      --mask_qz_min_cut 0.14 \
      --fit radius 51 45 57 --fit latticeParameter 114 100 130 \

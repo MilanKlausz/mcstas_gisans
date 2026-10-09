@@ -590,6 +590,7 @@ def main() -> None:
                     ax2.grid(True)
 
     if args.dual_plot:
+        plt.tight_layout()  # keeps the axis labels inside the tall figure
         if not args.pdf and not args.png:
             plt.show()
         else:

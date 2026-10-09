@@ -2,7 +2,7 @@
 CLI Reference
 =============
 
-This section documents the primary command-line interfaces for the `mcstas_gisans` package.
+This section documents the primary command-line interfaces for the ``mcstas_gisans`` package. The examples use the D22 data included in the repository (``data/paper``), as in :doc:`quickstart`.
 
 mg_run
 ------
@@ -16,7 +16,12 @@ mg_run
 
 .. code-block:: bash
 
-   mg_run mcstas_output.mcpl.gz -i d22 --wavelength_selected 6.0 --model silica_100nm_D2O -n 100 --specular specular_simulation
+   mg_run data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz \
+     --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2107 \
+     --model silica_100nm_air --sample_arguments "radius=51;interferenceRange=5;latticeParameter=114" \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
+     --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
+     --specular specular_simulation --savename paper_sim
 
 mg_plot
 -------
@@ -30,7 +35,8 @@ mg_plot
 
 .. code-block:: bash
 
-   mg_plot -f test_q.h5 -t 3600 --background 0.001
+   mg_plot --filename paper_sim.h5 --nxs data/paper/d22_measurement/073174.nxs \
+     --experiment_time 10800 --background 1.6 --overlay --q_min 0.072 --q_max 0.102
 
 mg_fit
 ------
@@ -44,7 +50,14 @@ mg_fit
 
 .. code-block:: bash
 
-   mg_fit mcstas_output.mcpl.gz --nxs d22_experiment.nxs --instrument d22 --model my_custom_sample --wavelength_selected 6.0 --fit radius 5 1 20 --fit height 10 5 50
+   mg_fit data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz \
+     --nxs data/paper/d22_measurement/073174.nxs --experiment_time 10800 --fit_background \
+     --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2107 \
+     --model silica_100nm_air --sample_arguments "interferenceRange=5" \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
+     --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
+     --specular specular_simulation --mask_qz_min_cut 0.14 \
+     --fit radius 51 45 57 --fit latticeParameter 114 100 130
 
 .. note::
    For more details on the ``--model`` argument and how to construct it, see the :doc:`custom_sample` tutorial. For ``--scan``, ``--nxs`` (including passing multiple files for segmented measurements), masking, joint/dual-sample fitting, and everything else about how ``mg_fit`` works, see :doc:`main_workflow`.
@@ -69,4 +82,4 @@ mg_beam_centre_correction
 
 .. code-block:: bash
 
-   mg_beam_centre_correction d22_direct_beam.nxs --instrument d22 --wavelength 6.0
+   mg_beam_centre_correction data/paper/d22_measurement/073162.nxs --instrument d22 --wavelength 6.0 --sample_orientation 2

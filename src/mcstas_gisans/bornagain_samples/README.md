@@ -9,7 +9,7 @@ bornagain_samples/
     ba21/   models for BornAgain 21
     ba22/   models for BornAgain 22 and 23
     ba24/   models for BornAgain 24
-    *.py    models used with any BornAgain version (e.g. your own *_local models; not checked)
+    *.py    models used with any BornAgain version (e.g. your own models; not version-checked)
 ```
 
 A folder is named after the **first** BornAgain version of its API, not after every version it supports. There is

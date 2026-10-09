@@ -1,23 +1,25 @@
-===========================
-Working on the DMSC Cluster
-===========================
+===================================
+Working on the ESS DMSC Cluster
+===================================
 
-For users who have access to the DMSC computing cluster, it is advised to harness its computing capacity and storage space.
+For users who have access to the computing cluster of the ESS Data Management and Software Centre (DMSC), it is advised to harness its computing capacity and storage space.
 
 Running McStas simulation on DMSC
 ----------------------------------
 
-McStas is installed on all DMSC, so one only has to load the required modules. On *quark* nodes (after *ssh quarkcompile*):
+McStas is installed on the DMSC cluster, so one only has to load the required modules. On *quark* nodes (after *ssh quarkcompile*):
 
 .. code-block:: bash
 
-   module load mcstas/3.3 gcc/10.2.0 openmpi/4.0_gcc1020
+   module load mcstas/3.4 gcc/10.2.0 openmpi/4.0_gcc1020
 
-Due to the job scheduler system (Slurm) used on the DMSC, it is customary to submit simulation jobs using a batch script. There are, however, two extra steps that have to be done before submitting the McStas simulations; loading the necessary modules to enable McStas and OpenMPI; and building the McStas code with the ``--mpi`` flag. The latter can be done by launching a blank simulation with the ``-c`` flag -- to force compilation --, and with the ``--mpi`` flag (and a number larger than 1) to build for running with OpenMPI. Example command:
+(the available versions are listed by ``module avail mcstas``).
+
+Due to the job scheduler system (Slurm) used on the DMSC, it is customary to submit simulation jobs using a batch script. There are, however, two extra steps that have to be done before submitting the McStas simulations; loading the necessary modules to enable McStas and OpenMPI; and building the McStas code with the ``--mpi`` flag. The latter can be done by launching a blank simulation with the ``-c`` flag -- to force compilation --, and with the ``--mpi`` flag (and a number larger than 1) to build for running with OpenMPI. The examples on this page use the D22 (ILL) model included in the repository (``resources/mcstas_models/ILL_D22.instr``) with the settings of the measurement of silica nanoparticles in the mcstas_gisans paper (:doc:`cite`; the measured data and the McStas output of the paper are in ``data/paper``, see ``examples/paper/README.md``). Compilation:
 
 .. code-block:: bash
 
-   mcrun -c --mpi=4 sbend_wfm_65m_res1_4a.instr -n1e6 -dtest
+   mcrun -c --mpi=4 ILL_D22.instr -n1e6 -dtest
 
 There is no need to actually run the simulation, the process can be terminated (*Ctrl + C* or *Cmd + C*) after the compilation step is done, so practically as soon as the instrument's input parameters are prompted. It is important to compile the code on the *compile* node for jobs submitted to the *short* or *newlong* partitions, as opposed to the *quark* partition, for which the *quarkcompile* node has to be used.
 
@@ -35,9 +37,9 @@ Example for the *mpirun* command (note that the *.out* file is used, not the *.i
 
 .. code-block:: bash
 
-   mpirun sbend_wfm_65m_res1_4a.out -d sagawfm_srcl7p4to7p6_1e12 n_pulses=1 Lmin=7.4 Lmax=7.6 -n1e12
+   mpirun ILL_D22.out -d d22_1e9 lambda=6.0 D22_collimation=17.6 -n1e9
 
-A complete batch file (e.g., *mpirun.batch*) should contain something like the following:
+(``-d`` names the output directory, ``-n`` the number of simulated source neutrons; ``lambda`` [Å] and ``D22_collimation`` [m] are parameters of this instrument model. These are the settings of the McStas simulation of the paper.) A complete batch file (e.g., *mpirun.batch*) should contain something like the following:
 
 .. code-block:: bash
 
@@ -45,17 +47,17 @@ A complete batch file (e.g., *mpirun.batch*) should contain something like the f
 
    #SBATCH --mail-user=your.email@somewhere.com
    #SBATCH --mail-type=ALL
-   #SBATCH --job-name=sagaMcStas
-   #SBATCH --output=slurmOutput/loki_7p5A_1e12.slurm.out
-   #SBATCH --error=slurmOutput/loki_7p5A_1e12.slurm.err
+   #SBATCH --job-name=d22_mcstas
+   #SBATCH --output=slurmOutput/d22_1e9.slurm.out
+   #SBATCH --error=slurmOutput/d22_1e9.slurm.err
    #SBATCH --partition=quark
-   #SBATCH --nodes 3-3
-   #SBATCH --time=24:00:00
+   #SBATCH --nodes 1-1
+   #SBATCH --time=02:00:00
    #SBATCH --exclusive
 
    module load mcstas/3.4 gcc/10.2.0 openmpi/4.0_gcc1020
 
-   mpirun sbend_wfm_65m_res1_4a.out -d sagawfm_srcl7p4to7p6_1e12 n_pulses=1 Lmin=7.4 Lmax=7.6 -n1e12 # 3 nodes - exp 11 hour RUNNING
+   mpirun ILL_D22.out -d d22_1e9 lambda=6.0 D22_collimation=17.6 -n1e9
 
 It is probably a good habit to leave the used commands in the batch file commented out (#), for later resubmission.
 
@@ -69,7 +71,7 @@ Notes:
 
 - Do not use dots in the name of the folders for simulation with MPI, as it causes problems for merging the resulting MCPL files.
 - If the merging / compression of the MCPL files fails, there might be multiple *.mcpl* files in the runfolder. It is safer to just completely repeat the simulation in this case.
-- When using MPI on DMSC, merging and compressing the resulting MCPL files can take more time than the actual simulation. Using multiple nodes doesn't help in this process, but all nodes are unavailable for other users until the job finishes. It is, therefore, advised to use only one node for such simulations. Nevertheless, this option provides parallelisation as well, due to the number of cores on the nodes (newlong: 28, quark: 32).
+- When using MPI on DMSC, merging and compressing the resulting MCPL files can take more time than the actual simulation. Using multiple nodes doesn't help in this process, but all nodes are unavailable for other users until the job finishes. It is, therefore, advised to use only one node for such simulations. Nevertheless, this option provides parallelisation as well, due to the number of cores on the nodes (newlong: 28, quark: 56, with 112 hardware threads).
 - Time limit of the partitions: (listed by the *sinfo* command)
 
   - **short** → 4 hours
@@ -79,7 +81,7 @@ Notes:
 Running BornAgain simulation on DMSC
 ------------------------------------
 
-BornAgain can be installed as a Python package from the PyPI repository, but its Linux wheels require *glibc* version 2.31 or higher (`https://bornagainproject.org/21/installation/install/linux/ <https://bornagainproject.org/21/installation/install/linux/>`__). As even *quarkcompile* has only version 2.28, it is not possible to directly install BornAgain as a python package on the cluster -- not even in a Conda environment. The currently working solution -- suggested by DMSC support in April 2024 -- is using `Singularity <https://docs.sylabs.io/guides/3.3/user-guide/index.html>`__ (newer versions are called `Apptainer <https://apptainer.org/>`__), a sandboxed container that is safe to run in a shared environment.
+BornAgain can be installed as a Python package from the PyPI repository, but its Linux wheels require *glibc* version 2.31 or higher (`https://bornagainproject.org/21/installation/install/linux/ <https://bornagainproject.org/21/installation/install/linux/>`__). As even *quarkcompile* has only version 2.28 (at the time of writing), it is not possible to directly install BornAgain as a python package on the cluster -- not even in a Conda environment. The solution recommended by DMSC support is to use `Singularity <https://docs.sylabs.io/guides/3.3/user-guide/index.html>`__ (newer versions are called `Apptainer <https://apptainer.org/>`__), a sandboxed container that is safe to run in a shared environment.
 
 The general idea is building a singularity container with the software environment required to run the BornAgain scripts, and running the ``mcstas_gisans`` code in this container.
 
@@ -91,7 +93,7 @@ The definition files of the containers used on the DMSC cluster are in the `reso
 - *bornagain_v23.0_scipp_apptainer.def* → **BornAgain 23.0** (the default version, see :doc:`installation_and_usage`) with numpy 2.4.3, scipy, matplotlib, h5py, mcpl, scipp 26.8, scippneutron 26.7, pillow and tqdm (all versions pinned)
 - *bornagain_v24_scipp_apptainer.def* → **BornAgain 24.1** with the same packages (latest releases at build time; the built-in models run with it, with the same results as 23.0 with average materials (the default), see :doc:`technical_details`)
 
-Built images are available on the cluster as */users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif* and */users/milan.klausz/rt_181019/bornagain_v24_scipp_apptainer.sif*, so building a container is only needed for a different software environment.
+An image has to be built only once (see below) and can then be used by all jobs; it only has to be rebuilt for a different software environment. In the examples below, */path/to/bornagain_v23.0_scipp_apptainer.sif* stands for the location of the built image, and */path/to/mcstas_gisans* for a checkout of the repository.
 
 The images contain only the dependencies: ``mcstas_gisans`` itself is **not** installed in them. Instead, the *src* directory of a checkout of the repository is put on the ``PYTHONPATH`` inside the container, and the scripts are run as Python modules (``python -m mcstas_gisans.run`` instead of ``mg_run``, ``python -m mcstas_gisans.plot`` instead of ``mg_plot``, ``python -m mcstas_gisans.fit`` instead of ``mg_fit``, etc.). This way, changes of the code take effect without rebuilding the container, and different versions (branches) of the code can be used with the same image.
 
@@ -138,22 +140,22 @@ The command to run a *test.py* Python script in the *bornagain_v23.0_scipp_appta
 
 .. code-block:: bash
 
-   singularity exec --unsquash /users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif python test.py
+   singularity exec --unsquash /path/to/bornagain_v23.0_scipp_apptainer.sif python test.py
 
 The ``--unsquash`` option is needed for jobs on the *quark* nodes, where mounting the image with FUSE (*squashfuse*) fails; with ``--unsquash`` the image is extracted into a temporary sandbox directory instead.
 
 A common issue encountered is that, by default, only one's *$HOME* and */tmp* is available inside the singularity container (e.g., by default it will not be able to find something on *groupdata*), so additional bindings are needed to be set during execution with the `\--bind <https://docs.sylabs.io/guides/3.3/user-guide/bind_paths_and_mounts.html#user-defined-bind-paths>`__ option -- both for the data directories and for the ``mcstas_gisans`` code (if it is not in the home directory).
 
-As an example, with the code checked out in */mnt/groupdata/something/mcstas_gisans*, using a *test_events.mcpl.gz* file in the */mnt/groupdata/something/mcstas_dir* directory would require the following bindings:
+As an example, with the code checked out in */path/to/mcstas_gisans*, using a *test_events.mcpl.gz* file in the */path/to/mcstas_dir* directory would require the following bindings:
 
 .. code-block:: bash
 
    singularity exec --unsquash \
-     --bind /mnt/groupdata/something/mcstas_gisans/src \
-     --bind /mnt/groupdata/something/mcstas_dir \
-     /users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif \
-     env PYTHONPATH=/mnt/groupdata/something/mcstas_gisans/src \
-     python -m mcstas_gisans.run /mnt/groupdata/something/mcstas_dir/test_events.mcpl.gz
+     --bind /path/to/mcstas_gisans/src \
+     --bind /path/to/mcstas_dir \
+     /path/to/bornagain_v23.0_scipp_apptainer.sif \
+     env PYTHONPATH=/path/to/mcstas_gisans/src \
+     python -m mcstas_gisans.run /path/to/mcstas_dir/test_events.mcpl.gz
 
 Of course, running anything that is not supposed to finish in seconds should be done using the Slurm Workload Manager, so an example batch file (e.g., *submit.batch*) could look like the following:
 
@@ -172,29 +174,30 @@ Of course, running anything that is not supposed to finish in seconds should be 
    ## SBATCH --time=12:00:00
    #SBATCH --exclusive
 
-   IMAGE="/users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif"
-   CODE="/mnt/groupdata/somewhere/mcstas_gisans/src"
-   COMMON_BASE="/mnt/groupdata/somewhere/gisans"
-   MCSTAS_BASE="${COMMON_BASE}/mcstas_output"
-   OUTPUT_BASE="${COMMON_BASE}/bornagain_output"
-   MCPL_FILENAME="test_events.mcpl.gz"
-   WAVELENGTH=6.0
-   INCIDENT_ANGLE=0.35
-   INSTRUMENT="saga"
-   MCSTAS_DIR_NAME="saga_srcl5p0to7p0_1e11"
-   OUTPUT_FILENAME="saga_srcl5p0to7p0_1e11_"
-   MCPL_FILE_PATH="${MCSTAS_BASE}/${MCSTAS_DIR_NAME}/${MCPL_FILENAME}"
-   OUTPUT_FILE_PATH="${OUTPUT_BASE}/${OUTPUT_FILENAME}"
+   IMAGE="/path/to/bornagain_v23.0_scipp_apptainer.sif"
+   REPO="/path/to/mcstas_gisans"                     # checkout of the repository
+   CODE="${REPO}/src"
+   OUTPUT_BASE="/path/to/gisans/bornagain_output"
+   # McStas output of the paper, included in the repository (or the output directory
+   # of the McStas job above, with its own intensity factor)
+   MCPL_FILE_PATH="${REPO}/data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz"
+   INTENSITY_FACTOR=0.2107                           # from the direct beam measurement 073162.nxs
+   OUTPUT_FILE_PATH="${OUTPUT_BASE}/d22_silica_100nm_air_alpha0p24"
 
-   singularity exec --unsquash --bind $CODE --bind $COMMON_BASE \
+   singularity exec --unsquash --bind $REPO --bind $OUTPUT_BASE \
      $IMAGE env PYTHONPATH=$CODE python -m mcstas_gisans.run \
-     $MCPL_FILE_PATH --instrument=$INSTRUMENT \
-     -n 100 -s $OUTPUT_FILE_PATH \
-     --alpha=$INCIDENT_ANGLE --parallel_processes=32 --bornagain_number_of_threads=1 \
-     --input_tof_range_factor=1 --wavelength=$WAVELENGTH \
-     --model="lamellas_and_spheres"
+     $MCPL_FILE_PATH --instrument d22 --wavelength_selected 6.0 \
+     --intensity_factor $INTENSITY_FACTOR \
+     --model silica_100nm_air \
+     --sample_arguments "radius=51;interferenceRange=5;latticeParameter=114" \
+     --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
+     --alpha 0.24 --sample_orientation 2 \
+     --instrument_detector_centre_offset 0.290838 -0.016061 \
+     --specular specular_simulation --sampling standard \
+     --parallel_processes 112 --bornagain_number_of_threads 4 \
+     --savename $OUTPUT_FILE_PATH
 
-Note ``--bornagain_number_of_threads=1`` above: since ``--parallel_processes=32`` already parallelises across MCPL particles, disabling BornAgain's own internal threading avoids oversubscribing the node's CPU cores (see also the note on the number of cores of the nodes above). Fits (``python -m mcstas_gisans.fit ...``) are submitted the same way.
+This is the simulation of ``examples/paper/run_d22_sim.sh`` (see ``examples/paper/README.md`` for the intensity factor and the detector offset), with the ``standard`` sampling preset. The parallel settings use the 112 hardware threads of a *quark* node: ``--parallel_processes`` splits the MCPL particles between processes, and ``--bornagain_number_of_threads`` limits the threads of BornAgain in each of them. Without it, every process would start as many BornAgain threads as the node has, which overloads the node. In fits on these nodes, 112 processes with 2 or 4 threads each were as fast as the best other settings, or faster (up to about 20% with a small detector region). Fits (``python -m mcstas_gisans.fit ...``) are submitted the same way.
 
 Creating plots would also be more convenient with a batch file (e.g., *submitPlot.batch*) with content like the following:
 
@@ -212,13 +215,20 @@ Creating plots would also be more convenient with a batch file (e.g., *submitPlo
    #SBATCH --ntasks-per-node=1
    #SBATCH --exclusive
 
-   IMAGE="/users/milan.klausz/rt_181019/bornagain_v23.0_scipp_apptainer.sif"
-   CODE="/mnt/groupdata/somewhere/mcstas_gisans/src"
-   HDF5_BASE="sagawfm_srcl7p4to7p6_1e12_lamellas_and_speheres_alpha0p35"
+   IMAGE="/path/to/bornagain_v23.0_scipp_apptainer.sif"
+   REPO="/path/to/mcstas_gisans"
+   CODE="${REPO}/src"
+   OUTPUT_BASE="/path/to/gisans/bornagain_output"
+   HDF5_BASE="d22_silica_100nm_air_alpha0p24"
 
-   singularity exec --unsquash --bind $CODE --bind /mnt/groupdata/somewhere/gisans/bornagain_output \
+   singularity exec --unsquash --bind $REPO --bind $OUTPUT_BASE \
      $IMAGE env PYTHONPATH=$CODE python -m mcstas_gisans.plot \
-     -f "${HDF5_BASE}.h5" --label "sagawfm 7p5" --q_min=0.15 \
-     --q_max=0.15 -m1e-8 -d -s "${HDF5_BASE}" --png
+     --filename "${OUTPUT_BASE}/${HDF5_BASE}.h5" --label "D22 simulation" \
+     --nxs "${REPO}/data/paper/d22_measurement/073174.nxs" --nxs_label "D22 measurement" \
+     --experiment_time 10800 --background 1.6 --intensity_min 1 --overlay \
+     --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min 0.072 --q_max 0.102 \
+     --plot_differences 1 --savename "${OUTPUT_BASE}/${HDF5_BASE}_vs_measurement" --png
+
+This compares the simulation with the measurement of the paper (3 hours, ``--experiment_time 10800``): ``mg_plot`` takes the instrument configuration (sample orientation, detector offset, incident angle) from the ``.h5`` file and uses it for the measured data as well.
 
 Of course one could create multiple plots in a single batch file.

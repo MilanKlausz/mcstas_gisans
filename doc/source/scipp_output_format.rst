@@ -2,7 +2,7 @@
 Scipp Output Format
 ====================
 
-The ``mcstas_gisans`` simulation output is standardized using a deeply nested **Scipp DataGroup** (``.h5`` format). 
+The ``mcstas_gisans`` simulation output is a nested **Scipp DataGroup** saved as HDF5 (``.h5``). 
 This architecture ensures that regardless of whether the simulation is Time-of-Flight (TOF) or monochromatic (non-TOF), the metadata layout is the same, and the file records everything needed to interpret and reproduce the simulation.
 
 Below is an overview of the output hierarchy and the purpose of each data block.
@@ -31,7 +31,7 @@ The simulated detector image is stored in a ``sc.DataArray`` with one entry per 
 
 2. The ``instrument`` Block
 ---------------------------
-A ``sc.DataGroup`` containing all relevant, standardized scalar metadata describing the physical layout and state of the instrument during the simulation. 
+A ``sc.DataGroup`` containing all relevant scalar metadata describing the physical layout and state of the instrument during the simulation. 
 
 * ``name`` (scalar): The identifier of the instrument (e.g., 'd22', 'skadi').
 * ``is_tof_instrument`` (scalar bool): Indicates if the instrument operates in TOF mode.
