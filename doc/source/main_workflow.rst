@@ -147,6 +147,8 @@ The simulated expected counts :math:`m_i` (including the flat background, ``--ba
 
 The definitions, a comparison and a recommendation are in :ref:`loss-functions` of the :doc:`fitting_guide`. All three are reported for every evaluation (``fit_summary.csv``/``scan_summary.csv``, sorted by the selected loss). ``poisson_deviance`` and ``reduced_chi2`` depend on the simulated statistics, so their values can be compared only between runs with the same MCPL file and outgoing directions; a warning suggests more simulated statistics if the Monte Carlo variance is not small (see :ref:`fit-monte-carlo-noise`). Regions the sample model does not describe (the specular peak, the transmitted/direct beam) must be masked, otherwise they dominate any loss.
 
+With a :math:`Q_z` band (``--q_min`` < ``--q_max``), the same losses are also calculated for the Qy profile of the band (the 1D panel of the comparison plots: the counts of the unmasked pixels within the band summed per Qy bin) and reported as ``poisson_deviance_1d``, ``reduced_chi2_1d`` and ``log_residual_1d``; ``--fit_objective 1d`` minimises these instead of the losses of the detector image (``--fit_objective 2d``, the default). See :ref:`fit-1d-profile` of the :doc:`fitting_guide`.
+
 **Usage Example:**
 Each ``--fit`` takes the parameter name followed by the initial value (``--fit radius 51``), the bounds (``--fit radius 40 60``, starting from the midpoint), or both (``--fit radius 51 40 60``). The instrument configuration (incident angle, orientation, detector offset, intensity factor) must match the measurement, as described in :doc:`replicating_measurements`.
 

@@ -217,15 +217,16 @@ def fit_flat_background(
     hist_nxs: np.ndarray,
     hist_signal: np.ndarray,
     hist_signal_mc_error: np.ndarray,
-    loss_function: str
+    loss_function: str,
+    pixels_per_bin: Optional[np.ndarray] = None
 ) -> Tuple[float, float]:
     """
     Flat background that minimises a loss between measured and simulated counts (``--fit_background``).
 
     The background b is searched by a bounded 1D minimisation between 0 and the mean measured
-    counts of the used pixels (a flat level above the mean cannot fit), so it costs no extra
-    simulation. Minimising over b for each parameter set gives the same optimum as fitting b as a
-    parameter of the fit.
+    counts per pixel of the used pixels (a flat level above the mean cannot fit), so it costs no
+    extra simulation. Minimising over b for each parameter set gives the same optimum as fitting b
+    as a parameter of the fit.
 
     Parameters
     ----------
@@ -237,6 +238,9 @@ def fit_flat_background(
         Monte Carlo uncertainty of hist_signal.
     loss_function : str
         Key of calculate_fitness to minimise (one of LOSS_FUNCTIONS).
+    pixels_per_bin : np.ndarray, optional
+        For binned (summed) counts, e.g. the Qy profile of qz_band_profile: the number of pixels
+        summed in each bin, which then gets pixels_per_bin * b of background. Default: one pixel each.
 
     Returns
     -------
@@ -248,14 +252,95 @@ def fit_flat_background(
     counts, signal, error = hist_nxs[keep], hist_signal[keep], hist_signal_mc_error[keep]
     if counts.size == 0:
         return 0.0, np.nan
-    loss = lambda b: calculate_fitness(counts, signal + b, error)[loss_function]
-    b_max = max(float(np.mean(counts)), 1e-6)
+    if pixels_per_bin is None:
+        loss = lambda b: calculate_fitness(counts, signal + b, error)[loss_function]
+        b_max = max(float(np.mean(counts)), 1e-6)
+    else:
+        pixels = np.asarray(pixels_per_bin, dtype=float)[keep]
+        loss = lambda b: calculate_fitness(counts, signal + b * pixels, error)[loss_function]
+        b_max = max(float(np.sum(counts) / np.sum(pixels)), 1e-6)
     res = minimize_scalar(loss, bounds=(0.0, b_max), method='bounded', options={'xatol': 1e-3 * b_max})
     best_b, best_loss = float(res.x), float(res.fun)
     loss_at_zero = loss(0.0)  # the bounded method does not evaluate the end points themselves
     if loss_at_zero <= best_loss:
         best_b, best_loss = 0.0, loss_at_zero
     return best_b, best_loss
+
+
+def has_qz_band(args: Any) -> bool:
+    """Whether a Qz band (--q_min < --q_max) is given, i.e. whether the 1D losses are defined."""
+    return args.q_max > args.q_min
+
+
+def loss_keys(metrics: Dict[str, float]) -> List[str]:
+    """The losses reported per evaluation: LOSS_FUNCTIONS of the detector image, then those of the Qy
+    profile of the Qz band (suffix _1d) if it is given."""
+    return list(LOSS_FUNCTIONS) + [f"{key}_1d" for key in LOSS_FUNCTIONS if f"{key}_1d" in metrics]
+
+
+def objective_loss_key(args: Any) -> str:
+    """The metric that is minimised and by which the summaries are sorted: --loss_function of the
+    detector image (2D) or, with --fit_objective 1d, of the Qy profile of the Qz band (key suffix _1d)."""
+    return args.loss_function + ('_1d' if getattr(args, 'fit_objective', '2d') == '1d' else '')
+
+
+def qz_band_indices(q_min: float, q_max: float, z_edges: np.ndarray) -> Tuple[int, int]:
+    """
+    First and last Qz bin (inclusive) of the band [q_min, q_max]: from the bin containing q_min to the
+    bin containing q_max, clipped to the detector and ordered, as in the 1D slice of the comparison
+    plots (np.digitize - 1 in save_comparison_plot, then plotting_utils.extract_range_to_1d).
+    """
+    last = len(z_edges) - 2
+    i0, i1 = (min(max(0, int(np.digitize(q, z_edges)) - 1), last) for q in (q_min, q_max))
+    return min(i0, i1), max(i0, i1)
+
+
+def qz_band_profile(
+    hist_nxs: np.ndarray,
+    hist_sim: np.ndarray,
+    hist_sim_mc_error: np.ndarray,
+    z_edges: np.ndarray,
+    q_min: float,
+    q_max: float
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Qy profile of the Qz band [q_min, q_max] (the 1D slice of the comparison plots): the measured and
+    the simulated counts summed over the pixels of each Qy bin (axis 0) within the band (axis 1,
+    qz_band_indices) that are used in the 2D comparison (both finite, i.e. unmasked).
+
+    A sum of Poisson counts is Poisson distributed, so calculate_fitness applies to the profile as
+    it is; the Monte Carlo variances of the summed pixels add.
+
+    Parameters
+    ----------
+    hist_nxs : np.ndarray
+        Measured counts (NaN outside the mask), shape (Qy bins, Qz bins).
+    hist_sim : np.ndarray
+        Simulated expected counts (including the background of each pixel, if any).
+    hist_sim_mc_error : np.ndarray
+        Monte Carlo uncertainty of hist_sim.
+    z_edges : np.ndarray
+        Qz bin edges (axis 1).
+    q_min, q_max : float
+        The Qz band [1/nm].
+
+    Returns
+    -------
+    tuple
+        (counts, expected, mc_error, n_pixels) per Qy bin; counts is NaN for the Qy bins without a
+        used pixel in the band (so that calculate_fitness leaves them out).
+    """
+    if hist_nxs.shape[1] != len(z_edges) - 1:
+        raise ValueError(f"The Qz edges ({len(z_edges)}) do not match axis 1 of the detector image {hist_nxs.shape}.")
+    i0, i1 = qz_band_indices(q_min, q_max, z_edges)
+    band = slice(i0, i1 + 1)
+    nxs, sim, mc_error = hist_nxs[:, band], hist_sim[:, band], hist_sim_mc_error[:, band]
+    used = np.isfinite(nxs) & np.isfinite(sim)
+    n_pixels = np.sum(used, axis=1)
+    counts = np.where(n_pixels > 0, np.sum(np.where(used, nxs, 0.0), axis=1), np.nan)
+    expected = np.sum(np.where(used, sim, 0.0), axis=1)
+    mc_error_1d = np.sqrt(np.sum(np.where(used, mc_error ** 2, 0.0), axis=1))
+    return counts, expected, mc_error_1d, n_pixels
 
 
 def save_comparison_plot(
@@ -691,6 +776,9 @@ def validate_fit_args(args: Any, parser: argparse.ArgumentParser) -> None:
             parser.error("--experiment_time is required: the simulated rates must be scaled to expected counts to be compared with the measured counts.")
         if getattr(args, 'instrument_params', {}).get('tof_instrument', False):
             parser.error("Fitting is not implemented for TOF instruments yet.")
+        if getattr(args, 'fit_objective', '2d') == '1d' and not has_qz_band(args):
+            parser.error("--fit_objective 1d compares the Qy profiles of the Qz band [--q_min, --q_max]: "
+                         f"give the band with --q_min < --q_max [1/nm] (got --q_min {args.q_min}, --q_max {args.q_max}).")
     if not args.nxs:
         parser.error("the following arguments are required: --nxs")
     if getattr(args, 'fit_background', False) and (args.background is not None or getattr(args, 'background2', None) is not None):
@@ -776,6 +864,18 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
     print(f"Unmasked detector pixels used for the comparison: {n_unmasked}")
     if n_unmasked == 0 and not args.mask_view:
         raise ValueError("The mask excludes every detector pixel; nothing is left to compare.")
+    if has_qz_band(args):
+        # the pixels of the 1D losses (qz_band_profile): the unmasked ones within the band
+        i0, i1 = qz_band_indices(args.q_min, args.q_max, z_edges_nxs)
+        in_band = np.isfinite(hist_nxs[:, i0:i1 + 1])
+        n_band = int(np.sum(in_band))
+        print(f"Qz band of the 1D losses: [{z_edges_nxs[i0]:.4f}, {z_edges_nxs[i1 + 1]:.4f}] 1/nm: {n_band} unmasked "
+              f"pixels in {int(np.sum(np.any(in_band, axis=1)))} Qy bins")
+        if n_band == 0 and not args.mask_view:
+            if getattr(args, 'fit_objective', '2d') == '1d':
+                raise ValueError("The Qz band [--q_min, --q_max] has no unmasked pixel: nothing is left to compare "
+                                 "with --fit_objective 1d.")
+            print("WARNING: the Qz band [--q_min, --q_max] has no unmasked pixel; the 1D losses are not defined (NaN).")
 
     if getattr(args, 'simulate_mask_angle_range', False):
         # the range enclosing the unmasked pixels as seen from the sample centre; with
@@ -922,12 +1022,23 @@ def run_simulation_evaluation(
     hist_sim, hist_sim_mc_error = upscale_simple(
         hist_sim, hist_sim_error, args.experiment_time, background, poisson_sampling=False
     )
+    def band_profile(sim):  # the Qy profile of the Qz band, from the same pixels (1D losses)
+        return qz_band_profile(hist_nxs, sim, hist_sim_mc_error, z_edges_nxs, args.q_min, args.q_max)
+
     if fit_background:
-        background, _ = fit_flat_background(hist_nxs, hist_sim, hist_sim_mc_error, args.loss_function)
+        # fitted for the minimised loss (--fit_objective): over the pixels, or over the profile,
+        # whose bins get (number of summed pixels) x background
+        if getattr(args, 'fit_objective', '2d') == '1d':
+            counts_1d, signal_1d, mc_error_1d, n_pixels = band_profile(hist_sim)
+            background, _ = fit_flat_background(counts_1d, signal_1d, mc_error_1d, args.loss_function, pixels_per_bin=n_pixels)
+        else:
+            background, _ = fit_flat_background(hist_nxs, hist_sim, hist_sim_mc_error, args.loss_function)
         hist_sim = hist_sim + background
 
     # hist_nxs is NaN outside the mask (prepare_experimental_data)
     metrics = calculate_fitness(hist_nxs, hist_sim, hist_sim_mc_error)
+    if has_qz_band(args):
+        metrics.update({f"{key}_1d": value for key, value in calculate_fitness(*band_profile(hist_sim)[:3]).items()})
     metrics['background'] = background
     _warn_if_mc_uncertainty_large(metrics, args)
 
@@ -942,7 +1053,7 @@ def run_simulation_evaluation(
     record = copy.deepcopy(grid_point)
     if fit_background:
         record['background'] = background
-    for key in LOSS_FUNCTIONS:
+    for key in loss_keys(metrics):
         record[key] = metrics[key]
 
     if args.png:
@@ -980,13 +1091,15 @@ def _warn_if_mc_uncertainty_large(metrics: Dict[str, float], args: Any) -> None:
     counting variance: in more than 5% of the pixels (95th percentile of sigma_MC^2 / m above
     MC_TO_POISSON_WARNING_RATIO), or in few pixels where it lowers the loss of the fit
     (poisson_deviance, reduced_chi2) by more than MC_DISCOUNT_WARNING_FRACTION, which hides misfit
-    there (e.g. where the pattern is steep compared to the outgoing-direction grid).
+    there (e.g. where the pattern is steep compared to the outgoing-direction grid). With
+    --fit_objective 1d, the loss of the fit is that of the Qy profile of the Qz band (suffix _1d).
     """
     if _MC_WARNING_ISSUED[0]:
         return
     ratio = metrics.get('mc_to_poisson_variance', np.nan)
     loss_function = getattr(args, 'loss_function', 'poisson_deviance')
-    discount = metrics.get(f'mc_discount_{loss_function}', np.nan)
+    suffix = '_1d' if getattr(args, 'fit_objective', '2d') == '1d' else ''
+    discount = metrics.get(f'mc_discount_{loss_function}{suffix}', np.nan)
     many_pixels = np.isfinite(ratio) and ratio > MC_TO_POISSON_WARNING_RATIO
     large_discount = np.isfinite(discount) and discount > MC_DISCOUNT_WARNING_FRACTION
     if not (many_pixels or large_discount):
@@ -995,8 +1108,8 @@ def _warn_if_mc_uncertainty_large(metrics: Dict[str, float], args: Any) -> None:
     fraction = metrics.get('mc_dominated_fraction', np.nan)
     loss_str = ''
     if np.isfinite(discount):
-        loss_str = (f" Including it lowers the {loss_function} from {metrics[f'{loss_function}_without_mc']:.4g} "
-                    f"to {metrics[loss_function]:.4g} ({discount:.0%} lower).")
+        loss_str = (f" Including it lowers the {loss_function}{suffix} from {metrics[f'{loss_function}_without_mc{suffix}']:.4g} "
+                    f"to {metrics[loss_function + suffix]:.4g} ({discount:.0%} lower).")
     print(f"WARNING: the Monte Carlo variance of the simulation exceeds the expected counting (Poisson) variance "
           f"in {fraction:.1%} of the unmasked pixels (95th percentile of their ratio: {ratio:.2f}).{loss_str} "
           f"The loss accounts for it, but the comparison is limited by the simulation statistics there and a "
@@ -1232,7 +1345,9 @@ def run_automated_fit(
     print(f"Initial guess x0: {x0}")
     print(f"Bounds: {bounds}")
     print(f"Max evaluations: {args.max_evals}")
-    print(f"Loss metric: {args.loss_function}")
+    objective_key = objective_loss_key(args)
+    print(f"Loss metric: {objective_key}" + (f" (of the Qy profile of the Qz band [{args.q_min}, {args.q_max}] 1/nm, --fit_objective 1d)"
+                                             if objective_key != args.loss_function else ''))
     print(f"Convergence tolerances: xatol={args.xatol}, fatol={args.fatol}")
 
     eval_counter = [0]
@@ -1276,9 +1391,9 @@ def run_automated_fit(
             rec['eval_index'] = eval_counter[0]
             if fit_background:
                 rec['background'] = metrics['background']
-            for key in LOSS_FUNCTIONS:
+            for key in loss_keys(metrics):
                 rec[key] = metrics[key]
-            loss = metrics[args.loss_function]
+            loss = metrics[objective_key]
         else:
             grid_point_s2 = {name: values[idx] for name, idx in s2_map.items()}
 
@@ -1300,11 +1415,11 @@ def run_automated_fit(
             if fit_background:
                 rec['background_sample1'] = metrics1['background']
                 rec['background_sample2'] = metrics2['background']
-            for key in LOSS_FUNCTIONS:
+            for key in loss_keys(metrics1):
                 rec[f"{key}_sample1"] = metrics1[key]
                 rec[f"{key}_sample2"] = metrics2[key]
                 rec[key] = metrics1[key] + metrics2[key]
-            loss = rec[args.loss_function]
+            loss = rec[objective_key]
 
             if args.png:
                 plot_path = os.path.join(args.output_dir, f"fit_eval_joint_{eval_counter[0]:03d}.png")
@@ -1330,7 +1445,10 @@ def run_automated_fit(
         if fit_background:
             background_str = (f" | background = {rec['background']:.3f}" if 'background' in rec else
                               f" | background = {rec['background_sample1']:.3f}, {rec['background_sample2']:.3f}")
-        print_progress(f"{param_str} --> {args.loss_function} = {loss:.4f}{background_str}", eval_start_time)
+        # the same loss of the other comparison (image or Qy profile of the Qz band), for information
+        other_key = args.loss_function if objective_key != args.loss_function else f"{args.loss_function}_1d"
+        other_str = f" ({other_key} = {rec[other_key]:.4f})" if other_key in rec else ''
+        print_progress(f"{param_str} --> {objective_key} = {loss:.4f}{other_str}{background_str}", eval_start_time)
         return loss
 
     if args.optimizer.lower() == 'differential-evolution':
@@ -1408,7 +1526,7 @@ def run_automated_fit(
     fit_results_lines = [
         f"Optimizer Success: {opt_res.success}",
         f"Optimizer Message: {opt_res.message}",
-        f"Best Loss ({args.loss_function}): {opt_res.fun:.4f}",
+        f"Best Loss ({objective_key}): {opt_res.fun:.4f}",
         "Optimal Parameters:"
     ]
     best_params = dict(zip(param_names, best_x))
@@ -1416,7 +1534,7 @@ def run_automated_fit(
         val_str = str(int(np.round(v))) if is_integer(k) else format_fit_value(v)
         fit_results_lines.append(f"  {k} = {val_str}")
     if fit_background and records:
-        best_rec = min(records, key=lambda r: (np.isnan(r[args.loss_function]), r[args.loss_function]))
+        best_rec = min(records, key=lambda r: (np.isnan(r[objective_key]), r[objective_key]))
         if 'background' in best_rec:
             fit_results_lines.append(f"  background = {best_rec['background']:.4f} [counts per pixel] "
                                      f"(fitted flat background of the best evaluation, #{best_rec['eval_index']})")
@@ -1434,7 +1552,7 @@ def run_automated_fit(
 
     extra_summary_text = "\n".join(fit_results_lines)
 
-    save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
+    save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text, sort_key=objective_key)
 
     if args.gif:
         create_fit_evolution_gif(args.output_dir, is_joint=is_joint_fit)
@@ -1504,7 +1622,9 @@ def run_parameter_scan(
         eta = avg_iter_time * max(0, remaining)
 
         background_str = f", background={metrics['background']:.3f}" if getattr(args, 'fit_background', False) else ''
-        print(f"Fit results: poisson_deviance={metrics['poisson_deviance']:.4f}, reduced_chi2={metrics['reduced_chi2']:.4f}, log_residual={metrics['log_residual']:.4e}{background_str} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        loss_str = ', '.join(f"{key}={metrics[key]:.4e}" if key.startswith('log_residual') else f"{key}={metrics[key]:.4f}"
+                             for key in loss_keys(metrics))
+        print(f"Fit results: {loss_str}{background_str} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
         records.append(record)
         save_summary_csv(records, args.output_dir, "scan_summary.csv")
 
@@ -1519,7 +1639,7 @@ def run_parameter_scan(
     ]
     extra_summary_text = "\n".join(runtime_summary_lines)
 
-    save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=args.loss_function)
+    save_and_print_summary(records, args.output_dir, "scan_summary.csv", "Scan", extra_summary_text=extra_summary_text, sort_key=objective_loss_key(args))
 
 def _set_simulated_angle_range(args: Any, particles: np.ndarray, particle_type: str) -> None:
     """

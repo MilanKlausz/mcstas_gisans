@@ -98,7 +98,8 @@ of the loss. Two ways to set it (they cannot be combined):
   beam).
 - ``--fit_background``: the background is fitted for every evaluation. After
   each simulation, the flat level that minimises ``--loss_function`` over the
-  unmasked pixels is found by a one-dimensional minimisation between 0 and the
+  unmasked pixels (with ``--fit_objective 1d`` over the Qy profile of the
+  :math:`Q_z` band, section 6.3) is found by a one-dimensional minimisation between 0 and the
   mean measured counts. This needs no extra simulation (milliseconds), and it
   leads to the same optimum as fitting the background as one more parameter.
   The value is printed with every evaluation, written to the ``background``
@@ -183,7 +184,8 @@ pixels. Below, :math:`N_i` is the measured number of counts in pixel :math:`i`,
 finite number of simulated rays (section 6.2). All three losses are calculated
 for every evaluation and written to ``fit_summary.csv``/``scan_summary.csv``;
 ``--loss_function`` selects the one that is minimised (and by which the
-summaries are sorted).
+summaries are sorted). The same losses of the Qy profile of a :math:`Q_z` band
+are described in section 6.3.
 
 **poisson_deviance** (default). The measured counts are Poisson distributed: a
 pixel with expected counts :math:`m` records :math:`N` counts with probability
@@ -372,14 +374,78 @@ warning states the loss with and without the Monte Carlo term; increase
 ``--outgoing_directions`` (especially along the direction in which the pattern
 is steep) or the number of simulated neutrons until the two are close.
 
+.. _fit-1d-profile:
+
+6.3 Qy profile of a Qz band (``--fit_objective``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Below the 2D maps, the comparison plots (``--png``) show the Qy profile of the
+:math:`Q_z` band given by ``--q_min`` and ``--q_max``: for every Qy bin (detector
+column), the counts of the unmasked pixels within the band are summed. The band
+consists of whole :math:`Q_z` bins, from the one containing ``--q_min`` to the
+one containing ``--q_max``; its exact limits are in the title of the 1D panel,
+and ``mg_fit`` prints them with the number of unmasked pixels in the band.
+
+If the band is given (``--q_min`` < ``--q_max``), the profiles of the
+measurement and the simulation are compared as well, from the same unmasked
+pixels as the 2D loss. For Qy bin :math:`j` with :math:`n_j` unmasked pixels
+:math:`i` in the band,
+
+.. math::
+
+   N_j = \sum_i N_i, \qquad m_j = \sum_i m_i, \qquad \sigma_j^2 = \sum_i \sigma_i^2 ,
+
+where :math:`m_j` includes :math:`n_j b` of a flat background :math:`b` per
+pixel. A sum of Poisson counts is Poisson distributed, so the losses of section
+6.1 apply unchanged, with :math:`n` the number of Qy bins that contain at least
+one unmasked pixel of the band (bins without are left out). They are printed
+with every evaluation and written to the summaries as ``poisson_deviance_1d``,
+``reduced_chi2_1d`` and ``log_residual_1d``, next to the losses of the detector
+image (whose column names do not change); in joint fits, like the 2D losses,
+per measurement (``..._1d_sample1``, ``..._1d_sample2``) and summed.
+
+``--fit_objective`` selects the comparison whose ``--loss_function`` is
+minimised and sorts the summaries:
+
+- ``2d`` (default): the unmasked detector pixels. The 1D losses are only
+  reported.
+- ``1d``: the Qy profile of the band (requires ``--q_min`` < ``--q_max`` and
+  unmasked pixels in the band). ``--fit_background`` then fits :math:`b` to the
+  profile.
+
+The 2D loss weighs every unmasked pixel alike, so a feature that occupies a
+small part of the unmasked region, such as the intensity drop before the first
+peak in a narrow band, contributes little to it. The profile concentrates on
+the band: a misfit common to the pixels of a Qy bin adds up in their sum,
+while deviations that change sign along :math:`Q_z` within the band cancel. It
+ignores everything else: the :math:`Q_z` dependence within the band and all
+pixels outside it, so a model can match the profile and miss the rest of the
+pattern. The two values are therefore worth comparing: a fit to one comparison
+that worsens the other is a hint that the model or the setup describes the data
+only partly. The 1D losses are normalised per Qy bin, not per pixel, and with
+many counts per bin the same relative misfit gives a larger value than in 2D, so
+compare 1D values only with 1D values.
+
+Summing the pixels also adds their Monte Carlo variances, and in the bright
+bins of the profile they can exceed the counting variance even where they do
+not in the single pixels. In the high-resolution microgel example (band
+0.149-0.170 nm\ :sup:`-1`, 40 Qy bins of 9 pixels, 41 x 33 outgoing
+directions), the Monte Carlo term lowered the 2D Poisson deviance from 4.79 to
+2.61, but the 1D one from 26.1 to 5.64: the peak bins, where the model was
+about 1.5 times too intense, were hardly penalised. The warning of section 6.2
+checks the minimised loss (with ``--fit_objective 1d`` the 1D one) and states
+it with and without the Monte Carlo term; before relying on a fit of the
+profile, increase the simulated statistics until the two are close.
+
 7. Outputs
 ----------
 
 In ``--output_dir`` (default ``scan_results``):
 
 - ``fit_summary.csv`` / ``scan_summary.csv``: every evaluation with its
-  parameters, all loss values and, with ``--fit_background``, the fitted
-  background, sorted by the selected loss.
+  parameters, all loss values (with ``--q_min`` < ``--q_max`` also those of the
+  Qy profile, ``..._1d``, section 6.3) and, with ``--fit_background``, the
+  fitted background, sorted by the selected loss.
 - With ``--png``: a comparison plot of the measurement and the simulation for
   every evaluation (``fit_eval_<n>_<parameters>.png`` in fits,
   ``sim_<parameters>.png`` in scans). ``--gif`` turns the fit plots into an
