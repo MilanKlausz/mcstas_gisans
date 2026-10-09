@@ -92,7 +92,7 @@ def get_simulation_specular(
     sample: Any,
     wavelength: float,
     alpha_i: float,
-    use_avg_materials: bool = False,
+    use_avg_materials: bool = True,
     polarization: Optional[List[float]] = None,
     analyzer_direction: Optional[List[float]] = None,
     analyzer_efficiency: Optional[float] = None,
@@ -161,7 +161,7 @@ def _execute_bornagain_simulation(
         analyzer_efficiency=params.get('analyzer_efficiency', 1.0),
         analyzer_transmission=params.get('analyzer_transmission', 0.5)
     )
-    sim.options().setUseAvgMaterials(params.get('use_avg_materials', False))
+    sim.options().setUseAvgMaterials(params.get('use_avg_materials', True))
     sim.options().setIncludeSpecular(params.get('specular') == 'include_specular')
     bornagain_number_of_threads = params.get('bornagain_number_of_threads')
     if bornagain_number_of_threads is not None:
@@ -345,7 +345,7 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
                     # normal here), with the reflectivity of the sample; the transmitted part (1 - reflectivity) is
                     # not added: it enters the substrate (e.g. a liquid) and does not reach the detector
                     ssim = get_simulation_specular(
-                        sample_model, wavelength, alpha_i, params.get('use_avg_materials', False), polarization,
+                        sample_model, wavelength, alpha_i, params.get('use_avg_materials', True), polarization,
                         analyzer_direction=params.get('analyzer_direction', [0, 0, 0]),
                         analyzer_efficiency=params.get('analyzer_efficiency', 1.0),
                         analyzer_transmission=params.get('analyzer_transmission', 0.5)

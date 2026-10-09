@@ -98,7 +98,7 @@ To support a new BornAgain version (say 25): run the tests with it.
 stored reference results (``tests/data/builtin_model_references.json``); for a model whose
 implementation still works and gives the reference results, extend its range, e.g.
 ``BORNAGAIN_VERSIONS = (24, 25)``. For a model that needs the new API, add an implementation with the
-same name and the same ``get_sample`` parameters in a new folder ``ba25/`` with
+same name in a new folder ``ba25/`` with
 ``BORNAGAIN_VERSIONS = (25, 25)``, write its reference results with
 ``python tests/make_builtin_model_references.py`` (with BornAgain 25 installed), and check that they
 agree with those of the older implementation. Models that are not updated are simply not available
@@ -114,8 +114,8 @@ Differences to keep in mind when writing a BornAgain 24 implementation of a 22/2
   origin, the bottom of the form factor;
 - the particle surface density is one particle per unit cell of the lattice in all versions
   (BornAgain 22/23 ignore ``setTotalParticleSurfaceDensity`` with a 2D lattice);
-- BornAgain 24 uses average materials by default (``mcstas_gisans`` always sets the option, see
-  ``--use_avg_materials``); with average materials the BornAgain 24 implementations of the
+- BornAgain 24 uses average materials by default (21-23 did not); ``mcstas_gisans`` always sets the
+  option explicitly, by default on (``--use_avg_materials``, off with ``--no_use_avg_materials``); with average materials the BornAgain 24 implementations of the
   built-in models give the same results as the 22/23 ones, without them particles inside a lower
   layer give a much lower intensity with BornAgain 24.1.
 

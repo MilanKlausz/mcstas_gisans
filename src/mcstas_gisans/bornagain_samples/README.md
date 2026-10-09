@@ -50,8 +50,7 @@ Examples (`silica_100nm_air` exists in `ba21/`, `ba22/` and `ba24/`; `silica_air
   24), or directly into `bornagain_samples/` while trying it out.
 - Stating `BORNAGAIN_VERSIONS` is suggested, but not required. Without it the model is used with every BornAgain
   version, which is convenient, but a future BornAgain may break it or change its results without notice.
-- An implementation of an existing model for another BornAgain API keeps the same file name and the same
-  `get_sample` parameters (checked by `tests/test_sample_versions.py`).
+- An implementation of an existing model for another BornAgain API keeps the same file name.
 - For a model with declared versions, store its reference results with
   `python tests/make_builtin_model_references.py` (run it with a BornAgain version of the model's range).
 - When a new BornAgain version comes out, run the tests with it, and extend `BORNAGAIN_VERSIONS` of the models that

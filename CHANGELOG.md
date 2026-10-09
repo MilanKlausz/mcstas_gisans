@@ -13,14 +13,18 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
+  (the 1D panel of the comparison plots: the unmasked pixels of the band summed
+  per Qy bin) are computed next to the 2D losses and written to the log and the
+  summaries (`poisson_deviance_1d`, `reduced_chi2_1d`, `log_residual_1d`);
+  `--fit_objective {2d,1d}` selects which one is minimised (default `2d`).
 - Built-in sample models for several BornAgain versions: one implementation per
   BornAgain API in version folders (`bornagain_samples/ba21`, `ba22` for 22-23,
   `ba24`), each file declaring the major versions it is tested with
   (`BORNAGAIN_VERSIONS`). The implementation for the installed version is used;
   without one the run stops with an error (no silent fallback), unless
-  `--allow_untested_bornagain_version` is given. Tests check the selection, the
-  same parameters in all implementations of a model and stored reference
-  results of each implementation.
+  `--allow_untested_bornagain_version` is given. Tests check the selection and
+  stored reference results of each implementation.
 - `mg_fit`: parameter scans (`--scan`) and automated fits (`--fit`) of sample
   model parameters against measured NeXus data, with Nelder-Mead, Powell and
   Differential Evolution optimizers, Q-space masks (`--mask_*`, `--mask_view`),
@@ -90,11 +94,16 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   regression tests on the D22 paper data.
 
 ### Changed
-- **Dependencies**: BornAgain 22 or 23 (`bornagain>=22.0,<24`; 23.0 is the default in `conda.yml`;
-  `silica_100nm_air` and the liquid-surface models have BornAgain 24 implementations, with the
-  same results as 23 when `--use_avg_materials` is used, but not without it yet;
-  PyPI provides Linux wheels, on macOS a locally built wheel is needed, see
-  `INSTALL.md`); NumPy 2 is supported. scipp, scippneutron, h5py, matplotlib
+- **Average materials by default**: the simulations use BornAgain's average
+  materials (`--use_avg_materials`, now the default, as in BornAgain 24: the
+  reflection and transmission use the effective refractive index of layers with
+  particles); `--no_use_avg_materials` switches it off (the previous default, and
+  the default of BornAgain 21-23). All fit scripts used the option already.
+- **Dependencies**: BornAgain 22 to 24 (`bornagain>=22.0,<25`; 23.0 is the default in
+  `conda.yml`; with BornAgain 24, `silica_100nm_air` and the liquid-surface models are
+  available, with the same results as 23 with average materials; PyPI
+  provides Linux wheels, on macOS a locally built wheel is needed, see `INSTALL.md`);
+  NumPy 2 is supported. scipp, scippneutron, h5py, matplotlib
   and scipy are required.
 - **Output format**: `mg_run` writes a Scipp HDF5 file (`.h5`) with the
   simulated detector image (rates with Monte Carlo variances, per pixel) and

@@ -17,7 +17,7 @@ requires-python = ">=3.11.0,<3.12.0"
 dependencies = [
   "numpy>=1.0",
   "mcpl",
-  "bornagain>=22.0,<24",
+  "bornagain>=22.0,<25",
   "scipp",
   "scippneutron",
   "h5py",

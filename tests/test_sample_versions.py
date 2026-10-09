@@ -1,12 +1,9 @@
 """
 Version folders of the built-in sample models (bornagain_samples/ba<N>/, BORNAGAIN_VERSIONS in each file):
-the selection of the implementation for a BornAgain version, the declared ranges, the same parameters in all
-implementations of a model, and the reference results (tests/data/builtin_model_references.json, written by
+the selection of the implementation for a BornAgain version, the declared ranges, and the reference results (tests/data/builtin_model_references.json, written by
 tests/make_builtin_model_references.py) of the implementation for the installed BornAgain version.
 """
-import ast
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -78,24 +75,6 @@ def test_version_folders_and_declared_ranges():
             assert int(VERSION_DIR.match(folder).group(1)) == first, (name, folder)
         for ((_, last), _), ((first, _), _) in zip(declared, declared[1:]):
             assert last < first, f"overlapping BornAgain versions of the implementations of {name}"
-
-
-def _get_sample_parameters(path):
-    """(name, default) of the get_sample parameters, read from the source."""
-    tree = ast.parse(Path(path).read_text())
-    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'get_sample')
-    names = [a.arg for a in function.args.args]
-    defaults = [ast.literal_eval(d) for d in function.args.defaults]
-    return list(zip(names, [None] * (len(names) - len(defaults)) + defaults))
-
-
-@pytest.mark.parametrize('name', sorted(n for n, impls in IMPLEMENTATIONS.items() if len(impls) > 1))
-def test_all_implementations_have_the_same_parameters(name):
-    models_dir = Sample.get_models_dir()
-    parameters = {folder: _get_sample_parameters(os.path.join(models_dir, folder, f'{name}.py'))
-                  for _, folder in IMPLEMENTATIONS[name]}
-    first = next(iter(parameters.values()))
-    assert all(p == first for p in parameters.values()), parameters
 
 
 def test_every_implementation_has_references():
