@@ -40,6 +40,22 @@ instrument_defaults = {
             'resolution': [0.0, 0.0] #fwhm[m]
         }
     },
+    'sans2d': { #ISIS TS2, TOF. Values of the McStas model ISIS_SANS2d_12m.instr (sans2d_local) with its default parameters
+        # path length from the moderator face (Commodus_I3 at z=0, t=0 at the proton pulse) to armSample along the
+        # beam axis (bent by 1.375 deg in the bender): 3.7 + 9*0.325 + 0.326 + 0.001 + 0.2845 + 11.926 + 0.1 m
+        'nominal_source_sample_distance' : 19.2625, #[m]
+        # rear detector psd_monitorDet at L1+0.001 m after APERTURE2, the sample 0.1 m after APERTURE2 (L1=11.926 m)
+        'sample_detector_distance' : 11.827, #[m] = L1 - 0.099 (McStas parameter L1)
+        'tof_instrument' : True,
+        'mcpl_monitor_name' : 'Mcpl_TOF_Lambda',
+        't0_monitor_name' : 'Source_TOF_Lambda',
+        'detector': { #psd_monitorDet of the McStas model (rear detector; a generic flat 512 x 128 pixel grid)
+            'size': [1.0, 1.062], #[m]
+            'direct_beam_centre_offset': [-0.1, 0.1], #[m] psd_monitorDet AT (-0.1, 0.1, ...) RELATIVE APERTURE2 (beam axis)
+            'pixels': [512, 128],
+            'resolution': [0.0, 0.0] #fwhm[m], unknown
+        },
+    },
     'd22': { #ILL
         'nominal_source_sample_distance' : 61.28, #approximate value, but it is not really used
         'sample_detector_distance' : 17.6,

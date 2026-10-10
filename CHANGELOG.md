@@ -13,6 +13,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- Instrument `sans2d` (ISIS SANS2D, time-of-flight), with the geometry of the
+  McStas model `ISIS_SANS2d_12m.instr` (default parameters: source-sample
+  19.2625 m, sample-detector 11.827 m, rear detector 1.0 x 1.062 m with
+  512 x 128 pixels, detector centre at [-0.1, 0.1] m from the beam axis) and
+  its TOF monitors `Mcpl_TOF_Lambda` and `Source_TOF_Lambda`.
 - `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
   (the 1D panel of the comparison plots: the unmasked pixels of the band summed
   per Qy bin) are computed next to the 2D losses and written to the log and the
