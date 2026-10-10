@@ -49,7 +49,7 @@ class McSim(object):
       elif os.path.exists(os.path.join(path, 'mccode.sim')):
         self._init_old(os.path.join(path, 'mccode.sim'))
       else:
-        raise IOError("Can't locate mccode.h5 of mccode.sim file in %s"%path)
+        raise IOError("Can't locate the mccode.h5 or mccode.sim file of the McStas monitors in %s"%path)
 
   def _init_hdf(self, path):
     self.hdf=h5py.File(path, 'r')

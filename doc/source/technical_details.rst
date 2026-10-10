@@ -67,7 +67,7 @@ The 1D Q axes used for plotting and Q-defined masks are evaluated exactly along 
 
 .. _instrument_defaults_schema:
 
-4. Instrument Configuration Reference (``instrument_defaults.py``)
+3. Instrument Configuration Reference (``instrument_defaults.py``)
 --------------------------------------------------------------------
 
 Every instrument known to ``mcstas_gisans`` (selected via ``-i``/``--instrument`` on ``mg_run``/``mg_plot``/``mg_fit``, or ``--instrument`` on ``mg_beam_centre_correction``) is a plain Python dict entry in the ``instrument_defaults`` dictionary at the top of ``src/mcstas_gisans/instrument_defaults.py``. Adding support for a new instrument means adding a new key there (and, optionally, McStas monitors so the automated TOF filtering/T0 correction described above can work).
@@ -95,7 +95,7 @@ Optional keys:
 
 See :doc:`mcstas_preparation` for how to instrument a McStas model with the monitors these keys refer to.
 
-3. Simulation of each neutron
+4. Simulation of each neutron
 -----------------------------
 
 Coordinate transformation

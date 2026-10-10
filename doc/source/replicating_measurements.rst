@@ -301,7 +301,8 @@ orientation and detector offset as the fit itself.
      --instrument_detector_centre_offset 0.290838 -0.016061 --intensity_factor 0.2107 \
      --sample_orientation 2 --experiment_time 10800 --fit_background \
      --specular specular_simulation --mask_qz_min_cut 0.14 \
-     --fit radius 51 45 57 --fit latticeParameter 114 100 130
+     --fit radius 51 45 57 --fit latticeParameter 114 100 130 \
+     --max_evals 20 --output_dir fit_example
 
 See :doc:`fitting_guide` for choosing masks, optimizers and loss functions, judging
 the result, and this fit in detail (section 9), and :doc:`main_workflow`

@@ -7,7 +7,7 @@ McStas Instrument Preparation
 MCPL Output
 -----------
 
-The only required modification for an existing McStas instrument model to be usable with this project is the addition of an `MCPL_output <https://mcstas.org/download/components/3.4_current/misc/MCPL_output.html>`__ (or `MCPL_output_noacc <https://mcstas.org/download/components/3.4_current/misc/MCPL_output_noacc.html>`__) component at the sample position:
+The only required modification for an existing McStas instrument model to be usable with this project is the addition of an `MCPL_output <https://mcstas.org/download/components/current/misc/MCPL_output.html>`__ (or `MCPL_output_noacc <https://mcstas.org/download/components/current/misc/MCPL_output_noacc.html>`__) component at the sample position:
 
 .. code-block:: c
 
@@ -15,7 +15,7 @@ The only required modification for an existing McStas instrument model to be usa
    AT (0, 0, 0) RELATIVE SamplePos
    ROTATED (0,0,0) RELATIVE SamplePos
 
-Assuming that there is an `Arm <https://www2.mcstas.org/download/components/3.4_current/optics/Arm.html>`__ component at the sample position with the name *SamplePos* aligned with the beam.
+Assuming that there is an `Arm <https://mcstas.org/download/components/current/optics/Arm.html>`__ component at the sample position with the name *SamplePos* aligned with the beam.
 
 For correct propagation of the neutrons, this sample position should be at the centre of the top of the sample. As explained in https://mctools.github.io/mcpl/hooks_mcstas/ :
 
@@ -27,7 +27,7 @@ The BornAgain simulation script can handle both horizontal and vertical sample o
 
 Note that McStas does not simulate individual physical neutrons. Instead, it simulates statistical representatives of them. This is reflected in the statistical weight assigned to each simulated neutron, which can be greater or less than one. For this reason, these simulated particles are often referred to as neutron rays or neutron events. Therefore, the neutrons stored in an MCPL file can represent either many physical neutrons sharing the same properties, or just a fractional contribution of a single neutron.
 
-Note that the repository also includes a slightly modified *MCPL_output* component definition, ``resources/mcstas_models/MCPL_output_noacc_russian_roulette.comp``. Its additional – but currently unused – feature is the possibility to normalise the neutron weights to a certain number (e.g, have “real” neutrons with unit-weight) by the Splitting and the Russian Roulette Monte Carlo techniques:
+Note that the repository also includes a slightly modified *MCPL_output* component definition, ``resources/mcstas_models/MCPL_output_noacc_russian_roulette.comp``. Its additional feature is the possibility to normalise the neutron weights to a certain number (e.g. have “real” neutrons with unit weight) by the Splitting and the Russian Roulette Monte Carlo techniques, enabled with ``intendedWeight`` > 0.001. The SAGA and LoKI models in ``resources/mcstas_models`` use this component with ``intendedWeight=0.0``, which disables the normalisation: it then works like *MCPL_output_noacc*.
 
 .. code-block:: c
 
@@ -41,7 +41,7 @@ Note that the repository also includes a slightly modified *MCPL_output* compone
 Monitors
 --------
 
-Adding `TOFLambda_monitor <https://www.mcstas.org/download/components/3.7.9/monitors/TOFLambda_monitor.html>`__ components to certain parts of the instrument is not strictly necessary, but they can enable simulation options that are based on the output of these monitors. The names of the McStas monitors don’t tend to change often, so instead of providing these monitors as input for all simulations, the names of the monitors have to be defined in the ``instrument_defaults.py`` module (for each instrument separately), so that they can be loaded using the ``mcstas_reader.py`` module by finding the *mccode.sim* file in the same directory as the provided MCPL input file.
+Adding `TOFLambda_monitor <https://mcstas.org/download/components/current/monitors/TOFLambda_monitor.html>`__ components to certain parts of the instrument is not strictly necessary, but they can enable simulation options that are based on the output of these monitors. The names of the McStas monitors don’t tend to change often, so instead of providing these monitors as input for all simulations, the names of the monitors have to be defined in the ``instrument_defaults.py`` module (for each instrument separately), so that they can be loaded using the ``mcstas_reader.py`` module by finding the *mccode.sim* file in the same directory as the provided MCPL input file.
 
 .. _sample_position_monitors:
 

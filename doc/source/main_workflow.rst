@@ -24,7 +24,7 @@ Sample Interaction
 The ``mg_run`` script dynamically imports a sample model, either a built-in one from the ``bornagain_samples/`` directory or a local Python file (specified by the ``--model`` argument; see :doc:`custom_sample`).
 For every incoming neutron event, BornAgain calculates the scattering probabilities (intensities) for a wide range of outgoing directions, sampled at ``-n``/``--outgoing_directions`` points (or independently in the horizontal/vertical directions with ``--outgoing_directions_horizontal``/``--outgoing_directions_vertical``). Alternatively, ``--sampling quick|standard|long`` chooses these numbers from the number of neutrons hitting the sample and the detector pixels in the simulated angle range, for a target statistical noise per pixel; the chosen numbers are printed with the options that reproduce them (see :ref:`sampling_presets`).
 
-BornAgain itself can internally multithread each of these per-neutron DWBA calculations. This is controlled with ``--bornagain_number_of_threads`` (default: let BornAgain choose), independently of ``-p``/``--parallel_processes``, which controls how many *neutrons* are processed concurrently by separate worker processes. When running many parallel processes yourself (e.g. on a shared cluster node), set ``--bornagain_number_of_threads 1`` to avoid oversubscribing CPU cores.
+BornAgain itself can internally multithread each of these per-neutron DWBA calculations. This is controlled with ``--bornagain_number_of_threads`` (default: let BornAgain choose), independently of ``-p``/``--parallel_processes``, which controls how many *neutrons* are processed concurrently by separate worker processes. BornAgain's default starts as many threads as the machine has in every process, so with many processes the CPU cores are heavily oversubscribed. ``--bornagain_number_of_threads 1`` is the safe choice (e.g. on a laptop ``--parallel_processes 4 --bornagain_number_of_threads 1``); on a node with many cores, a few threads per process (2-4) let the idle cores help the processes that finish last, which was faster in tests of ``mg_fit`` on a node with 112 hardware threads (``--parallel_processes 112 --bornagain_number_of_threads 4``, see :doc:`dmsc_cluster`).
 
 The Monte Carlo sampling (the random jitter of the outgoing-direction grid for each incident neutron, and the detector resolution smearing) is seeded per incident neutron from ``--seed`` and the neutron's index. A run is therefore reproducible, and its result does not depend on the number of parallel processes. Without ``--seed`` a random seed is drawn, printed, and stored in the output file (``provenance/random_seed``). ``mg_fit`` uses the same seed for every evaluation, so that differences between evaluations reflect the parameter changes rather than random sampling noise.
 
@@ -161,7 +161,8 @@ Each ``--fit`` takes the parameter name followed by the initial value (``--fit r
      --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
      --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
      --specular specular_simulation --mask_qz_min_cut 0.14 \
-     --fit radius 51 45 57 --fit latticeParameter 114 100 130
+     --fit radius 51 45 57 --fit latticeParameter 114 100 130 \
+     --max_evals 20 --output_dir fit_example
 
 This fits the sphere radius and the lattice parameter of the built-in ``silica_100nm_air`` model to the D22 measurement
 included in the repository (``data/paper``; the settings are explained in :doc:`quickstart`, the fit in section 9 of

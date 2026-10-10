@@ -57,7 +57,8 @@ mg_fit
      --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
      --alpha 0.24 --sample_orientation 2 --instrument_detector_centre_offset 0.290838 -0.016061 \
      --specular specular_simulation --mask_qz_min_cut 0.14 \
-     --fit radius 51 45 57 --fit latticeParameter 114 100 130
+     --fit radius 51 45 57 --fit latticeParameter 114 100 130 \
+     --max_evals 20 --output_dir fit_example
 
 .. note::
    For more details on the ``--model`` argument and how to construct it, see the :doc:`custom_sample` tutorial. For ``--scan``, ``--nxs`` (including passing multiple files for segmented measurements), masking, joint/dual-sample fitting, and everything else about how ``mg_fit`` works, see :doc:`main_workflow`.

@@ -21,6 +21,17 @@ Then, install the package via the conda environment defined in ``conda.yml``:
    conda env create -f conda.yml
    conda activate mcstas_gisans
 
+On macOS, PyPI has no wheel of the default BornAgain 23.0: build it first, or use BornAgain 21 with its limitations
+(see :doc:`installation_and_usage`).
+
+Run the simulations in a working directory outside the repository, and keep the location of the repository in a
+variable for the commands below:
+
+.. code-block:: bash
+
+   export MG_REPO=$PWD
+   mkdir -p ~/mg_quickstart && cd ~/mg_quickstart
+
 The example of this guide is the measurement published with ``mcstas_gisans`` (:doc:`cite`): silica nanoparticles
 (100 nm diameter) on a silicon substrate, in air, measured for 3 hours at the D22 instrument (ILL) with 6 Å neutrons at
 an incident angle of 0.24°. The measured data and the McStas simulation of the beam of this measurement are included
@@ -28,7 +39,7 @@ in the repository (``data/paper``).
 
 To run the McStas simulation of step 2 you need McStas (version 3.4 or higher). To try the tools without McStas, skip
 step 2: the following steps use the McStas output included in the repository,
-``data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz``.
+``$MG_REPO/data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz``.
 
 2. Running the McStas Simulation
 --------------------------------
@@ -42,15 +53,16 @@ McStas 3.4+ environment activated, e.g. via ``mcstas-3.4-environment``, or your 
 
 .. code-block:: bash
 
-   mcrun resources/mcstas_models/ILL_D22.instr -c -n 1e8 -d resources/mcstas_models/output_dir \
+   mcrun $MG_REPO/resources/mcstas_models/ILL_D22.instr -c -n 1e8 -d d22_1e8 \
      lambda=6.0 D22_collimation=17.6
 
 *(Note: In McStas, the ``-n 1e8`` flag specifies the total number of initial neutron rays to simulate from the source,
 ``-c`` forces a recompile, and ``lambda``/``D22_collimation`` are instrument-specific parameters defined in the
 ``.instr`` file itself. The McStas output included in the repository was made with the same settings and ``-n 1e9``.)*
 
-This will generate a ``resources/mcstas_models/output_dir/test_events.mcpl.gz`` file containing the incident neutrons
-arriving at the sample position. To use it, replace the MCPL file in the commands below.
+This will generate a ``d22_1e8/test_events.mcpl.gz`` file containing the incident neutrons arriving at the sample
+position (McStas refuses to write into an existing output directory: choose a new ``-d`` for every run). To use it,
+replace the MCPL file in the commands below.
 
 3. Running the BornAgain DWBA Simulation
 ----------------------------------------
@@ -60,7 +72,7 @@ built-in ``silica_100nm_air`` model of the sample and the settings of the measur
 
 .. code-block:: bash
 
-   mg_run data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz \
+   mg_run $MG_REPO/data/paper/mcstas_output/d22_1e9/test_events.mcpl.gz \
      --instrument d22 --wavelength_selected 6.0 --intensity_factor 0.2107 \
      --model silica_100nm_air --sample_arguments "radius=51;interferenceRange=5;latticeParameter=114" \
      --sample_size_y 0.06 --sample_size_x 0.08 --allow_sample_miss \
@@ -122,7 +134,7 @@ simulation file (orientation, incident angle, detector offset):
 .. code-block:: bash
 
    mg_plot --filename paper_sim.h5 --label "D22 simulation" \
-     --nxs data/paper/d22_measurement/073174.nxs --nxs_label "D22 measurement" \
+     --nxs $MG_REPO/data/paper/d22_measurement/073174.nxs --nxs_label "D22 measurement" \
      --experiment_time 10800 --background 1.6 --overlay --plot_differences 1 \
      --intensity_min 1 --z_plot_range -0.1 0.3 --y_plot_range -0.3 0.3 --q_min 0.072 --q_max 0.102
 
