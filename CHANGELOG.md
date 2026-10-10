@@ -13,6 +13,16 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_sample_view`: 3D view of a sample model (`--model`, `--sample_arguments`
+  as in `mg_run`) with matplotlib: the layers as translucent slabs with their
+  materials, SLDs and thicknesses, and the particles of each layout on the
+  positions of its interference function (lattice sites as in the BornAgain
+  GUI, random arrangements for paracrystals, hard disks and layouts without
+  interference) in a square patch (`--patch_size`, `--max_particles`), at their
+  heights relative to the interfaces. Saved as PNG or shown interactively
+  (`--show`). BornAgain 22/23 samples are recorded while they are built (their
+  Python API cannot read a sample back); BornAgain 24 samples are read through
+  `ba.buildScene3D`.
 - `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
   (the 1D panel of the comparison plots: the unmasked pixels of the band summed
   per Qy bin) are computed next to the 2D losses and written to the log and the
