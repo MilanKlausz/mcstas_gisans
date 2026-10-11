@@ -414,9 +414,20 @@ minimised and sorts the summaries:
 
 - ``2d`` (default): the unmasked detector pixels. The 1D losses are only
   reported.
-- ``1d``: the Qy profile of the band (requires ``--q_min`` < ``--q_max`` and
-  unmasked pixels in the band). ``--fit_background`` then fits :math:`b` to the
+- ``1d``: the Qy profile of the band (requires ``--q_min`` < ``--q_max`` or
+  ``--band_exit_angle``, and unmasked pixels in the band). ``--fit_background`` then fits :math:`b` to the
   profile.
+
+Instead of a :math:`Q_z` band, ``--band_exit_angle LOW HIGH`` [deg] defines the
+band by the exit angle relative to the specular direction: the pixels whose
+exit angle :math:`\alpha_f` above the sample surface has
+:math:`\text{LOW} \le \alpha_f - \alpha \le \text{HIGH}` (:math:`\alpha` = ``--alpha``,
+the specular exit angle). The exit angle of a pixel centre is that of the Q
+conversion, :math:`Q_z = k (\sin\alpha_f + \sin\alpha)`, including the gravity
+correction at the wavelength. For monochromatic data this is a fixed set of
+pixels; its use is with time-of-flight data (section 10), where the specular
+:math:`Q_z` moves with the wavelength. The profile then sums the unmasked
+pixels of this band per Qy bin, and the 1D panel of the plots shows it.
 
 The 2D loss weighs every unmasked pixel alike, so a feature that occupies a
 small part of the unmasked region, such as the intensity drop before the first
@@ -550,10 +561,56 @@ Both sides go through the same reduction:
   pixel in proportion to their widths (a background constant in time) and
   converted to Q in the same way. ``--fit_background`` fits it for every slice.
 
-The masks apply to every slice, although the specular reflection moves in
-:math:`Q_z` with the wavelength: with several slices, mask it with a box that
-covers its position in all of them (per-slice masks are not implemented yet).
-``--intensity_factor`` is one calibration for all slices. ``--png`` saves a
+The ``--mask_*`` options in Q apply to every slice alike, although the specular
+reflection moves in :math:`Q_z = 2 k \sin\alpha` with the wavelength. Regions that
+follow it are given by the exit angle relative to the specular direction:
+``--mask_exit_angle_band LOW HIGH`` [deg] keeps only the pixels whose exit angle
+has :math:`\text{LOW} \le \alpha_f - \alpha \le \text{HIGH}`, and
+``--band_exit_angle LOW HIGH`` defines the band of the 1D profile in the same
+way (section 6.3). The band is a selection of detector pixels: in every slice,
+the exit angle of each pixel centre is calculated at the centre wavelength of
+the slice (the exit angle of the Q conversion, with its gravity correction), and
+all TOF bins of the slice use the same pixels, for the measurement, the
+simulation and the background alike. A Q bin of the slice can also receive
+other pixels at other wavelengths of the slice; only the counts of the selected
+pixels are compared. Without gravity the exit angle of a pixel does not depend
+on the wavelength; with gravity it rises with the wavelength by the drop over
+the sample-detector distance divided by that distance (0.03° at 12 Å over 12 m),
+so the band moves down the detector from slice to slice by this much, and
+within a wide slice the specular can move by a fraction of it (narrower slices
+reduce this). For example, one tube (8.1 mm at 12 m: 0.0387°) below to six tubes
+above the specular, without the specular core and its Qy wings:
+
+.. code-block:: bash
+
+   --mask_exit_angle_band -0.0387 0.232 --band_exit_angle -0.0387 0.232 --mask_qy_range -0.03 0.03
+
+``--intensity_factor`` is one calibration for all wavelengths.
+``--intensity_factor_spectrum FILE`` adds a wavelength-dependent one: a text
+file with two columns, wavelength [Å] and factor (lines starting with ``#`` are
+comments), covering the wavelength slices. The simulated count of every
+(pixel, TOF bin) is multiplied by the factor interpolated linearly at its
+wavelength (the squared Monte Carlo weights by its square), in addition to
+``--intensity_factor``. It corrects the spectrum of the simulated beam with a
+direct-beam measurement:
+
+1. Measure the direct beam (no sample, same slits; attenuated if needed) and
+   simulate it with the same McStas beam, i.e. the same instrument file and
+   MCPL plane, and the sample replaced by nothing, so that the beam reaches the
+   detector.
+2. Histogram both in the same wavelength bins, the measured and the simulated
+   wavelengths both from the TOF over :math:`L_1 + L_2` as in the slices (e.g.
+   bins of 0.05 Å, summed over the detector or the beam spot).
+3. Scale the simulation to the measurement time or proton charge of the direct-
+   beam run (and the measured counts by any attenuator transmission), and write
+   the ratio measured / simulated per bin, smoothed over a few bins where the
+   statistics are poor, as the file.
+
+The factor then absorbs the spectrum and normalisation differences between the
+McStas beam and the real one; ``--intensity_factor`` stays the normalisation of
+the McStas weights to the measurement (e.g. its proton charge).
+
+``--png`` saves a
 comparison plot per slice (the slices after the first with the suffix
 ``_slice<n>``), ``--mask_view`` a mask plot per slice, and the scans save the
 simulated Q histogram of every slice (``.npz``, readable by ``mg_plot``).

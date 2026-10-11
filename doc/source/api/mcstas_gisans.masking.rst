@@ -9,6 +9,7 @@
    .. autosummary::
    
       apply_mask
+      exit_angle_band_pixels
       get_mask
       save_view_masks_plot
    

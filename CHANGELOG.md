@@ -23,6 +23,23 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   (no event files), the MCPL input is filtered for the slices and only the
   neutrons that can reach a slice are simulated. Raw ISIS SANS2D NeXus files
   (rear tube detector) are read (`--nxs_format`, recognised automatically).
+- `mg_fit --mask_exit_angle_band LOW HIGH` and `--band_exit_angle LOW HIGH`:
+  regions defined by the exit angle relative to the specular direction
+  (LOW <= alpha_f - alpha <= HIGH [deg]) instead of fixed Q ranges, for the
+  compared pixels and for the band of the 1D Qy profile (instead of
+  `--q_min`/`--q_max`). The exit angle of a pixel is that of the Q conversion
+  (with the gravity correction) at the wavelength; with `--wavelength_slice`
+  at the centre of each slice, so the region follows the specular
+  Qz = 2 k sin(alpha) from slice to slice and every TOF bin of a slice uses
+  the same pixels (only their counts are compared, for the measurement, the
+  simulation and the background). Monochromatic data: a fixed pixel region.
+- `mg_fit --intensity_factor_spectrum FILE` (TOF): a wavelength-dependent
+  intensity calibration (columns wavelength [AA], factor), e.g. measured /
+  simulated direct beam; the simulated count of every (pixel, TOF bin) is
+  multiplied by the factor at its wavelength, in addition to
+  `--intensity_factor`.
+- `mg_fit` with `--wavelength_slice` prints the measured, simulated and
+  background counts in the unmasked Q bins of every slice with each evaluation.
 - Instrument `sans2d` (ISIS SANS2D, time-of-flight): source-sample 19.2625 m
   (the McStas model `ISIS_SANS2d_12m.instr`), the rear tube detector of the
   2019 measurements (120 tubes x 512 pixels, 1.0414 x 0.972 m, 11.999 m from

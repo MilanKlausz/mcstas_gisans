@@ -127,6 +127,20 @@ class Instrument:
         k = calculate_wavenumber(wavelength)
         return np.asarray(k)[..., np.newaxis] * (u_out - self.calculate_incident_direction())
 
+    def calculate_exit_angles_from_nexus_positions(
+        self, positions_nexus: npt.NDArray, wavelength: Union[float, npt.NDArray]
+    ) -> npt.NDArray[np.float64]:
+        """
+        Exit angles alpha_f [deg] above the sample surface of the neutrons detected at the given points (NeXus frame,
+        relative to the sample [m]) with the given wavelength [Angstrom]: the angle of their launch direction, as in
+        calculate_q_from_nexus_positions (with the gravity correction unless no_gravity), i.e.
+        Qz = k (sin alpha_f + sin alpha). The specular reflection has alpha_f = alpha.
+        """
+        wavelength = np.asarray(wavelength, dtype=np.float64)
+        q_z = self.calculate_q_from_nexus_positions(positions_nexus, wavelength)[..., 2]
+        sin_exit = q_z / calculate_wavenumber(wavelength) - np.sin(self.alpha_inc)
+        return np.rad2deg(np.arcsin(np.clip(sin_exit, -1.0, 1.0)))
+
     def direct_beam_landing_point_nexus(self, wavelength: Optional[float]) -> npt.NDArray[np.float64]:
         """
         Point (NeXus frame, z = sample-detector distance) where the unscattered beam hits the

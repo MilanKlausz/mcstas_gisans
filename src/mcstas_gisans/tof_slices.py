@@ -11,6 +11,11 @@ centre wavelength does; its counts are put into the Q bin of Q(pixel centre, its
 instrument geometry: incident angle, sample orientation, detector offset and gravity, as for monochromatic data).
 The simulated events are histogrammed into the same TOF bins of the same pixels first (run.process_particles with
 params['tof_bin_edges']), so the simulation goes through exactly the same conversion as the measurement.
+
+Regions that follow the specular reflection (mg_fit --mask_exit_angle_band, --band_exit_angle) are selections of
+detector pixels: a slice keeps the (pixel, TOF bin) of the pixels whose exit angle at the centre wavelength of the slice is
+in the band (WavelengthSlice.pixel_selection), so that the specular Qz = 2 k sin(alpha), which moves with the wavelength,
+is followed from slice to slice, and every TOF bin of a slice uses the same detector rows.
 """
 
 from dataclasses import dataclass, field
@@ -49,6 +54,9 @@ class WavelengthSlice:
     q_index[p, j] is the flat index (iy * number of Qz bins + iz) of the Q bin of pixel p (flat detector ID
     ix * pixels_y + iy of the [ix, iy] detector image) and the TOF bin first_bin + j, or -1 if that TOF bin is not
     in the slice for the pixel or its Q is outside the grid.
+
+    pixel_selection (boolean per pixel, None: all pixels) restricts the slice to the (pixel, TOF bin) of these pixels
+    (--mask_exit_angle_band): to_q, background_unit, coverage and used_pixels use only them.
     """
     lambda_min: float
     lambda_max: float
@@ -59,19 +67,31 @@ class WavelengthSlice:
     reach_range: Tuple[float, float]
     n_tof_bins: int
     detector_shape: Tuple[int, int]
+    pixel_selection: Optional[np.ndarray] = None
     # the measured data (prepare_experimental_data): masked (NaN outside the mask and outside the coverage) and raw
+    # (every pixel, without masks)
     hist_nxs: Optional[np.ndarray] = None
     hist_nxs_error: Optional[np.ndarray] = None
     hist_nxs_raw: Optional[np.ndarray] = None
     hist_nxs_error_raw: Optional[np.ndarray] = None
     mask: Optional[np.ndarray] = None
+    # the 1D band of the exit angle (--band_exit_angle, set by mg_fit): its pixels, the measured Q histogram of their
+    # (pixel, TOF bin) (NaN outside the mask and outside their coverage) and its background unit
+    profile_pixels: Optional[np.ndarray] = None
+    profile_hist_nxs: Optional[np.ndarray] = None
+    profile_unit: Optional[np.ndarray] = None
     _entries: np.ndarray = field(default=None, repr=False)
     _targets: np.ndarray = field(default=None, repr=False)
+    _selected: Optional[np.ndarray] = field(default=None, repr=False)
+    _unit: Optional[np.ndarray] = field(default=None, repr=False)
 
     def __post_init__(self):
         flat = self.q_index.ravel()
         self._entries = np.flatnonzero(flat >= 0)
         self._targets = flat[self._entries]
+        if self.pixel_selection is not None:
+            self.pixel_selection = np.asarray(self.pixel_selection, dtype=bool).ravel()
+        self._selected = self._entry_selection(self.pixel_selection)
 
     @property
     def label(self) -> str:
@@ -82,24 +102,63 @@ class WavelengthSlice:
         return len(self.y_edges) - 1, len(self.z_edges) - 1
 
     @property
+    def n_pixels(self) -> int:
+        return self.q_index.shape[0]
+
+    @property
     def coverage(self) -> np.ndarray:
-        """The Q bins that receive counts of at least one (pixel, TOF bin) of the slice."""
+        """The Q bins that receive counts of at least one (pixel, TOF bin) of the slice (of its pixel selection)."""
         return self.background_unit > 0
 
-    def to_q(self, data: np.ndarray) -> np.ndarray:
+    def _entry_selection(self, pixels: Optional[np.ndarray]) -> Optional[np.ndarray]:
+        """Boolean over the mapped (pixel, TOF bin): those of the given pixels (boolean per pixel or [ix, iy] image;
+        None: all)."""
+        if pixels is None:
+            return None
+        pixels = np.asarray(pixels, dtype=bool).ravel()
+        if pixels.size != self.n_pixels:
+            raise ValueError(f"The pixel selection has {pixels.size} pixels, the slice {self.n_pixels}.")
+        return pixels[self._entries // self.q_index.shape[1]]
+
+    def _histogram(self, values: np.ndarray, keep: Optional[np.ndarray]) -> np.ndarray:
+        """Q histogram of values given for the mapped (pixel, TOF bin) (self._entries), of those of keep (None: all)."""
+        targets = self._targets
+        if keep is not None:
+            values, targets = values[keep], targets[keep]
+        n_y, n_z = self.q_shape
+        return np.bincount(targets, weights=values, minlength=n_y * n_z).reshape(n_y, n_z)
+
+    def to_q(self, data: np.ndarray, pixels: Optional[np.ndarray] = None) -> np.ndarray:
         """
         Q histogram (Qy bins, Qz bins) of data per (pixel, TOF bin of the common range), shape q_index.shape (or an
-        [ix, iy, TOF bin] array of that many elements): the sum of the data of the (pixel, TOF bin) of every Q bin.
+        [ix, iy, TOF bin] array of that many elements): the sum of the data of the (pixel, TOF bin) of every Q bin, of
+        the pixels of the slice's pixel_selection (all pixels without one), or of `pixels` (boolean per pixel) if given.
         """
-        values = np.asarray(data, dtype=np.float64).reshape(-1)[self._entries]
+        flat = np.asarray(data, dtype=np.float64).reshape(-1)
+        keep = self._selected if pixels is None else self._entry_selection(pixels)
+        entries = self._entries if keep is None else self._entries[keep]
+        targets = self._targets if keep is None else self._targets[keep]
         n_y, n_z = self.q_shape
-        return np.bincount(self._targets, weights=values, minlength=n_y * n_z).reshape(n_y, n_z)
+        return np.bincount(targets, weights=flat[entries], minlength=n_y * n_z).reshape(n_y, n_z)
+
+    def set_background_unit(self, unit: np.ndarray) -> None:
+        """Set the background of one count per pixel over the slice, per (pixel, TOF bin) (build_wavelength_slices), and
+        background_unit, its Q histogram over the pixel selection."""
+        self._unit = np.asarray(unit, dtype=np.float64).reshape(-1)[self._entries]
+        self.background_unit = self._histogram(self._unit, self._selected)
+
+    def background_unit_of(self, pixels: np.ndarray) -> np.ndarray:
+        """The Q histogram of one count per pixel over the slice, of the given pixels (boolean per pixel) only."""
+        return self._histogram(self._unit, self._entry_selection(pixels))
 
     def used_pixels(self, q_keep: np.ndarray) -> np.ndarray:
-        """Boolean [ix, iy] detector image: the pixels with a TOF bin of the slice in a kept (True) Q bin."""
-        n_pixels, n_bins = self.q_index.shape
+        """Boolean [ix, iy] detector image: the pixels (of the pixel selection) with a TOF bin of the slice in a kept
+        (True) Q bin."""
+        n_bins = self.q_index.shape[1]
         keep = np.asarray(q_keep, dtype=bool).ravel()[self._targets]
-        pixels = np.zeros(n_pixels, dtype=bool)
+        if self._selected is not None:
+            keep &= self._selected
+        pixels = np.zeros(self.n_pixels, dtype=bool)
         pixels[self._entries[keep] // n_bins] = True
         return pixels.reshape(self.detector_shape)
 
@@ -131,8 +190,17 @@ def common_tof_bin_range(tof_edges: np.ndarray, path_lengths: np.ndarray,
     return int(bins[0]), int(bins[-1]) + 1
 
 
+def tof_bin_wavelengths(instrument, tof_edges: np.ndarray, source_sample_distance: float) -> np.ndarray:
+    """The wavelength [Angstrom] of every (pixel, TOF bin): h t / (m (L1 + L2_pixel)) at the bin centre t, shape
+    (number of pixels, number of TOF bins) for the TOF bin edges tof_edges [s]."""
+    tof_edges = np.asarray(tof_edges, dtype=np.float64)
+    _, path_lengths = pixel_path_lengths(instrument, source_sample_distance)
+    return tof_to_wavelength(0.5 * (tof_edges[1:] + tof_edges[:-1])[np.newaxis, :], path_lengths[:, np.newaxis])
+
+
 def build_wavelength_slices(instrument, tof_edges: np.ndarray, wavelength_slices: Sequence[Sequence[float]],
-                            source_sample_distance: float) -> Tuple[List[WavelengthSlice], int, int]:
+                            source_sample_distance: float, exit_angle_band: Optional[Sequence[float]] = None
+                            ) -> Tuple[List[WavelengthSlice], int, int]:
     """
     The WavelengthSlice of every [lambda_min, lambda_max] of wavelength_slices, for the TOF bin edges tof_edges [s]
     of the measurement, and the common TOF bin range [first, last) that their (pixel, TOF bin) arrays cover.
@@ -142,7 +210,12 @@ def build_wavelength_slices(instrument, tof_edges: np.ndarray, wavelength_slices
     is the Q histogram of one count per pixel over the slice (spread over the TOF bins of the slice of the pixel in
     proportion to their widths, i.e. a background constant in time): a flat background of b counts per pixel adds
     b * background_unit to the simulated Q histogram.
+
+    With exit_angle_band (LOW, HIGH) [deg] (--mask_exit_angle_band), a slice keeps only the pixels whose exit angle
+    alpha_f at the centre wavelength of the slice has LOW <= alpha_f - alpha <= HIGH (masking.exit_angle_band_pixels;
+    its pixel_selection).
     """
+    from .masking import exit_angle_band_pixels
     tof_edges = np.asarray(tof_edges, dtype=np.float64)
     if np.any(np.diff(tof_edges) <= 0):
         raise ValueError("The TOF bin edges must be increasing.")
@@ -150,12 +223,13 @@ def build_wavelength_slices(instrument, tof_edges: np.ndarray, wavelength_slices
     first, last = common_tof_bin_range(tof_edges, path_lengths, wavelength_slices)
     edges = tof_edges[first:last + 1]
     widths = np.diff(edges)
-    centre_wavelengths = tof_to_wavelength(0.5 * (edges[1:] + edges[:-1])[np.newaxis, :], path_lengths[:, np.newaxis])
+    centre_wavelengths = tof_bin_wavelengths(instrument, edges, source_sample_distance)
     detector_shape = (instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)
 
     slices = []
     for lambda_min, lambda_max in wavelength_slices:
-        y_edges, z_edges = instrument.get_q_pixel_limits(wavelength=0.5 * (lambda_min + lambda_max))
+        centre = 0.5 * (lambda_min + lambda_max)
+        y_edges, z_edges = instrument.get_q_pixel_limits(wavelength=centre)
         if np.any(np.diff(y_edges) <= 0) or np.any(np.diff(z_edges) <= 0):
             raise ValueError("The Q edges of the detector pixels are expected to be increasing.")
         n_y, n_z = len(y_edges) - 1, len(z_edges) - 1
@@ -182,11 +256,13 @@ def build_wavelength_slices(instrument, tof_edges: np.ndarray, wavelength_slices
             raise ValueError(f"No TOF bin of the measurement has its centre in the wavelength slice {lambda_min:g}-{lambda_max:g} AA.")
         reach_range = (float(lower[in_slice].min()), float(upper[in_slice].max()))
 
+        pixel_selection = None if exit_angle_band is None else exit_angle_band_pixels(instrument, centre, exit_angle_band)
         wavelength_slice = WavelengthSlice(
             lambda_min=float(lambda_min), lambda_max=float(lambda_max), y_edges=y_edges, z_edges=z_edges,
             q_index=q_index, background_unit=np.zeros((n_y, n_z)), reach_range=reach_range,
-            n_tof_bins=int(np.count_nonzero(np.any(in_slice, axis=0))), detector_shape=detector_shape)
-        wavelength_slice.background_unit = wavelength_slice.to_q(unit)
+            n_tof_bins=int(np.count_nonzero(np.any(in_slice, axis=0))), detector_shape=detector_shape,
+            pixel_selection=pixel_selection)
+        wavelength_slice.set_background_unit(unit)
         slices.append(wavelength_slice)
     return slices, first, last
 
@@ -228,3 +304,40 @@ def particles_reaching_slices(particles: np.ndarray, instrument, slices: Sequenc
         reach_min, reach_max = wavelength_slice.reach_range
         keep |= (high >= reach_min) & (low <= reach_max)
     return keep
+
+
+def read_intensity_factor_spectrum(path: str) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    A wavelength-dependent intensity calibration (mg_fit --intensity_factor_spectrum): a text file with the columns
+    wavelength [Angstrom] and factor (comments start with '#'). Returns (wavelengths, factors); the wavelengths must
+    increase and the factors be positive.
+    """
+    try:
+        table = np.loadtxt(path, comments='#', ndmin=2)
+    except ValueError as err:
+        raise ValueError(f"{path}: expected two columns, wavelength [Angstrom] and factor ({err}).")
+    if table.shape[1] != 2 or len(table) < 2:
+        raise ValueError(f"{path}: expected two columns (wavelength [Angstrom], factor) and at least two rows, got the shape {table.shape}.")
+    wavelengths, factors = table[:, 0], table[:, 1]
+    if not np.all(np.isfinite(table)):
+        raise ValueError(f"{path}: the values must be finite.")
+    if np.any(np.diff(wavelengths) <= 0):
+        raise ValueError(f"{path}: the wavelengths must increase.")
+    if np.any(factors <= 0):
+        raise ValueError(f"{path}: the factors must be positive.")
+    return wavelengths, factors
+
+
+def intensity_factors_of_tof_bins(spectrum: Tuple[np.ndarray, np.ndarray], bin_wavelengths: np.ndarray,
+                                  wavelength_slices: Sequence[Sequence[float]]) -> np.ndarray:
+    """
+    The factor of an intensity calibration spectrum (read_intensity_factor_spectrum) for every (pixel, TOF bin), linearly
+    interpolated at its wavelength (bin_wavelengths, tof_bin_wavelengths). The spectrum must cover the wavelength slices
+    (the TOF bins outside the slices are not compared and get the factor of the nearest end).
+    """
+    wavelengths, factors = spectrum
+    low, high = min(s[0] for s in wavelength_slices), max(s[1] for s in wavelength_slices)
+    if low < wavelengths[0] or high > wavelengths[-1]:
+        raise ValueError(f"The intensity factor spectrum covers {wavelengths[0]:g}-{wavelengths[-1]:g} AA, but the wavelength "
+                         f"slices {low:g}-{high:g} AA.")
+    return np.interp(bin_wavelengths, wavelengths, factors)

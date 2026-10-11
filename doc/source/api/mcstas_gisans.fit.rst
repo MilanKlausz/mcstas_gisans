@@ -9,6 +9,7 @@
    .. autosummary::
    
       background_entries
+      band_description
       calculate_fitness
       combine_slice_metrics
       convert_val
@@ -27,6 +28,7 @@
       poisson_deviance_with_mc
       prepare_experimental_data
       prepare_tof_experimental_data
+      profile_plot_data
       qz_band_indices
       qz_band_profile
       run_automated_fit

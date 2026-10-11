@@ -103,6 +103,29 @@ def get_mask(y_edges: np.ndarray,
 
     return keep_mask
 
+def exit_angle_band_pixels(instrument, wavelength: float, band: Tuple[float, float]) -> np.ndarray:
+    """
+    The detector pixels in an exit-angle band around the specular direction (mg_fit --mask_exit_angle_band,
+    --band_exit_angle): boolean [ix, iy] image of the raw detector (NeXus orientation), True for the pixels whose
+    centre has LOW <= alpha_f - alpha <= HIGH at the given wavelength, with alpha_f the exit angle above the sample
+    surface (Instrument.calculate_exit_angles_from_nexus_positions, with the gravity correction of the Q conversion)
+    and alpha the incident angle (the specular exit angle).
+
+    Parameters
+    ----------
+    instrument : Instrument
+        The instrument (detector geometry, incident angle, gravity).
+    wavelength : float
+        Wavelength [Angstrom] of the gravity correction (without gravity the exit angle of a pixel does not depend on it).
+    band : tuple of float
+        (LOW, HIGH) [deg], relative to the specular exit angle.
+    """
+    low, high = band
+    detector = instrument.detector
+    positions = detector.get_pixel_positions(instrument.sample_detector_distance)
+    relative = instrument.calculate_exit_angles_from_nexus_positions(positions, wavelength) - np.rad2deg(instrument.alpha_inc)
+    return ((relative >= low) & (relative <= high)).reshape(detector.pixels_x_nexus, detector.pixels_y_nexus)
+
 def apply_mask(data: np.ndarray, mask: np.ndarray, fill_value: Union[float, int]) -> np.ndarray:
     """
     Applies a precalculated boolean mask to the data, replacing False values with fill_value.
@@ -137,7 +160,8 @@ def save_view_masks_plot(hist_raw: np.ndarray,
                          y_plot_range: Tuple[float, float], 
                          z_plot_range: Tuple[float, float],
                          savename: str, 
-                         intensity_min: Optional[Union[float, int]] = None) -> None:
+                         intensity_min: Optional[Union[float, int]] = None,
+                         profile: Optional[dict] = None) -> None:
     """
     Generates a comparison plot showing raw data vs applied detector masks.
 
@@ -167,6 +191,10 @@ def save_view_masks_plot(hist_raw: np.ndarray,
         The file path to save the generated plot.
     intensity_min : float or int, optional
         The minimum intensity to use for the log-scaled 2D plots. Defaults to 1.0.
+    profile : dict, optional
+        The 1D panel when the band is not a Qz range of the maps (mg_fit --band_exit_angle): the Qy profile
+        'counts' of the masked data in the band (per Qy bin of y_edges_nxs) and the 'title'; q_min and q_max
+        are then not used.
     """
     import matplotlib.pyplot as plt
     from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
@@ -194,30 +222,37 @@ def save_view_masks_plot(hist_raw: np.ndarray,
     axes[1, 1].remove()
     ax_bottom = fig.add_subplot(gs[1:, :])
 
-    qz_min_index = np.digitize(q_min, z_edges_nxs) - 1
-    qz_max_index = np.digitize(q_max, z_edges_nxs) - 1
+    if profile is not None:
+        counts = np.asarray(profile['counts'], dtype=float)
+        plot_q_1d(counts, np.sqrt(np.nan_to_num(counts)), 0.5 * (y_edges_nxs[1:] + y_edges_nxs[:-1]), 'Qy [1/nm]',
+                  color='green', title_text='', label='Masked data', ax=ax_bottom, limits=y_plot_range, output='none')
+        title = profile['title']
+    else:
+        qz_min_index = np.digitize(q_min, z_edges_nxs) - 1
+        qz_max_index = np.digitize(q_max, z_edges_nxs) - 1
 
-    # For 1D extraction, replace NaN with 0 so np.sum works properly
-    hist_masked_1d = np.nan_to_num(hist_masked, nan=0.0)
+        # For 1D extraction, replace NaN with 0 so np.sum works properly
+        hist_masked_1d = np.nan_to_num(hist_masked, nan=0.0)
 
-    values_raw, errors_raw, y_bins_nxs, z_limits = extract_range_to_1d(
-        hist_raw, hist_raw_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
-    )
-    plot_q_1d(values_raw, errors_raw, y_bins_nxs, 'Qy [1/nm]', color='blue',
-              title_text='', label='Raw data', ax=ax_bottom, limits=y_plot_range, output='none')
+        values_raw, errors_raw, y_bins_nxs, z_limits = extract_range_to_1d(
+            hist_raw, hist_raw_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
+        )
+        plot_q_1d(values_raw, errors_raw, y_bins_nxs, 'Qy [1/nm]', color='blue',
+                  title_text='', label='Raw data', ax=ax_bottom, limits=y_plot_range, output='none')
 
-    values_masked, errors_masked, y_bins_nxs, _ = extract_range_to_1d(
-        hist_masked_1d, hist_masked_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
-    )
-    plot_q_1d(values_masked, errors_masked, y_bins_nxs, 'Qy [1/nm]', color='green',
-              label='Masked data', ax=ax_bottom, limits=y_plot_range, output='none')
+        values_masked, errors_masked, y_bins_nxs, _ = extract_range_to_1d(
+            hist_masked_1d, hist_masked_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
+        )
+        plot_q_1d(values_masked, errors_masked, y_bins_nxs, 'Qy [1/nm]', color='green',
+                  label='Masked data', ax=ax_bottom, limits=y_plot_range, output='none')
 
-    for ax in (axes[0, 0], axes[0, 1]):
-        for z_limit in z_limits:  # the summed Qz range
-            ax.axhline(z_limit, color='magenta', linestyle='--')
+        for ax in (axes[0, 0], axes[0, 1]):
+            for z_limit in z_limits:  # the summed Qz range
+                ax.axhline(z_limit, color='magenta', linestyle='--')
+        title = f"Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]"
 
     # Format 1D overlay plot (grid only on the major ticks of this plot)
-    ax_bottom.set_title(f"Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]")
+    ax_bottom.set_title(title)
     ax_bottom.grid(True, which='major')
     ax_bottom.legend(loc='upper left')
 
