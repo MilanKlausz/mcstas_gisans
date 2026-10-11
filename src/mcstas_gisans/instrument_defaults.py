@@ -40,19 +40,19 @@ instrument_defaults = {
             'resolution': [0.0, 0.0] #fwhm[m]
         }
     },
-    'sans2d': { #ISIS TS2, TOF. Values of the McStas model ISIS_SANS2d_12m.instr (sans2d_local) with its default parameters
+    'sans2d': { #ISIS TS2, TOF. McStas model ISIS_SANS2d_12m.instr (sans2d_local); detector of the measurements (2019)
         # path length from the moderator face (Commodus_I3 at z=0, t=0 at the proton pulse) to armSample along the
         # beam axis (bent by 1.375 deg in the bender): 3.7 + 9*0.325 + 0.326 + 0.001 + 0.2845 + 11.926 + 0.1 m
         'nominal_source_sample_distance' : 19.2625, #[m]
-        # rear detector psd_monitorDet at L1+0.001 m after APERTURE2, the sample 0.1 m after APERTURE2 (L1=11.926 m)
-        'sample_detector_distance' : 11.827, #[m] = L1 - 0.099 (McStas parameter L1)
-        'tof_instrument' : True,
-        'mcpl_monitor_name' : 'Mcpl_TOF_Lambda',
+        'sample_detector_distance' : 11.999, #[m] Rear_Det_Z of runs 60993-61018 (the rear detector moves: check the run)
+        'tof_instrument' : True, # no mcpl_monitor_name: no MCPL TOF filtering (use --no_mcpl_filtering)
         't0_monitor_name' : 'Source_TOF_Lambda',
-        'detector': { #psd_monitorDet of the McStas model (rear detector; a generic flat 512 x 128 pixel grid)
-            'size': [1.0, 1.062], #[m]
-            'direct_beam_centre_offset': [-0.1, 0.1], #[m] psd_monitorDet AT (-0.1, 0.1, ...) RELATIVE APERTURE2 (beam axis)
-            'pixels': [512, 128],
+        'detector': { #rear detector: 120 horizontal tubes (8.1 mm pitch) x 512 pixels (1041.4 mm active length), Mantid
+            # IDF SANS2D_Definition_Tubes.xml; the 3 mm stagger of the left/right tubes is ignored
+            'size': [1.0414, 0.972], #[m]
+            # direct beam of run 60993 at y -85.0 mm on the detector; x from the specular of run 60998 (+1.8 mm)
+            'direct_beam_centre_offset': [-0.0018, 0.0850], #[m]
+            'pixels': [512, 120],
             'resolution': [0.0, 0.0] #fwhm[m], unknown
         },
     },
