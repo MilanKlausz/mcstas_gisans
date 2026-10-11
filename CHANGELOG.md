@@ -13,6 +13,16 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_fit` for time-of-flight instruments (`--wavelength_slice MIN MAX`,
+  repeatable): the measured and the simulated counts of every detector pixel
+  and TOF bin are converted to (Qy, Qz) in the same way (the wavelength of a
+  TOF bin from L1 + the sample-pixel distance) and compared in the Q grid of
+  each wavelength slice; one parameter set for all slices, the loss is the sum
+  over the slices (also reported per slice), the flat background is fitted per
+  slice. The simulation histograms the detected neutrons per pixel and TOF bin
+  (no event files), the MCPL input is filtered for the slices and only the
+  neutrons that can reach a slice are simulated. Raw ISIS SANS2D NeXus files
+  (rear tube detector) are read (`--nxs_format`, recognised automatically).
 - Instrument `sans2d` (ISIS SANS2D, time-of-flight), with the geometry of the
   McStas model `ISIS_SANS2d_12m.instr` (default parameters: source-sample
   19.2625 m, sample-detector 11.827 m, rear detector 1.0 x 1.062 m with

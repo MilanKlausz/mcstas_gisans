@@ -247,6 +247,24 @@ def _update_tof_buffer(
 
     return buffer_idx
 
+def _update_tof_histogram(
+    detector_id: np.ndarray,
+    total_tof: np.ndarray,
+    valid_weights: np.ndarray,
+    tof_bin_edges: np.ndarray,
+    tof_hist: np.ndarray,
+    tof_hist_weights_squared: np.ndarray
+) -> None:
+    """
+    Update the (pixel, TOF bin) histograms of the TOF histogram mode (params['tof_bin_edges'], mg_fit
+    --wavelength_slice); hits outside the TOF bins are dropped.
+    """
+    tof_bin = np.searchsorted(tof_bin_edges, total_tof, side='right') - 1
+    inside = (tof_bin >= 0) & (tof_bin < len(tof_bin_edges) - 1)
+    if np.any(inside):
+        np.add.at(tof_hist, (detector_id[inside], tof_bin[inside]), valid_weights[inside])
+        np.add.at(tof_hist_weights_squared, (detector_id[inside], tof_bin[inside]), valid_weights[inside]**2)
+
 def seed_particle_rng(random_seed: Optional[int], particle_index: int) -> None:
     """
     Seed numpy's global random generator for one incident particle from the run seed and the
@@ -265,6 +283,9 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
     The outgoing directions of every particle cover params['angle_range'], or with params['angle_window_region']
     (mg_fit --simulate_mask_angle_range_factor auto) the particle's own window of directions that can reach that
     region (neutron_angle_windows, calculated here from the particles of the batch).
+    TOF instruments: the detected neutrons are written to a temporary event file (detector ID, TOF, weight), or with
+    params['tof_bin_edges'] (TOF bin edges [s], mg_fit --wavelength_slice) histogrammed per (pixel, TOF bin)
+    ('tofHist', 'tofHistWeightsSquared', shape (number of pixels, number of TOF bins)) without an event file.
     """
     f_temp = None
     h5_temp_path = None
@@ -278,6 +299,9 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
 
         pixel_hist = None
         pixel_hist_weights_squared = None
+        tof_hist = None
+        tof_hist_weights_squared = None
+        tof_bin_edges = params.get('tof_bin_edges') if is_tof else None
         event_buffer = None
         buffer_idx = 0
         buffer_capacity = 1_000_000
@@ -288,6 +312,11 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
         if not is_tof:
             pixel_hist = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
             pixel_hist_weights_squared = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
+        elif tof_bin_edges is not None:
+            tof_bin_edges = np.asarray(tof_bin_edges, dtype=np.float64)
+            tof_hist_shape = (instrument.detector.pixels_x_nexus * instrument.detector.pixels_y_nexus, len(tof_bin_edges) - 1)
+            tof_hist = np.zeros(tof_hist_shape, dtype=np.float64)
+            tof_hist_weights_squared = np.zeros(tof_hist_shape, dtype=np.float64)
         else:
             import h5py
             # unique file per call: a pool worker may process more than one batch
@@ -383,6 +412,11 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
                         valid_idx_x, valid_idx_y, valid_weights,
                         pixel_hist, pixel_hist_weights_squared
                     )
+                elif tof_hist is not None:
+                    _update_tof_histogram(
+                        detector_id, t + sd_tof[valid_mask], valid_weights, tof_bin_edges,
+                        tof_hist, tof_hist_weights_squared
+                    )
                 else:
                     valid_sd_tof = sd_tof[valid_mask]
                     total_tof = t + valid_sd_tof
@@ -405,6 +439,8 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
         return {
             'pixelHist': pixel_hist,
             'pixelHistWeightsSquared': pixel_hist_weights_squared,
+            'tofHist': tof_hist,
+            'tofHistWeightsSquared': tof_hist_weights_squared,
             'temp_h5_path': h5_temp_path
         }
     except Exception:
@@ -426,7 +462,8 @@ def process_particles_parallelly(particles: Any, params: Dict[str, Any], process
     if process_number == 1:
         result = process_particles(particles, params)
         if params['instrument'].is_tof_instrument:
-            result['temp_h5_paths'] = [result.pop('temp_h5_path')]
+            temp_h5_path = result.pop('temp_h5_path')
+            result['temp_h5_paths'] = [temp_h5_path] if temp_h5_path else []
         return result
 
     starts = np.linspace(0, len(particles), process_number + 1).astype(int)
@@ -463,9 +500,13 @@ def process_particles_parallelly(particles: Any, params: Dict[str, Any], process
         'pixelHist': pixel_hist,
         'pixelHistWeightsSquared': pixel_hist_weights_squared
     }
-    
+    tof_hists = [r['tofHist'] for r in results if r.get('tofHist') is not None]
+    if tof_hists:  # TOF histogram mode (params['tof_bin_edges'])
+        result['tofHist'] = np.sum(tof_hists, axis=0)
+        result['tofHistWeightsSquared'] = np.sum([r['tofHistWeightsSquared'] for r in results if r.get('tofHist') is not None], axis=0)
+
     if is_tof:
-        result['temp_h5_paths'] = [r['temp_h5_path'] for r in results if 'temp_h5_path' in r]
+        result['temp_h5_paths'] = [r['temp_h5_path'] for r in results if r.get('temp_h5_path')]
         
     return result
 

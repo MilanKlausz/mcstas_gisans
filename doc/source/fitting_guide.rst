@@ -509,3 +509,67 @@ If the best evaluations differ by less than the Monte Carlo noise of the loss
 (repeat the best one with a few ``--seed`` values, section 6.2), more simulated
 statistics (``--sampling standard``) are needed to pin the parameters down more
 precisely.
+
+10. Time-of-flight instruments (``--wavelength_slice``)
+--------------------------------------------------------
+
+For a TOF instrument the measurement and the simulation are compared in
+wavelength slices, given with ``--wavelength_slice MIN MAX`` [Å] (required; it
+can be given several times). The sample model is the same at all wavelengths,
+so every slice is evaluated with the same parameter set from one simulation,
+and the loss is the sum of the losses of the slices (each also reported, with
+the suffix ``_slice<n>`` in the summaries, when there are several).
+
+Both sides go through the same reduction:
+
+- The wavelength of a TOF bin of a pixel is :math:`\lambda = h t / (m (L_1 + L_2))`
+  at the bin centre :math:`t`, with :math:`L_1` the nominal source-sample
+  distance of the instrument (``--instrument_nominal_source_sample_distance``)
+  and :math:`L_2` the sample-pixel distance. The TOF of the simulated neutrons
+  start at the McStas source and those of a raw measurement at the source pulse
+  (e.g. the proton pulse at ISIS), so no T0 correction may be applied to the
+  simulation: ``--no_t0_correction`` is required (or ``--t0_fixed`` for a known
+  offset). The same :math:`L_1` is used for both sides (for SANS2D the McStas
+  path 19.2625 m; the 19.281 m of the Mantid instrument definition would shift
+  the measured wavelengths by 0.06%).
+- The TOF bins whose centre wavelength is in the slice are converted to
+  :math:`(Q_y, Q_z)` at the pixel centre with that wavelength (incident angle,
+  sample orientation, detector offset and gravity as for monochromatic data)
+  and summed into the Q grid of the slice: the pixel edges of the detector at
+  the centre wavelength of the slice, so the ``--mask_*`` options, the
+  :math:`Q_z` band and the plots work as for monochromatic data. Q bins that
+  receive no (pixel, TOF bin) of the slice are left out.
+- The simulation histograms the detected neutrons in the TOF bins of the
+  measurement per pixel, and these histograms go through the same conversion.
+  The MCPL input is filtered with the TOF range of the slices over
+  :math:`L_1`, widened by 10% (or ``--input_tof_limits``/``--no_mcpl_filtering``),
+  and after the preconditioning only the neutrons that can be detected in a
+  TOF bin of a slice are simulated.
+- The flat background (``--background``, ``--fit_background``) is in counts per
+  detector pixel over the slice, spread over the TOF bins of the slice of each
+  pixel in proportion to their widths (a background constant in time) and
+  converted to Q in the same way. ``--fit_background`` fits it for every slice.
+
+The masks apply to every slice, although the specular reflection moves in
+:math:`Q_z` with the wavelength: with several slices, mask it with a box that
+covers its position in all of them (per-slice masks are not implemented yet).
+``--intensity_factor`` is one calibration for all slices. ``--png`` saves a
+comparison plot per slice (the slices after the first with the suffix
+``_slice<n>``), ``--mask_view`` a mask plot per slice, and the scans save the
+simulated Q histogram of every slice (``.npz``, readable by ``mg_plot``).
+
+Measured data: raw ISIS SANS2D NeXus files are read (the rear tube detector,
+recognised by ``raw_data_1/beamline`` or with ``--nxs_format isis_sans2d``).
+For example, run 60998 (100 nm silica on silicon, 0.328°) in the slice
+6.5–7.5 Å, with a McStas beam of the measurement:
+
+.. code-block:: bash
+
+   mg_fit test_events.mcpl.gz --nxs SANS2D00060998.nxs --experiment_time 17257 --fit_background \
+     --instrument sans2d --no_t0_correction --wavelength_slice 6.5 7.5 --intensity_factor 47.121 \
+     --alpha 0.328 --sample_orientation 1 \
+     --model silica_100nm_air --sample_arguments "latticeParameter=114;interferenceRange=5;positionVariance=20;defectAbundance=0.0" \
+     --sample_size_x 0.08 --sample_size_y 0.06 --allow_sample_miss --specular specular_simulation \
+     --mask_qy_min_cut -0.2 --mask_qy_max_cut 0.2 --mask_qz_min_cut 0.0937 --mask_qz_max_cut 0.1119 \
+     --mask_exclude_q_box -0.025 0.025 0.0937 0.1119 --q_min 0.0937 --q_max 0.1119 \
+     --simulate_mask_angle_range --scan radius 51

@@ -176,6 +176,19 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
         if not args.wavelength_selected:
             parser.error("For non-TOF instruments the --wavelength_selected parameter is required.")
 
+    # mg_fit --wavelength_slice (TOF): the simulated TOF are compared with the measured ones, the MCPL input is
+    # filtered for the slices (tof_filtering)
+    wavelength_slices = getattr(args, 'wavelength_slice', None)
+    if wavelength_slices and instr_params['tof_instrument']:
+        if not args.no_t0_correction and args.t0_fixed is None:
+            parser.error("--wavelength_slice compares the simulated TOF with the measured (raw) TOF, so the T0 correction from a McStas "
+                         "monitor cannot be applied: give --no_t0_correction (the TOF of the McStas source and of the measurement both "
+                         "start at the source pulse, e.g. the proton pulse at ISIS) or --t0_fixed (a known offset subtracted from the "
+                         "simulated TOF).")
+        if args.wavelength:
+            parser.error("--wavelength (MCPL filtering and T0 correction with McStas monitors) cannot be combined with --wavelength_slice: "
+                         "the MCPL input is filtered for the slices (or give --input_tof_limits or --no_mcpl_filtering).")
+
     if args.no_t0_correction:
         if args.t0_fixed is not None:
             parser.error("The --no_t0_correction option can not be used together with --t0_fixed.")
@@ -183,17 +196,17 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
             parser.error("The --no_t0_correction option can not be used together with --t0_wavelength_rebin.")
         if args.wfm:
             parser.error("The --no_t0_correction option can not be used together with --wfm.")
-    elif instr_params['tof_instrument']:
+    elif instr_params['tof_instrument'] and not wavelength_slices:
         if not args.wavelength:
             parser.error("The --wavelength must be provided for T0 correction. Alternatively, the --no_t0_correction option can be used to skip T0 correction.")
 
     if not args.no_mcpl_filtering and instr_params['tof_instrument']:
-        if not args.wavelength and not args.input_tof_limits:
+        if not args.wavelength and not args.input_tof_limits and not wavelength_slices:
             parser.error("The --wavelength or --input_tof_limits must be provided for MCPL TOF filtering. Alternatively, the --no_mcpl_filtering option can be used to skip TOF filtering.")
 
     if instr_params['tof_instrument']:
         name = args.instrument
-        if not args.no_mcpl_filtering and not args.input_tof_limits and 'mcpl_monitor_name' not in instr_params:
+        if not args.no_mcpl_filtering and not args.input_tof_limits and not wavelength_slices and 'mcpl_monitor_name' not in instr_params:
             parser.error(f"The '{name}' instrument defines no 'mcpl_monitor_name' (McStas TOFLambda monitor for MCPL TOF filtering): "
                          "use --input_tof_limits or --no_mcpl_filtering.")
         if not args.no_t0_correction and args.t0_fixed is None and not args.wfm and 't0_monitor_name' not in instr_params:

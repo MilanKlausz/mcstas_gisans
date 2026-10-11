@@ -274,8 +274,11 @@ def has_qz_band(args: Any) -> bool:
 
 def loss_keys(metrics: Dict[str, float]) -> List[str]:
     """The losses reported per evaluation: LOSS_FUNCTIONS of the detector image, then those of the Qy
-    profile of the Qz band (suffix _1d) if it is given."""
-    return list(LOSS_FUNCTIONS) + [f"{key}_1d" for key in LOSS_FUNCTIONS if f"{key}_1d" in metrics]
+    profile of the Qz band (suffix _1d) if it is given; with several wavelength slices (TOF) the losses are summed over
+    the slices and those of every slice follow (suffix _slice<n>, combine_slice_metrics)."""
+    keys = list(LOSS_FUNCTIONS) + [f"{key}_1d" for key in LOSS_FUNCTIONS if f"{key}_1d" in metrics]
+    n_slices = sum(1 for key in metrics if key.startswith('background_slice'))
+    return keys + [f"{key}_slice{n}" for n in range(1, n_slices + 1) for key in keys if f"{key}_slice{n}" in metrics]
 
 
 def objective_loss_key(args: Any) -> str:
@@ -359,7 +362,8 @@ def save_comparison_plot(
     savename: str,
     label_sim: str,
     intensity_min: Optional[float] = None,
-    split_view: bool = False
+    split_view: bool = False,
+    label_nxs: str = "D22 measurement"
 ) -> None:
     """
     Save a 2x2 comparison plot of experimental and simulated data (with split_view: one 2D map
@@ -401,6 +405,8 @@ def save_comparison_plot(
         Minimum intensity for color scaling.
     split_view : bool, optional
         One split 2D map instead of two separate maps.
+    label_nxs : str, optional
+        Label for the measured data.
     """
     import matplotlib.pyplot as plt
     from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
@@ -416,7 +422,7 @@ def save_comparison_plot(
         # to the right of the map instead of taking its width, so that the Qy axes line up)
         fig, (ax_map, ax_bottom) = plt.subplots(2, 1, figsize=(10, 12))
         split_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, hist_sim, y_edges_sim, z_edges_sim,
-                      label_left="D22 measurement", label_right="Simulation", title_text=label_sim, ax=ax_map,
+                      label_left=label_nxs, label_right="Simulation", title_text=label_sim, ax=ax_map,
                       intensity_min=intensity_min, intensity_max=intensity_max,
                       y_range=y_plot_range, z_range=z_plot_range, match_horizontal_axes=True)
         map_axes = [ax_map]
@@ -424,7 +430,7 @@ def save_comparison_plot(
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
         # Plot 2D maps (no grid is added to these)
-        log_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, "D22 measurement", ax=axes[0, 0],
+        log_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, label_nxs, ax=axes[0, 0],
                     intensity_min=intensity_min, intensity_max=intensity_max,
                     y_range=y_plot_range, z_range=z_plot_range, output='none')
 
@@ -451,7 +457,7 @@ def save_comparison_plot(
         hist_nxs_1d, hist_nxs_error, y_edges_nxs, z_edges_nxs, [qz_min_index, qz_max_index]
     )
     plot_q_1d(values_nxs, errors_nxs, y_bins_nxs, 'Qy [1/nm]', color='blue',
-              title_text='', label='D22 measurement', ax=ax_bottom, limits=y_plot_range, output='none')
+              title_text='', label=label_nxs, ax=ax_bottom, limits=y_plot_range, output='none')
 
     values_sim, errors_sim, y_bins_sim, _ = extract_range_to_1d(
         hist_sim_1d, hist_sim_error, y_edges_sim, z_edges_sim, [qz_min_index, qz_max_index]
@@ -774,13 +780,24 @@ def validate_fit_args(args: Any, parser: argparse.ArgumentParser) -> None:
             parser.error("Joint (two-sample) options are only supported for fits, not for --scan.")
         if not args.experiment_time:
             parser.error("--experiment_time is required: the simulated rates must be scaled to expected counts to be compared with the measured counts.")
-        if getattr(args, 'instrument_params', {}).get('tof_instrument', False):
-            parser.error("Fitting is not implemented for TOF instruments yet.")
         if getattr(args, 'fit_objective', '2d') == '1d' and not has_qz_band(args):
             parser.error("--fit_objective 1d compares the Qy profiles of the Qz band [--q_min, --q_max]: "
                          f"give the band with --q_min < --q_max [1/nm] (got --q_min {args.q_min}, --q_max {args.q_max}).")
     if not args.nxs:
         parser.error("the following arguments are required: --nxs")
+    is_tof = getattr(args, 'instrument_params', {}).get('tof_instrument', False)
+    wavelength_slices = getattr(args, 'wavelength_slice', None)
+    if wavelength_slices:
+        if not is_tof:
+            parser.error("--wavelength_slice is only used for TOF instruments (the wavelength of a monochromatic instrument is --wavelength_selected).")
+        for lambda_min, lambda_max in wavelength_slices:
+            if not 0 < lambda_min < lambda_max:
+                parser.error(f"--wavelength_slice {lambda_min:g} {lambda_max:g}: expected 0 < MIN < MAX [Angstrom].")
+    if is_tof:
+        if not wavelength_slices:
+            parser.error("TOF instruments are compared in wavelength slices: give --wavelength_slice MIN MAX [Angstrom] (one or more).")
+        if args.nxs2 or args.fit2 or args.fit_common or args.sample_arguments2:
+            parser.error("Joint (two-sample) fits are not implemented for TOF instruments yet.")
     if getattr(args, 'fit_background', False) and (args.background is not None or getattr(args, 'background2', None) is not None):
         parser.error("--fit_background fits the flat background for each evaluation: it cannot be combined with a fixed --background/--background2.")
 
@@ -819,6 +836,9 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
     tuple
         (hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw)
     """
+    if getattr(args, 'wavelength_slice', None):
+        return prepare_tof_experimental_data(args)
+
     wavelength_val = args.wavelength_selected if args.wavelength_selected else (args.wavelength if args.wavelength else 6.0)
 
     from .instrument import Instrument
@@ -866,34 +886,143 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
         raise ValueError("The mask excludes every detector pixel; nothing is left to compare.")
     if has_qz_band(args):
         # the pixels of the 1D losses (qz_band_profile): the unmasked ones within the band
-        i0, i1 = qz_band_indices(args.q_min, args.q_max, z_edges_nxs)
-        in_band = np.isfinite(hist_nxs[:, i0:i1 + 1])
-        n_band = int(np.sum(in_band))
-        print(f"Qz band of the 1D losses: [{z_edges_nxs[i0]:.4f}, {z_edges_nxs[i1 + 1]:.4f}] 1/nm: {n_band} unmasked "
-              f"pixels in {int(np.sum(np.any(in_band, axis=1)))} Qy bins")
-        if n_band == 0 and not args.mask_view:
-            if getattr(args, 'fit_objective', '2d') == '1d':
-                raise ValueError("The Qz band [--q_min, --q_max] has no unmasked pixel: nothing is left to compare "
-                                 "with --fit_objective 1d.")
-            print("WARNING: the Qz band [--q_min, --q_max] has no unmasked pixel; the 1D losses are not defined (NaN).")
+        _print_qz_band(args, hist_nxs, z_edges_nxs)
 
     if getattr(args, 'simulate_mask_angle_range', False):
-        # the range enclosing the unmasked pixels as seen from the sample centre; with
-        # --simulate_mask_angle_range_factor auto every neutron gets its own window of directions that can reach it
-        # (neutron_angle_windows, in process_particles), with a numeric factor the range scaled by it is simulated
-        args.mask_angle_range = list(instrument.get_masked_angle_range(mask))
-        factor = getattr(args, 'simulate_mask_angle_range_factor', 'auto')
-        if factor == 'auto':
-            args.angle_window_region = list(args.mask_angle_range)
-            args.angle_range = args.mask_angle_range  # replaced by the union of the windows (_set_simulated_angle_range)
-        else:
-            args.angle_window_region = None  # (args2 of a joint fit is a copy of args)
-            args.angle_range = list(instrument.get_masked_angle_range(mask, factor=factor))
-        fmt = lambda r: f"horiz=[{r[0]:.4f}, {r[1]:.4f}], vert=[{r[2]:.4f}, {r[3]:.4f}]"
-        print(f"Mask angle range [deg] (the unmasked pixels seen from the sample centre): {fmt(args.mask_angle_range)}"
-              + ("" if factor == 'auto' else f"; simulated with factor {factor:g}: {fmt(args.angle_range)}"))
+        _set_mask_angle_range(args, instrument, mask)  # the Q bins are the detector pixels
 
     return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
+
+
+def _set_mask_angle_range(args: Any, instrument: Any, pixel_mask: np.ndarray) -> None:
+    """
+    --simulate_mask_angle_range: the range enclosing the unmasked (True) detector pixels of pixel_mask (rotated detector
+    image [iy_BA, iz_BA]) as seen from the sample centre; with --simulate_mask_angle_range_factor auto every neutron gets
+    its own window of directions that can reach it (neutron_angle_windows, in process_particles), with a numeric factor
+    the range scaled by it is simulated.
+    """
+    args.mask_angle_range = list(instrument.get_masked_angle_range(pixel_mask))
+    factor = getattr(args, 'simulate_mask_angle_range_factor', 'auto')
+    if factor == 'auto':
+        args.angle_window_region = list(args.mask_angle_range)
+        args.angle_range = args.mask_angle_range  # replaced by the union of the windows (_set_simulated_angle_range)
+    else:
+        args.angle_window_region = None  # (args2 of a joint fit is a copy of args)
+        args.angle_range = list(instrument.get_masked_angle_range(pixel_mask, factor=factor))
+    fmt = lambda r: f"horiz=[{r[0]:.4f}, {r[1]:.4f}], vert=[{r[2]:.4f}, {r[3]:.4f}]"
+    print(f"Mask angle range [deg] (the unmasked pixels seen from the sample centre): {fmt(args.mask_angle_range)}"
+          + ("" if factor == 'auto' else f"; simulated with factor {factor:g}: {fmt(args.angle_range)}"))
+
+
+def _print_qz_band(args: Any, hist_nxs: np.ndarray, z_edges_nxs: np.ndarray, what: str = "pixels") -> None:
+    """Print the unmasked bins of the Qz band of the 1D losses (qz_band_profile); stop if --fit_objective 1d has none."""
+    i0, i1 = qz_band_indices(args.q_min, args.q_max, z_edges_nxs)
+    in_band = np.isfinite(hist_nxs[:, i0:i1 + 1])
+    n_band = int(np.sum(in_band))
+    print(f"Qz band of the 1D losses: [{z_edges_nxs[i0]:.4f}, {z_edges_nxs[i1 + 1]:.4f}] 1/nm: {n_band} unmasked "
+          f"{what} in {int(np.sum(np.any(in_band, axis=1)))} Qy bins")
+    if n_band == 0 and not args.mask_view:
+        if getattr(args, 'fit_objective', '2d') == '1d':
+            raise ValueError("The Qz band [--q_min, --q_max] has no unmasked pixel: nothing is left to compare "
+                             "with --fit_objective 1d.")
+        print("WARNING: the Qz band [--q_min, --q_max] has no unmasked pixel; the 1D losses are not defined (NaN).")
+
+
+def prepare_tof_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    TOF instruments (--wavelength_slice): load the measured TOF histograms of the --nxs file(s) (summed), build the
+    wavelength slices (tof_slices.build_wavelength_slices) and their measured Q histograms with the masks, and store
+    them in args.tof_slices (and the TOF bin edges [s] of the simulated histograms in args.tof_bin_edges).
+
+    The mask of a slice keeps the Q bins that are unmasked by the --mask_* options and receive counts from at least one
+    (pixel, TOF bin) of the slice (the coverage of the detector at the wavelengths of the slice). The --mask_* options
+    apply to every slice.
+
+    Returns
+    -------
+    tuple
+        (hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw) of the first slice,
+        as prepare_experimental_data.
+    """
+    from .instrument import Instrument
+    from .instrument_defaults import get_instrument_parameters
+    from .nexus_reader import get_nxs_format, read_sans2d_raw
+    from .tof_slices import build_wavelength_slices
+
+    instr_params = get_instrument_parameters(args)
+    instrument = Instrument(instr_params, args.alpha, None, args.sample_orientation, args.wfm, args.no_gravity)
+    detector_shape = (instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)
+
+    nxs_paths = args.nxs if isinstance(args.nxs, list) else [args.nxs]
+    print(f"Loading experimental TOF data from {len(nxs_paths)} file(s):")
+    counts, tof_edges = None, None
+    for path in nxs_paths:
+        nxs_format = get_nxs_format(path, getattr(args, 'nxs_format', 'auto'))
+        if nxs_format != 'isis_sans2d':
+            raise ValueError(f"{path}: --wavelength_slice compares measured TOF histograms (--nxs_format isis_sans2d), "
+                             f"but the file is read as '{nxs_format}'.")
+        data = read_sans2d_raw(path)
+        if data['counts'].shape[:2] != detector_shape:
+            raise ValueError(f"The detector of {path} has {data['counts'].shape[:2]} pixels, but the instrument detector "
+                             f"has {detector_shape} (see --instrument_detector_pixels).")
+        if tof_edges is None:
+            tof_edges, counts = data['tof_edges'], data['counts'].astype(np.int64)
+        elif len(data['tof_edges']) != len(tof_edges) or not np.allclose(data['tof_edges'], tof_edges):
+            raise ValueError(f"The TOF bins of {path} differ from those of {nxs_paths[0]}: the files cannot be summed.")
+        else:
+            counts += data['counts']
+        distance = data['rear_detector_distance']
+        print(f"  {path}: '{data['title']}', {data['counts'].sum():.0f} counts on the detector, "
+              f"{len(tof_edges) - 1} TOF bins {tof_edges[0] * 1e3:.4g}-{tof_edges[-1] * 1e3:.4g} ms"
+              + (f", duration {data['duration']:.0f} s" if data['duration'] is not None else '')
+              + (f", sample-detector distance {distance:.4f} m" if distance is not None else ''))
+        if distance is not None and abs(distance - instrument.sample_detector_distance) > 0.002:
+            print(f"WARNING: the sample-detector distance of {path} ({distance:.4f} m) differs from that of the "
+                  f"instrument ({instrument.sample_detector_distance:.4f} m, --instrument_sample_detector_distance).")
+    warn_if_duration_mismatch(nxs_paths, args.experiment_time, label=f"{len(nxs_paths)} --nxs file(s)")
+
+    source_sample_distance = instrument.nominal_source_sample_distance
+    slices, first_bin, last_bin = build_wavelength_slices(instrument, tof_edges, args.wavelength_slice, source_sample_distance)
+    args.tof_bin_edges = tof_edges[first_bin:last_bin + 1]
+    measured = counts.reshape(-1, counts.shape[-1])[:, first_bin:last_bin].astype(np.float64)
+    print(f"Wavelength of the TOF bins: lambda = h t / (m (L1 + L2)), L1 = {source_sample_distance:g} m, L2 = sample-pixel "
+          f"distance; TOF bins {first_bin}-{last_bin - 1} ({args.tof_bin_edges[0] * 1e3:.4g}-{args.tof_bin_edges[-1] * 1e3:.4g} ms) "
+          f"are simulated")
+
+    used_pixels = np.zeros(detector_shape, dtype=bool)
+    for wavelength_slice in slices:
+        hist_raw = wavelength_slice.to_q(measured)
+        hist_error_raw = np.sqrt(hist_raw)
+        mask = get_mask(
+            wavelength_slice.y_edges, wavelength_slice.z_edges,
+            mask_qy_range=args.mask_qy_range,
+            qy_min_cut=args.mask_qy_min_cut, qy_max_cut=args.mask_qy_max_cut,
+            qz_min_cut=args.mask_qz_min_cut, qz_max_cut=args.mask_qz_max_cut,
+            exclude_q_box=args.mask_exclude_q_box,
+            include_q_box=args.mask_include_q_box,
+            shape=hist_raw.shape
+        ) & wavelength_slice.coverage
+        wavelength_slice.hist_nxs_raw, wavelength_slice.hist_nxs_error_raw = hist_raw, hist_error_raw
+        wavelength_slice.hist_nxs = apply_mask(hist_raw, mask, np.nan)
+        wavelength_slice.hist_nxs_error = apply_mask(hist_error_raw, mask, 0.0)
+        wavelength_slice.mask = mask
+        n_unmasked = int(np.sum(mask))
+        print(f"Wavelength slice {wavelength_slice.label}: {wavelength_slice.n_tof_bins} TOF bins, {np.sum(hist_raw):.0f} counts in "
+              f"its Q grid ({np.sum(wavelength_slice.coverage)} Q bins with counts of the detector, {n_unmasked} unmasked, "
+              f"{np.nansum(wavelength_slice.hist_nxs):.0f} counts in them)")
+        if n_unmasked == 0 and not args.mask_view:
+            raise ValueError(f"The mask excludes every Q bin of the wavelength slice {wavelength_slice.label}; nothing is left to compare.")
+        if has_qz_band(args):
+            _print_qz_band(args, wavelength_slice.hist_nxs, wavelength_slice.z_edges, what="Q bins")
+        used_pixels |= wavelength_slice.used_pixels(mask)
+    args.tof_slices = slices
+
+    if getattr(args, 'simulate_mask_angle_range', False):
+        # the detector pixels with a TOF bin of a slice in an unmasked Q bin
+        _set_mask_angle_range(args, instrument, instrument.detector.coords.rotate_detector_image(used_pixels))
+
+    first = slices[0]
+    return first.hist_nxs, first.hist_nxs_error, first.y_edges, first.z_edges, first.mask, first.hist_nxs_raw, first.hist_nxs_error_raw
 
 def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
     """
@@ -915,9 +1044,18 @@ def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
         args.filename, args.intensity_factor, tof_limits, args.input_weight_limit, use_polarization=args.use_polarization
     )
     particles = precondition(particles, args)
+    slices = getattr(args, 'tof_slices', None)
+    if slices and len(particles):
+        # TOF: only the neutrons that can be detected in a TOF bin of a wavelength slice
+        from .tof_slices import particles_reaching_slices
+        instrument = build_instrument(args, particle_type)
+        reaching = particles_reaching_slices(particles, instrument, slices, instrument.nominal_source_sample_distance)
+        print(f"{int(np.sum(reaching))} of the {len(particles)} preconditioned particles can be detected in the wavelength slice(s) "
+              f"and are simulated.")
+        particles = particles[reaching]
     if len(particles) == 0:
-        raise ValueError("No incident particles are left to simulate (none hit the sample). Check --alpha, the sample size "
-                         "and --sample_orientation, or use --allow_sample_miss.")
+        raise ValueError("No incident particles are left to simulate (none hit the sample, or none can reach the wavelength slices). "
+                         "Check --alpha, the sample size and --sample_orientation, or use --allow_sample_miss.")
     print(f"Loaded and preconditioned {len(particles)} particles.")
     return particles, particle_type, mcpl_metadata
 
@@ -982,12 +1120,18 @@ def run_simulation_evaluation(
 
     args.sample_arguments = ';'.join(f"{k}={v}" for k, v in sample_args_dict.items())
     params = pack_parameters(args, particle_type)
+    tof_slices = getattr(args, 'tof_slices', None)
+    if tof_slices:
+        params['tof_bin_edges'] = args.tof_bin_edges  # (pixel, TOF bin) histograms instead of events
 
     if args.no_parallel:
         result = process_particles(particles, params)
     else:
         process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
         result = process_particles_parallelly(particles, params, process_number)
+
+    if tof_slices:
+        return evaluate_wavelength_slices(grid_point, args, result, label_prefix, save_simulation_output)
 
     instrument = params['instrument']
 
@@ -1079,6 +1223,144 @@ def run_simulation_evaluation(
         'edges': edges
     }
 
+    return metrics, record, sim_data
+
+
+def combine_slice_metrics(slice_metrics: List[Dict[str, float]]) -> Dict[str, float]:
+    """
+    The metrics of an evaluation with several wavelength slices (TOF): the losses (and those without the Monte Carlo
+    variance) are summed over the slices, mc_to_poisson_variance and mc_dominated_fraction are their maxima and the
+    discounts are those of the summed losses. The losses and backgrounds of every slice are added with the suffix
+    _slice<n> (n = 1, 2, ...); 'background' is that of the first slice. A single slice is returned as it is.
+    """
+    if len(slice_metrics) == 1:
+        return dict(slice_metrics[0])
+    combined = {}
+    for suffix in ('', '_1d'):
+        if f"poisson_deviance{suffix}" not in slice_metrics[0]:
+            continue
+        total = lambda key: float(np.sum([m[key + suffix] for m in slice_metrics]))
+        largest = lambda key: float(np.max([m[key + suffix] for m in slice_metrics]))
+        for key in LOSS_FUNCTIONS + ('poisson_deviance_without_mc', 'reduced_chi2_without_mc'):
+            combined[key + suffix] = total(key)
+        for key in ('mc_to_poisson_variance', 'mc_dominated_fraction'):
+            combined[key + suffix] = largest(key)
+        for loss in ('poisson_deviance', 'reduced_chi2'):
+            without_mc = combined[f"{loss}_without_mc{suffix}"]
+            combined[f"mc_discount_{loss}{suffix}"] = 1.0 - combined[loss + suffix] / without_mc if without_mc > 0 else 0.0
+    combined['background'] = slice_metrics[0]['background']
+    for index, metrics in enumerate(slice_metrics):
+        for key in loss_keys(metrics):
+            combined[f"{key}_slice{index + 1}"] = metrics[key]
+        combined[f"background_slice{index + 1}"] = metrics['background']
+    return combined
+
+
+def background_entries(metrics: Dict[str, float]) -> Dict[str, float]:
+    """The flat background(s) of an evaluation for its record: 'background', or with several wavelength slices (TOF)
+    'background_slice<n>' of every slice."""
+    slice_keys = [key for key in metrics if key.startswith('background_slice')]
+    return {key: metrics[key] for key in slice_keys} if slice_keys else {'background': metrics['background']}
+
+
+def evaluate_wavelength_slices(
+    grid_point: Dict[str, Any],
+    args: Any,
+    result: Dict[str, Any],
+    label_prefix: str = "sim",
+    save_simulation_output: bool = False
+) -> Tuple[Dict[str, float], Dict[str, Any], Dict[str, Any]]:
+    """
+    The comparison of a simulation of a TOF instrument with the measurement in the wavelength slices args.tof_slices
+    (prepare_tof_experimental_data): the simulated (pixel, TOF bin) histograms (result['tofHist'] and the squared
+    weights) are converted to the Q histogram of every slice exactly as the measurement, scaled to expected counts over
+    --experiment_time, and compared as in run_simulation_evaluation. The flat background b [counts per pixel over the
+    slice] adds b * background_unit (the Q histogram of one count per pixel) to the simulated counts; with
+    --fit_background it is fitted for every slice. The losses of the slices are summed (combine_slice_metrics).
+
+    With save_simulation_output, the simulated Q histogram of every slice (rate [1/s] and its Monte Carlo uncertainty,
+    without background) is saved as .npz (hist, error, yEdges, zEdges; readable by mg_plot); with --png a comparison
+    plot is saved for every slice (the files of the slices after the first have the suffix _slice<n>).
+
+    Returns
+    -------
+    tuple
+        (metrics, record, sim_data) as run_simulation_evaluation; sim_data of the first slice.
+    """
+    slices = args.tof_slices
+    fit_background = getattr(args, 'fit_background', False)
+    fixed_background = 0.0 if (fit_background or args.background is None) else args.background
+    param_str = '_'.join(f"{k}_{v}" for k, v in grid_point.items())
+
+    slice_metrics = []
+    sim_data = None
+    for index, wavelength_slice in enumerate(slices):
+        hist_nxs, z_edges = wavelength_slice.hist_nxs, wavelength_slice.z_edges
+        rate = wavelength_slice.to_q(result['tofHist'])
+        rate_error = np.sqrt(wavelength_slice.to_q(result['tofHistWeightsSquared']))
+        # expected counts over the measurement time (deterministic) and their Monte Carlo uncertainty
+        hist_signal = rate * args.experiment_time
+        hist_sim_mc_error = rate_error * args.experiment_time
+        unit = wavelength_slice.background_unit
+
+        def band_profile(sim, mc_error=hist_sim_mc_error):  # the Qy profile of the Qz band (1D losses)
+            return qz_band_profile(hist_nxs, sim, mc_error, z_edges, args.q_min, args.q_max)
+
+        background = fixed_background
+        if fit_background:
+            if getattr(args, 'fit_objective', '2d') == '1d':
+                counts_1d, signal_1d, mc_error_1d, _ = band_profile(hist_signal)
+                unit_1d = band_profile(unit, np.zeros_like(unit))[1]  # the background of the summed Q bins
+                background, _ = fit_flat_background(counts_1d, signal_1d, mc_error_1d, args.loss_function, pixels_per_bin=unit_1d)
+            else:
+                background, _ = fit_flat_background(hist_nxs, hist_signal, hist_sim_mc_error, args.loss_function, pixels_per_bin=unit)
+        hist_sim = hist_signal + background * unit
+
+        metrics = calculate_fitness(hist_nxs, hist_sim, hist_sim_mc_error)
+        if has_qz_band(args):
+            metrics.update({f"{key}_1d": value for key, value in calculate_fitness(*band_profile(hist_sim)[:3]).items()})
+        metrics['background'] = background
+        slice_metrics.append(metrics)
+
+        # for display: expected spread of a measurement = Poisson + Monte Carlo
+        hist_sim_error = np.sqrt(np.maximum(hist_sim, 0.0) + hist_sim_mc_error**2)
+        hist_sim_masked = apply_mask(hist_sim, wavelength_slice.mask, np.nan)
+        hist_sim_error_masked = apply_mask(hist_sim_error, wavelength_slice.mask, 0.0)
+        if sim_data is None:
+            sim_data = {
+                'hist_sim_masked': hist_sim_masked,
+                'hist_sim_error_masked': hist_sim_error_masked,
+                'edges': [None, wavelength_slice.y_edges, z_edges]
+            }
+
+        suffix = '' if index == 0 else f"_slice{index + 1}"
+        if save_simulation_output:
+            npz_path = os.path.join(args.output_dir, f"{label_prefix}_{param_str}{suffix}.npz")
+            np.savez(npz_path, hist=rate, error=rate_error, yEdges=wavelength_slice.y_edges, zEdges=z_edges,
+                     wavelength_slice=[wavelength_slice.lambda_min, wavelength_slice.lambda_max],
+                     background_unit=unit)
+            print(f"Created {npz_path} (simulated Q histogram of the wavelength slice {wavelength_slice.label} [1/s])")
+        if args.png:
+            plot_path = os.path.join(args.output_dir, f"{label_prefix}_{param_str}{suffix}.png")
+            y_plot_range = args.y_plot_range if args.y_plot_range else [wavelength_slice.y_edges[0], wavelength_slice.y_edges[-1]]
+            z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges[0], z_edges[-1]]
+            intensity_min = float(args.intensity_min) if args.intensity_min is not None else 1.0
+            save_comparison_plot(
+                hist_nxs, wavelength_slice.hist_nxs_error, wavelength_slice.y_edges, z_edges,
+                hist_sim_masked, hist_sim_error_masked, wavelength_slice.y_edges, z_edges,
+                args.q_min, args.q_max, y_plot_range, z_plot_range,
+                plot_path, f"Sim ({param_str}), {wavelength_slice.label}", intensity_min,
+                split_view=getattr(args, 'split_view', False), label_nxs=f"Measurement, {wavelength_slice.label}"
+            )
+
+    metrics = combine_slice_metrics(slice_metrics)
+    _warn_if_mc_uncertainty_large(metrics, args)
+
+    record = copy.deepcopy(grid_point)
+    if fit_background:
+        record.update(background_entries(metrics))
+    for key in loss_keys(metrics):
+        record[key] = metrics[key]
     return metrics, record, sim_data
 
 
@@ -1242,7 +1524,8 @@ def create_fit_evolution_gif(
             png_files = [f for f in glob.glob(pattern) if "_s1_" not in os.path.basename(f) and "_s2_" not in os.path.basename(f)]
     else:
         pattern = os.path.join(output_dir, "fit_eval_*.png")
-        png_files = [f for f in glob.glob(pattern) if "_joint_" not in os.path.basename(f)]
+        # (TOF: the plots of the first wavelength slice; those of the others have the suffix _slice<n>)
+        png_files = [f for f in glob.glob(pattern) if "_joint_" not in os.path.basename(f) and "_slice" not in os.path.basename(f)]
 
     if not png_files:
         print("No fit evaluation PNG figures found to create GIF.")
@@ -1390,7 +1673,7 @@ def run_automated_fit(
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
             if fit_background:
-                rec['background'] = metrics['background']
+                rec.update(background_entries(metrics))
             for key in loss_keys(metrics):
                 rec[key] = metrics[key]
             loss = metrics[objective_key]
@@ -1443,8 +1726,8 @@ def run_automated_fit(
         param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
         background_str = ''
         if fit_background:
-            background_str = (f" | background = {rec['background']:.3f}" if 'background' in rec else
-                              f" | background = {rec['background_sample1']:.3f}, {rec['background_sample2']:.3f}")
+            background_keys = ['background'] if 'background' in rec else [key for key in rec if key.startswith('background_s')]
+            background_str = " | background = " + ", ".join(f"{rec[key]:.3f}" for key in background_keys)
         # the same loss of the other comparison (image or Qy profile of the Qz band), for information
         other_key = args.loss_function if objective_key != args.loss_function else f"{args.loss_function}_1d"
         other_str = f" ({other_key} = {rec[other_key]:.4f})" if other_key in rec else ''
@@ -1538,6 +1821,10 @@ def run_automated_fit(
         if 'background' in best_rec:
             fit_results_lines.append(f"  background = {best_rec['background']:.4f} [counts per pixel] "
                                      f"(fitted flat background of the best evaluation, #{best_rec['eval_index']})")
+        elif 'background_slice1' in best_rec:
+            slice_backgrounds = ", ".join(f"{best_rec[key]:.4f}" for key in best_rec if key.startswith('background_slice'))
+            fit_results_lines.append(f"  background = {slice_backgrounds} (wavelength slices) [counts per pixel] "
+                                     f"(fitted flat backgrounds of the best evaluation, #{best_rec['eval_index']})")
         else:
             fit_results_lines.append(f"  background = {best_rec['background_sample1']:.4f} (sample 1), "
                                      f"{best_rec['background_sample2']:.4f} (sample 2) [counts per pixel] "
@@ -1621,7 +1908,8 @@ def run_parameter_scan(
         remaining = total_evals - current_count
         eta = avg_iter_time * max(0, remaining)
 
-        background_str = f", background={metrics['background']:.3f}" if getattr(args, 'fit_background', False) else ''
+        background_str = ''.join(f", {key}={value:.3f}" for key, value in background_entries(metrics).items()) \
+            if getattr(args, 'fit_background', False) else ''
         loss_str = ', '.join(f"{key}={metrics[key]:.4e}" if key.startswith('log_residual') else f"{key}={metrics[key]:.4f}"
                              for key in loss_keys(metrics))
         print(f"Fit results: {loss_str}{background_str} | Iter: {iter_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
@@ -1682,22 +1970,24 @@ def main() -> None:
     hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw = prepare_experimental_data(args)
 
     if args.mask_view:
-        plot_path = os.path.join(args.output_dir, "masked_view.png")
-        y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges_nxs[0], y_edges_nxs[-1]]
-        z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges_nxs[0], z_edges_nxs[-1]]
         # Determine default intensity_min if not provided
         if args.intensity_min is not None:
             intensity_min = float(args.intensity_min)
         else:
             intensity_min = 1.0 if args.experiment_time else 1e-9
-
-        save_view_masks_plot(
-            hist_nxs_raw, hist_nxs_error_raw,
-            hist_nxs, hist_nxs_error,
-            y_edges_nxs, z_edges_nxs,
-            args.q_min, args.q_max, y_plot_range, z_plot_range,
-            plot_path, intensity_min
-        )
+        # TOF: one plot per wavelength slice (suffix _slice<n> after the first)
+        views = [(s.hist_nxs_raw, s.hist_nxs_error_raw, s.hist_nxs, s.hist_nxs_error, s.y_edges, s.z_edges)
+                 for s in getattr(args, 'tof_slices', None) or []] or \
+                [(hist_nxs_raw, hist_nxs_error_raw, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs)]
+        for index, (raw, raw_error, masked, masked_error, y_edges, z_edges) in enumerate(views):
+            plot_path = os.path.join(args.output_dir, "masked_view.png" if index == 0 else f"masked_view_slice{index + 1}.png")
+            y_plot_range = args.y_plot_range if args.y_plot_range else [y_edges[0], y_edges[-1]]
+            z_plot_range = args.z_plot_range if args.z_plot_range else [z_edges[0], z_edges[-1]]
+            save_view_masks_plot(
+                raw, raw_error, masked, masked_error, y_edges, z_edges,
+                args.q_min, args.q_max, y_plot_range, z_plot_range,
+                plot_path, intensity_min
+            )
         return
 
     particles, particle_type, mcpl_metadata = load_and_precondition_particles(args)

@@ -10,4 +10,4 @@ Known Issues
 
 - Simulation with polarisation (``--use_polarization`` and the analyser options of ``mg_run``) is implemented, but not validated against measurements yet. The tests cover only the consistency of the two specular options with a polarised beam and an analyser (the analyser is set with the BornAgain 22+ interface, with a fallback for older versions).
 
-- Fitting of TOF data (``mg_fit`` with a TOF instrument) is not implemented yet.
+- Fitting of TOF data (``mg_fit --wavelength_slice``, see the :doc:`fitting_guide`) reads only raw ISIS SANS2D NeXus files (the rear detector). The ``--mask_*`` options apply to every wavelength slice, although the specular reflection moves in :math:`Q_z` with the wavelength (per-slice masks are not implemented yet); the intensity calibration (``--intensity_factor``) is one number for all slices; and joint (two-sample) fits are not implemented for TOF instruments.

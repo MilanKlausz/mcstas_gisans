@@ -1,6 +1,7 @@
 
 """
-Read data from measurements at D22(ILL) from nxs files (hard-coded)
+Read measured detector data from NeXus files: the 2D detector image of D22 (ILL) files (hard-coded paths), and the
+time-of-flight histograms of the rear detector of raw ISIS SANS2D files.
 """
 
 import h5py
@@ -14,7 +15,19 @@ DEFAULT_NEXUS_DATA_PATHS = ('entry0/D22/Detector 1/data1', 'entry0/data1/MultiDe
 # NXentry field holding the measurement duration in seconds. 'duration' is
 # the standard NeXus field name (NXentry base class); 'time' is an
 # ILL-specific alias observed to hold the same value in practice.
-DURATION_FIELD_CANDIDATES = ('entry0/duration', 'entry0/time')
+DURATION_FIELD_CANDIDATES = ('entry0/duration', 'entry0/time', 'raw_data_1/duration')
+
+# Raw ISIS SANS2D NeXus files (the TOF histograms of the tube detectors). The spectra of detector_1/counts
+# (periods, spectra, TOF bins) are those of the detector IDs in isis_vms_compat/UDET after the first
+# SANS2D_MONITOR_SPECTRA entries (the monitors). Detector ID = d g tt ppp (decimal digits): d = 1 rear / 2 front
+# detector, g = board 1-5, tt = tube 0-23 on the board, ppp = pixel 0-511 along the tube (+x). The rear detector
+# (Mantid IDF SANS2D_Definition_Tubes.xml) has 120 horizontal tubes at 8.1 mm vertical pitch: the even tt are the
+# "left" tubes and the odd tt the "right" ones, interleaved from the bottom, so the tube row (+y) is
+# 2 * ((g - 1) * 12 + tt // 2) + tt % 2 (the 3 mm horizontal stagger of the left/right tubes is ignored).
+SANS2D_BEAMLINE = 'SANS2D'
+SANS2D_MONITOR_SPECTRA = 8
+SANS2D_REAR_DETECTOR_PIXELS = (512, 120)
+NXS_FORMATS = ('auto', 'image', 'isis_sans2d')
 
 def read_nexus_raw(filepath, data_path=None):
     """
@@ -139,3 +152,89 @@ def warn_if_duration_mismatch(nxs_paths, experiment_time, relative_tolerance=0.0
             f"{experiment_time:.1f}s ({relative_diff*100:.1f}% difference). This does not stop "
             f"execution, but double-check --experiment_time matches the actual measurement."
         )
+
+
+def _first_value(dataset):
+    """The first element of an HDF5 dataset (scalar or 1-element array), bytes decoded to str."""
+    value = np.asarray(dataset[()]).flatten()[0]
+    return value.decode() if isinstance(value, bytes) else value
+
+
+def is_isis_sans2d_raw(filepath):
+    """Whether filepath is a raw ISIS SANS2D NeXus file (raw_data_1/beamline is 'SANS2D')."""
+    with h5py.File(filepath, 'r') as file:
+        if 'raw_data_1/beamline' not in file:
+            return False
+        return str(_first_value(file['raw_data_1/beamline'])).strip().upper() == SANS2D_BEAMLINE
+
+
+def get_nxs_format(filepath, nxs_format='auto'):
+    """
+    The format of a measured NeXus file (--nxs_format): 'image' (a 2D detector image, e.g. D22) or 'isis_sans2d'
+    (raw ISIS SANS2D TOF histograms); 'auto' recognises raw SANS2D files by raw_data_1/beamline.
+    """
+    if nxs_format not in NXS_FORMATS:
+        raise ValueError(f"Unknown NeXus format '{nxs_format}', expected one of {NXS_FORMATS}.")
+    if nxs_format != 'auto':
+        return nxs_format
+    return 'isis_sans2d' if is_isis_sans2d_raw(filepath) else 'image'
+
+
+def read_sans2d_raw(filepath):
+    """
+    Read the rear-detector TOF histograms of a raw ISIS SANS2D NeXus file.
+
+    Returns
+    -------
+    dict
+        - ``counts``: int array [ix, iy, TOF bin] of shape (512, 120, number of TOF bins) (summed over the periods),
+          ix along the tubes (+x), iy the tube row from the bottom (+y), the layout of the [ix, iy] detector images
+          (CoordinateTransform.rotate_detector_image, Detector.get_pixel_positions).
+        - ``tof_edges``: TOF bin edges [s] (raw ISIS TOF, from the proton pulse).
+        - ``duration``: measurement duration [s] (None if not in the file).
+        - ``proton_charge``: [uAh] (None if not in the file).
+        - ``rear_detector_distance``: Rear_Det_Z (sample - rear detector distance) [m] (None if not in the file).
+        - ``title``: run title (str, '' if not in the file).
+    """
+    with h5py.File(filepath, 'r') as file:
+        if 'raw_data_1/detector_1/counts' not in file or 'raw_data_1/isis_vms_compat/UDET' not in file:
+            raise KeyError(f"{filepath} is not a raw ISIS NeXus file with raw_data_1/detector_1/counts and "
+                           f"raw_data_1/isis_vms_compat/UDET.")
+        raw = file['raw_data_1']
+        counts_dataset = raw['detector_1/counts']
+        n_spectra = counts_dataset.shape[-2]
+        detector_ids = np.asarray(raw['isis_vms_compat/UDET'][SANS2D_MONITOR_SPECTRA:SANS2D_MONITOR_SPECTRA + n_spectra])
+        if len(detector_ids) != n_spectra:
+            raise ValueError(f"{filepath}: isis_vms_compat/UDET has {len(detector_ids)} detector IDs after the "
+                             f"{SANS2D_MONITOR_SPECTRA} monitors, but detector_1/counts has {n_spectra} spectra.")
+        rear_spectra = np.flatnonzero(detector_ids // 1000000 == 1)
+        # read the (contiguous) range of the rear-detector spectra only
+        first, last = int(rear_spectra.min()), int(rear_spectra.max()) + 1
+        counts = np.asarray(counts_dataset[..., first:last, :])
+        counts = counts.reshape((-1,) + counts.shape[-2:]).sum(axis=0)[rear_spectra - first]
+        tof_edges = np.asarray(raw['detector_1/time_of_flight'][()], dtype=np.float64) * 1e-6  # us -> s
+        optional = lambda path: float(_first_value(raw[path])) if path in raw else None
+        duration = optional('duration')
+        proton_charge = optional('proton_charge')
+        rear_detector_z = optional('selog/Rear_Det_Z/value_log/value')
+        title = str(_first_value(raw['title'])) if 'title' in raw else ''
+
+    if counts.shape[-1] != len(tof_edges) - 1:
+        raise ValueError(f"{filepath}: {counts.shape[-1]} TOF bins in detector_1/counts, but "
+                         f"{len(tof_edges)} TOF bin edges in detector_1/time_of_flight.")
+    rear_ids = detector_ids[rear_spectra]
+    board, tube, pixel = (rear_ids // 100000) % 10, (rear_ids // 1000) % 100, rear_ids % 1000
+    row = 2 * ((board - 1) * 12 + tube // 2) + tube % 2
+    n_x, n_y = SANS2D_REAR_DETECTOR_PIXELS
+    if np.any((pixel < 0) | (pixel >= n_x) | (row < 0) | (row >= n_y)):
+        raise ValueError(f"{filepath}: rear-detector IDs outside the {n_x} x {n_y} pixel tube detector.")
+    image = np.zeros((n_x, n_y, counts.shape[-1]), dtype=counts.dtype)
+    np.add.at(image, (pixel, row), counts)
+    return {
+        'counts': image,
+        'tof_edges': tof_edges,
+        'duration': duration,
+        'proton_charge': proton_charge,
+        'rear_detector_distance': rear_detector_z * 1e-3 if rear_detector_z is not None else None,  # mm -> m
+        'title': title,
+    }

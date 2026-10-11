@@ -43,7 +43,9 @@ def get_tof_filtering_limits(args: Any) -> List[float]:
 
     1. No filtering ([-inf, inf])
     2. Using input values (args.input_tof_limits)
-    3. Derive limits from a 1D TOF spectrum corresponding to a selected
+    3. mg_fit --wavelength_slice: the TOF range of the wavelength slices over the nominal source-sample distance,
+       widened by tof_slices.MCPL_TOF_RELATIVE_MARGIN on both sides (tof_slices.mcpl_tof_limits)
+    4. Derive limits from a 1D TOF spectrum corresponding to a selected
        wavelength that is retrieved from a 2D McStas TOFLambda_monitor spectrum
        (that is assumed to represent the MCPL file content). The limits are
        defined by fitting a Gaussian function and getting a single FWHM range
@@ -54,12 +56,20 @@ def get_tof_filtering_limits(args: Any) -> List[float]:
 
     # Check if we should apply TOF filtering based on instrument parameters and user arguments
     should_filter = inst_params.get('tof_instrument', False) and not args.no_mcpl_filtering
-    has_filtering_args = args.input_tof_limits or args.wavelength
+    wavelength_slices = getattr(args, 'wavelength_slice', None)
+    has_filtering_args = args.input_tof_limits or args.wavelength or wavelength_slices
 
     if should_filter and has_filtering_args:
         if args.input_tof_limits:
             # Use explicitly provided limits
             tof_limits = args.input_tof_limits
+        elif wavelength_slices:
+            from .instrument import Instrument
+            from .tof_slices import mcpl_tof_limits, MCPL_TOF_RELATIVE_MARGIN
+            source_sample_distance = Instrument(inst_params, args.alpha, None, args.sample_orientation, getattr(args, 'wfm', False)).nominal_source_sample_distance
+            tof_limits = mcpl_tof_limits(wavelength_slices, source_sample_distance)
+            print(f"MCPL TOF limits of the wavelength slice(s) (over {source_sample_distance:g} m, "
+                  f"widened by {MCPL_TOF_RELATIVE_MARGIN:.0%}): {tof_limits[0]:.3f} - {tof_limits[1]:.3f} [millisecond]")
         else:
             # Derive limits from 1D TOF spectrum fit
             figure_output = f"{args.savename}_tof_filtering.{args.tof_filtering_figure}" if args.tof_filtering_figure in ['png', 'pdf'] else args.tof_filtering_figure
