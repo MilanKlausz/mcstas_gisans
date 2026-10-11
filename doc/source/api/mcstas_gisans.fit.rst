@@ -8,9 +8,12 @@
 
    .. autosummary::
    
+      background_entries
       calculate_fitness
+      combine_slice_metrics
       convert_val
       create_fit_evolution_gif
+      evaluate_wavelength_slices
       fit_flat_background
       format_fit_value
       format_time
@@ -23,6 +26,7 @@
       parse_joint_fit_arguments
       poisson_deviance_with_mc
       prepare_experimental_data
+      prepare_tof_experimental_data
       qz_band_indices
       qz_band_profile
       run_automated_fit

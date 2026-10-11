@@ -28,10 +28,10 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   2019 measurements (120 tubes x 512 pixels, 1.0414 x 0.972 m, 11.999 m from
   the sample, centre offset [-0.0018, 0.085] m from the direct beam), the T0
   monitor `Source_TOF_Lambda`; no MCPL TOF-filtering monitor.
-- `python -m mcstas_gisans.isis_events RAW TEMPLATE OUTPUT`: the detection
-  events of a raw ISIS SANS2D NeXus file in the TOF output format of `mg_run`
-  (with the metadata of a simulation of the same geometry), so that measured
-  events go through the TOF reduction of `mg_plot` (`--wavelength_slice`).
+- `mg_plot --nxs` reads raw ISIS SANS2D NeXus files as event data (the
+  detection events of the rear tube detector, `--nxs_format`, recognised
+  automatically) and reduces them like simulated TOF events (Q per event,
+  `--wavelength_slice`), e.g. in a split view with a simulation.
 - `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
   (the 1D panel of the comparison plots: the unmasked pixels of the band summed
   per Qy bin) are computed next to the 2D losses and written to the log and the

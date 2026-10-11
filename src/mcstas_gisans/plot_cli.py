@@ -1,6 +1,7 @@
 
 import argparse
 from .instrument_defaults import instrument_defaults
+from .nexus_reader import NXS_FORMATS
 
 
 def create_argparser():
@@ -31,6 +32,7 @@ def create_argparser():
 
     storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
     storedDataParamGroup.add_argument('--nxs', nargs = '*', help = 'Measured NeXus file(s) to plot, each as its own dataset.')
+    storedDataParamGroup.add_argument('--nxs_format', type=str, default='auto', choices=list(NXS_FORMATS), help = "Format of the --nxs file(s). image: a 2D detector image [x, y] (e.g. D22, see --nxs_data_path). isis_sans2d: a raw ISIS SANS2D NeXus file, read as event data (the detection events of the rear tube detector) and reduced like simulated TOF events (Q per event, --wavelength_slice); needs a TOF instrument (--instrument sans2d or a sans2d simulation file). auto (default): raw SANS2D files are recognised by raw_data_1/beamline, every other file is read as an image.")
     storedDataParamGroup.add_argument('--nxs_label', nargs = '*', help = 'Label for Nexus input[s]. Must be used together with --nxs if a label is desired. If not provided, the label will be generated from the Nexus file name.')
     storedDataParamGroup.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?

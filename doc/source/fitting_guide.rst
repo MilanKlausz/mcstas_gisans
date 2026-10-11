@@ -573,3 +573,17 @@ For example, run 60998 (100 nm silica on silicon, 0.328°) in the slice
      --mask_qy_min_cut -0.2 --mask_qy_max_cut 0.2 --mask_qz_min_cut 0.0937 --mask_qz_max_cut 0.1119 \
      --mask_exclude_q_box -0.025 0.025 0.0937 0.1119 --q_min 0.0937 --q_max 0.1119 \
      --simulate_mask_angle_range --scan radius 51
+
+``mg_plot`` reads the same raw file as event data (the detection events, each with
+its own TOF) and reduces it like the simulated TOF events, so a measured
+wavelength slice can be shown next to a simulation of the same geometry:
+
+.. code-block:: bash
+
+   mg_plot --nxs SANS2D00060998.nxs --nxs_label measured --filename simulation.h5 --label simulated \
+     --experiment_time 511931 --wavelength_slice 6.5 7.5 --split_view --png
+
+(the simulation's McStas weights are rates per µA, so ``--experiment_time`` is
+the proton charge in µA·s: 142.2 µAh = 511931 µA·s; the instrument
+configuration of the measurement is that of the simulation file, or
+``--instrument sans2d --alpha ... --sample_orientation 1`` without one).

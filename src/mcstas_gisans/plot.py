@@ -165,6 +165,35 @@ def build_plot_instrument(args: Any, metadata: Dict[str, Any], label: str = 'the
     return instrument, params, settings
 
 
+def _tof_events_to_q_histogram(args: Any, instrument: Any, scipp_da: Any, y_edges: np.ndarray, z_edges: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    TOF event data (simulated by mg_run, or measured): Q per event (with the wavelength from its TOF), the events of
+    --wavelength_slice, histogrammed in a Q grid with the numbers of bins of the pixel grid (y_edges, z_edges) over
+    the plot ranges (default: the extent of the events). Returns (hist, hist_error, y_edges, z_edges) in 1/nm.
+    """
+    import scipp as sc
+    scipp_da = instrument.compute_q_scipp(scipp_da)
+    if getattr(args, 'wavelength_slice', None) is not None:
+        min_w, max_w = args.wavelength_slice
+        scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
+    scipp_da = scipp_da.bins.concat()
+    # default Q range: the extent of the events (all wavelengths), in 1/nm
+    events = scipp_da.bins.constituents['data']
+    event_qy, event_qz = events.coords['Qy'].values * 10.0, events.coords['Qz'].values * 10.0
+    pad = lambda lo, hi: (lo - 1e-9 * max(1.0, abs(hi - lo)), hi + 1e-9 * max(1.0, abs(hi - lo)))
+    y_min, y_max = tuple(args.y_plot_range) if getattr(args, 'y_plot_range', None) else pad(np.nanmin(event_qy), np.nanmax(event_qy))
+    z_min, z_max = tuple(args.z_plot_range) if getattr(args, 'z_plot_range', None) else pad(np.nanmin(event_qz), np.nanmax(event_qz))
+    bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
+    scipp_binned = scipp_da.bin(
+        Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
+        Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')
+    )
+    scipp_hist = scipp_binned.bins.sum().transpose(['Qy', 'Qz'])
+    hist = scipp_hist.values
+    hist_error = np.sqrt(scipp_hist.variances) if scipp_hist.variances is not None else np.sqrt(hist)
+    return hist, hist_error, scipp_hist.coords['Qy'].values * 10.0, scipp_hist.coords['Qz'].values * 10.0
+
+
 def _load_nexus_datasets(args: Any, reference: Optional[Tuple[Dict[str, Any], Dict[str, Any]]]) -> Tuple[List[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, str]], float]:
     """
     Load the measured NeXus datasets.
@@ -173,10 +202,12 @@ def _load_nexus_datasets(args: Any, reference: Optional[Tuple[Dict[str, Any], Di
     simulation file (`reference` = (instrument_parameters, settings)) if one is given,
     otherwise with the command line / default configuration; --nxs_instrument_* and
     --nxs_sample_orientation override it. Measured data always include gravity.
+    Raw ISIS SANS2D files (--nxs_format) are read as event data (the detection events) and go through the TOF
+    reduction of the simulated events (Q per event, --wavelength_slice); every other file is a 2D detector image.
     """
     from .instrument import Instrument
     from .instrument_defaults import get_nxs_instrument_parameters
-    from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
+    from .nexus_reader import get_nxs_format, read_nexus_data, read_sans2d_events, warn_if_duration_mismatch
 
     datasets = []
     nxs_sum = 0.0
@@ -193,7 +224,16 @@ def _load_nexus_datasets(args: Any, reference: Optional[Tuple[Dict[str, Any], Di
 
     nxs_labels = args.nxs_label if args.nxs_label else [os.path.basename(f) for f in args.nxs]  # default to the file name
     for nxs_filename, nxs_label in zip(args.nxs, nxs_labels):
-        hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
+        if get_nxs_format(nxs_filename, getattr(args, 'nxs_format', 'auto')) == 'isis_sans2d':
+            if not nxs_instrument.is_tof_instrument:
+                sys.exit(f"{nxs_filename} is a raw ISIS SANS2D file (TOF event data): it needs a TOF instrument "
+                         f"(--instrument sans2d, or a sans2d simulation file).")
+            positions = nxs_instrument.detector.get_pixel_positions(nxs_instrument.sample_detector_distance)
+            events = read_sans2d_events(nxs_filename, positions=positions)
+            y_edges, z_edges = nxs_instrument.get_q_pixel_limits(settings['wavelength'])
+            hist, hist_error, y_edges, z_edges = _tof_events_to_q_histogram(args, nxs_instrument, events, y_edges, z_edges)
+        else:
+            hist, hist_error, y_edges, z_edges = read_nexus_data(nxs_filename, nxs_instrument, data_path=getattr(args, 'nxs_data_path', None))
         warn_if_duration_mismatch([nxs_filename], getattr(args, 'experiment_time', None), label=nxs_filename)
         if not datasets:
             nxs_sum = np.sum(hist)  # --normalise_to_nxs uses the first NeXus file
@@ -229,27 +269,7 @@ def _load_sim_datasets(args: Any) -> Tuple[List[Tuple[np.ndarray, np.ndarray, np
             y_edges, z_edges = instrument.get_q_pixel_limits(wavelength)
             if scipp_da.bins is not None:
                 # TOF / event data: Q per event
-                scipp_da = instrument.compute_q_scipp(scipp_da)
-                if getattr(args, 'wavelength_slice', None) is not None:
-                    min_w, max_w = args.wavelength_slice
-                    scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
-                scipp_da = scipp_da.bins.concat()
-                # default Q range: the extent of the events (all wavelengths), in 1/nm
-                events = scipp_da.bins.constituents['data']
-                event_qy, event_qz = events.coords['Qy'].values * 10.0, events.coords['Qz'].values * 10.0
-                pad = lambda lo, hi: (lo - 1e-9 * max(1.0, abs(hi - lo)), hi + 1e-9 * max(1.0, abs(hi - lo)))
-                y_min, y_max = tuple(args.y_plot_range) if getattr(args, 'y_plot_range', None) else pad(np.nanmin(event_qy), np.nanmax(event_qy))
-                z_min, z_max = tuple(args.z_plot_range) if getattr(args, 'z_plot_range', None) else pad(np.nanmin(event_qz), np.nanmax(event_qz))
-                bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
-                scipp_binned = scipp_da.bin(
-                    Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
-                    Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')
-                )
-                scipp_hist = scipp_binned.bins.sum().transpose(['Qy', 'Qz'])
-                hist = scipp_hist.values
-                hist_error = np.sqrt(scipp_hist.variances) if scipp_hist.variances is not None else np.sqrt(hist)
-                y_edges = scipp_hist.coords['Qy'].values * 10.0
-                z_edges = scipp_hist.coords['Qz'].values * 10.0
+                hist, hist_error, y_edges, z_edges = _tof_events_to_q_histogram(args, instrument, scipp_da, y_edges, z_edges)
             else:
                 # non-TOF pixel data: keep the exact pixel grid, identical to the NeXus treatment
                 shape = (instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus)

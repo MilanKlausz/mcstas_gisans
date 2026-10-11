@@ -187,6 +187,50 @@ def sans2d_rear_pixel_row(detector_ids):
     return pixel, 2 * ((board - 1) * 12 + tube // 2) + tube % 2
 
 
+def read_sans2d_events(filepath, positions=None):
+    """
+    Read the rear-detector detection events of a raw ISIS SANS2D NeXus file (raw_data_1/detector_1_events, the
+    NXevent_data layout: the spectrum of every event in event_id and its TOF from the proton pulse in
+    event_time_offset [us]) as event data like the TOF output of mg_run: a Scipp DataArray binned by detector_id
+    (= ix * 120 + iy, the [ix, iy] layout of read_sans2d_raw), events with weight 1 and tof [s].
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the raw NeXus file.
+    positions : ndarray, optional
+        Pixel positions (512 * 120, 3) [m] in the order of detector_id (Detector.get_pixel_positions), attached as the
+        'position' coordinate.
+    """
+    import scipp as sc
+    with h5py.File(filepath, 'r') as file:
+        raw = file['raw_data_1']
+        if 'detector_1_events/event_id' not in raw:
+            raise KeyError(f"{filepath} has no event data (raw_data_1/detector_1_events).")
+        spectra = np.asarray(raw['detector_1/spectrum_index'][()])
+        detector_ids = np.asarray(raw['isis_vms_compat/UDET'][SANS2D_MONITOR_SPECTRA:SANS2D_MONITOR_SPECTRA + len(spectra)])
+        event_spectra = np.asarray(raw['detector_1_events/event_id'][()])
+        tof = np.asarray(raw['detector_1_events/event_time_offset'][()], dtype=np.float64) * 1e-6  # us -> s
+    order = np.argsort(spectra)
+    index = order[np.minimum(np.searchsorted(spectra[order], event_spectra), len(spectra) - 1)]
+    if np.any(spectra[index] != event_spectra):
+        raise ValueError(f"{filepath}: events of spectra that are not in detector_1/spectrum_index.")
+    ids = detector_ids[index]
+    rear = ids // 1000000 == 1
+    pixel, row = sans2d_rear_pixel_row(ids[rear])
+    n_x, n_y = SANS2D_REAR_DETECTOR_PIXELS
+    detector_id = (pixel * n_y + row).astype(np.int32)
+    n = len(detector_id)
+    events = sc.DataArray(
+        data=sc.array(dims=['event'], values=np.ones(n), variances=np.ones(n), unit='counts'),
+        coords={'detector_id': sc.array(dims=['event'], values=detector_id, unit=None),
+                'tof': sc.array(dims=['event'], values=tof[rear], unit='s')})
+    binned = events.bin(detector_id=sc.arange('detector_id', 0, n_x * n_y + 1, unit=None))
+    if positions is not None:
+        binned.coords['position'] = sc.vectors(dims=['detector_id'], values=np.asarray(positions), unit='m')
+    return binned
+
+
 def read_sans2d_raw(filepath):
     """
     Read the rear-detector TOF histograms of a raw ISIS SANS2D NeXus file.
