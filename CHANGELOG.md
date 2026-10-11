@@ -23,11 +23,15 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   (no event files), the MCPL input is filtered for the slices and only the
   neutrons that can reach a slice are simulated. Raw ISIS SANS2D NeXus files
   (rear tube detector) are read (`--nxs_format`, recognised automatically).
-- Instrument `sans2d` (ISIS SANS2D, time-of-flight), with the geometry of the
-  McStas model `ISIS_SANS2d_12m.instr` (default parameters: source-sample
-  19.2625 m, sample-detector 11.827 m, rear detector 1.0 x 1.062 m with
-  512 x 128 pixels, detector centre at [-0.1, 0.1] m from the beam axis) and
-  its TOF monitors `Mcpl_TOF_Lambda` and `Source_TOF_Lambda`.
+- Instrument `sans2d` (ISIS SANS2D, time-of-flight): source-sample 19.2625 m
+  (the McStas model `ISIS_SANS2d_12m.instr`), the rear tube detector of the
+  2019 measurements (120 tubes x 512 pixels, 1.0414 x 0.972 m, 11.999 m from
+  the sample, centre offset [-0.0018, 0.085] m from the direct beam), the T0
+  monitor `Source_TOF_Lambda`; no MCPL TOF-filtering monitor.
+- `python -m mcstas_gisans.isis_events RAW TEMPLATE OUTPUT`: the detection
+  events of a raw ISIS SANS2D NeXus file in the TOF output format of `mg_run`
+  (with the metadata of a simulation of the same geometry), so that measured
+  events go through the TOF reduction of `mg_plot` (`--wavelength_slice`).
 - `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
   (the 1D panel of the comparison plots: the unmasked pixels of the band summed
   per Qy bin) are computed next to the 2D losses and written to the log and the

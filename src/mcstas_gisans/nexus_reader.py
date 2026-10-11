@@ -180,6 +180,13 @@ def get_nxs_format(filepath, nxs_format='auto'):
     return 'isis_sans2d' if is_isis_sans2d_raw(filepath) else 'image'
 
 
+def sans2d_rear_pixel_row(detector_ids):
+    """The pixel along the tube (+x) and the tube row from the bottom (+y) of SANS2D rear-detector IDs."""
+    detector_ids = np.asarray(detector_ids)
+    board, tube, pixel = (detector_ids // 100000) % 10, (detector_ids // 1000) % 100, detector_ids % 1000
+    return pixel, 2 * ((board - 1) * 12 + tube // 2) + tube % 2
+
+
 def read_sans2d_raw(filepath):
     """
     Read the rear-detector TOF histograms of a raw ISIS SANS2D NeXus file.
@@ -222,9 +229,7 @@ def read_sans2d_raw(filepath):
     if counts.shape[-1] != len(tof_edges) - 1:
         raise ValueError(f"{filepath}: {counts.shape[-1]} TOF bins in detector_1/counts, but "
                          f"{len(tof_edges)} TOF bin edges in detector_1/time_of_flight.")
-    rear_ids = detector_ids[rear_spectra]
-    board, tube, pixel = (rear_ids // 100000) % 10, (rear_ids // 1000) % 100, rear_ids % 1000
-    row = 2 * ((board - 1) * 12 + tube // 2) + tube % 2
+    pixel, row = sans2d_rear_pixel_row(detector_ids[rear_spectra])
     n_x, n_y = SANS2D_REAR_DETECTOR_PIXELS
     if np.any((pixel < 0) | (pixel >= n_x) | (row < 0) | (row >= n_y)):
         raise ValueError(f"{filepath}: rear-detector IDs outside the {n_x} x {n_y} pixel tube detector.")
