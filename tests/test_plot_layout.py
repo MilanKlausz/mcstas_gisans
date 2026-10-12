@@ -196,3 +196,37 @@ def test_mg_plot_split_view_with_overlay(monkeypatch):
     assert ax_map.get_position().x1 == pytest.approx(ax_slice.get_position().x1, abs=TOL)
     _assert_linked([ax_map], ax_slice)
     plt.close('all')
+
+
+SIM = "data/paper/bornagain_output/d22_1e9_silica_100nm_air_sampling_long.h5"
+
+
+@pytest.mark.parametrize("split_view, n_maps", [(True, 2), (False, 4)])
+def test_mg_plot_joint_figure(monkeypatch, split_view, n_maps):
+    """--nxs2: two samples (each with its measurement and simulation): the maps of both samples above
+    (one split map per sample with --split_view) and the profiles of all four datasets in one full-width
+    slice below, with the axes linked."""
+    extra = ["--nxs2", NXS_FILES[1], "--filename", SIM, SIM, "--sample_labels", "high", "low",
+             "--experiment_time", "100", "--background2", "1.0"] + (["--split_view"] if split_view else [])
+    fig = _mg_plot_figure(monkeypatch, NXS_FILES[:1], extra)
+    maps, ax_slice = _maps_and_slice(fig)
+    assert len(maps) == n_maps
+    assert [t.get_text() for t in ax_slice.get_legend().get_texts()] == [
+        'high measured', 'high simulated', 'low measured', 'low simulated']
+    assert ax_slice.get_position().x0 == pytest.approx(min(ax.get_position().x0 for ax in maps), abs=0.05)
+    assert ax_slice.get_position().x1 > max(ax.get_position().x0 for ax in maps)
+    _assert_linked(maps, ax_slice)
+    plt.close('all')
+
+
+@pytest.mark.parametrize("argv, message", [
+    (["--nxs", NXS_FILES[0], "--nxs2", NXS_FILES[1], "--filename", SIM], "two simulation files"),
+    (["--nxs", NXS_FILES[0], "--nxs2", NXS_FILES[1], "--filename", SIM, SIM, "--overlay"], "cannot be combined"),
+    (["--nxs", NXS_FILES[0], "--filename", SIM, "--background2", "1"], "only used with --nxs2"),
+])
+def test_mg_plot_joint_figure_option_errors(monkeypatch, capsys, argv, message):
+    from mcstas_gisans.plot_cli import create_argparser, parse_args
+    monkeypatch.setattr(sys, "argv", ["mg_plot", *argv])
+    with pytest.raises(SystemExit):
+        parse_args(create_argparser())
+    assert message in capsys.readouterr().err

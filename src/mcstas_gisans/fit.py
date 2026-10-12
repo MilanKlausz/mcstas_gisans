@@ -652,102 +652,20 @@ def save_joint_comparison_plot(
         One split 2D map per sample instead of two separate maps.
     """
     import matplotlib.pyplot as plt
-    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
+    from .plotting_utils import joint_comparison_figure
 
-    intensity_min = 1.0
-    vmax1 = hist_nxs1[~np.isnan(hist_nxs1)].max() if np.any(~np.isnan(hist_nxs1)) else 100.0
-    vmax2 = hist_nxs2[~np.isnan(hist_nxs2)].max() if np.any(~np.isnan(hist_nxs2)) else 100.0
-    if split_view:
-        # Row 0: one split map per sample; row 1: the 1D Q-slice overlay
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        split_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, hist_sim_masked1, edges_sim1_0, edges_sim1_1,
-                      label_left="Sample 1 Measurement", label_right=label_sim1, ax=axes[0, 0],
-                      intensity_min=intensity_min, intensity_max=vmax1, y_range=y_plot_range, z_range=z_plot_range)
-        split_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, hist_sim_masked2, edges_sim2_0, edges_sim2_1,
-                      label_left="Sample 2 Measurement", label_right=label_sim2, ax=axes[0, 1],
-                      intensity_min=intensity_min, intensity_max=vmax2, y_range=y_plot_range, z_range=z_plot_range)
-        bottom_row = 1
-        map_axes_1, map_axes_2 = [(axes[0, 0], edges_sim1_1)], [(axes[0, 1], edges_sim2_1)]
-    else:
-        fig, axes = plt.subplots(3, 2, figsize=(16, 16))
-
-        # 1. Row 0: Sample 1 NeXus & Sim
-        log_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, "Sample 1 Measurement", ax=axes[0, 0],
-                    intensity_min=intensity_min, intensity_max=vmax1,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-        log_plot_2d(hist_sim_masked1, edges_sim1_0, edges_sim1_1, label_sim1, ax=axes[0, 1],
-                    intensity_min=intensity_min, intensity_max=vmax1,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-
-        # 2. Row 1: Sample 2 NeXus & Sim
-        log_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, "Sample 2 Measurement", ax=axes[1, 0],
-                    intensity_min=intensity_min, intensity_max=vmax2,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-        log_plot_2d(hist_sim_masked2, edges_sim2_0, edges_sim2_1, label_sim2, ax=axes[1, 1],
-                    intensity_min=intensity_min, intensity_max=vmax2,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-        bottom_row = 2
-        map_axes_1 = [(axes[0, 0], z_edges_nxs1), (axes[0, 1], edges_sim1_1)]
-        map_axes_2 = [(axes[1, 0], z_edges_nxs2), (axes[1, 1], edges_sim2_1)]
-
-    # Last row: merged for the 1D Q-slice overlay
-    gs = axes[bottom_row, 0].get_gridspec()
-    axes[bottom_row, 0].remove()
-    axes[bottom_row, 1].remove()
-    ax_bottom = fig.add_subplot(gs[bottom_row, :])
-    # zooming one map zooms all of them, and the Qy axis of the 1D slice
-    link_axes([ax for ax, _ in map_axes_1 + map_axes_2], ax_bottom)
-
-    qz_min_index1 = np.digitize(q_min, edges_sim1_1) - 1
-    qz_max_index1 = np.digitize(q_max, edges_sim1_1) - 1
-
-    qz_min_index2 = np.digitize(q_min, edges_sim2_1) - 1
-    qz_max_index2 = np.digitize(q_max, edges_sim2_1) - 1
-
-    # Sample 1 1D curves
-    hist_nxs1_1d = np.nan_to_num(hist_nxs1, nan=0.0)
-    hist_sim1_1d = np.nan_to_num(hist_sim_masked1, nan=0.0)
-    val_nxs1, err_nxs1, y_bins_nxs1, z_limits1 = extract_range_to_1d(
-        hist_nxs1_1d, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1, [qz_min_index1, qz_max_index1]
-    )
-    plot_q_1d(val_nxs1, err_nxs1, y_bins_nxs1, 'Qy [1/nm]', color='blue',
-              title_text='', label='Sample 1 Measurement', ax=ax_bottom, limits=y_plot_range, output='none')
-
-    val_sim1, err_sim1, y_bins_sim1, _ = extract_range_to_1d(
-        hist_sim1_1d, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1, [qz_min_index1, qz_max_index1]
-    )
-    plot_q_1d(val_sim1, err_sim1, y_bins_sim1, 'Qy [1/nm]', color='cyan',
-              label=label_sim1, ax=ax_bottom, limits=y_plot_range, output='none')
-
-    # Sample 2 1D curves
-    hist_nxs2_1d = np.nan_to_num(hist_nxs2, nan=0.0)
-    hist_sim2_1d = np.nan_to_num(hist_sim_masked2, nan=0.0)
-    val_nxs2, err_nxs2, y_bins_nxs2, _ = extract_range_to_1d(
-        hist_nxs2_1d, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, [qz_min_index2, qz_max_index2]
-    )
-    plot_q_1d(val_nxs2, err_nxs2, y_bins_nxs2, 'Qy [1/nm]', color='red',
-              label='Sample 2 Measurement', ax=ax_bottom, limits=y_plot_range, output='none')
-
-    val_sim2, err_sim2, y_bins_sim2, _ = extract_range_to_1d(
-        hist_sim2_1d, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1, [qz_min_index2, qz_max_index2]
-    )
-    plot_q_1d(val_sim2, err_sim2, y_bins_sim2, 'Qy [1/nm]', color='orange',
-              label=label_sim2, ax=ax_bottom, limits=y_plot_range, output='none')
-
-    # Highlight Qz slice on 2D plots
-    for ax, z_edges, qz_min_idx, qz_max_idx in (
-        [(ax, z_edges, qz_min_index1, qz_max_index1) for ax, z_edges in map_axes_1] +
-        [(ax, z_edges, qz_min_index2, qz_max_index2) for ax, z_edges in map_axes_2]
-    ):
-        ax.axhline(z_edges[min(max(qz_min_idx, 0), len(z_edges) - 2)], color='magenta', linestyle='--')
-        ax.axhline(z_edges[min(max(qz_max_idx, 0), len(z_edges) - 2) + 1], color='magenta', linestyle='--')
-
-    ax_bottom.set_title(f"Qz=[{z_limits1[0]:.4f} 1/nm, {z_limits1[1]:.4f} 1/nm]")
-    ax_bottom.grid(True, which='major')
-    ax_bottom.legend(loc='upper left')
-
-    plt.tight_layout()
-    plt.savefig(savename, dpi=300)
+    samples = [
+        {'measured': (hist_nxs1, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1),
+         'simulated': (hist_sim_masked1, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1),
+         'title': None, 'map_labels': ("Sample 1 Measurement", label_sim1),
+         'legend_labels': ("Sample 1 Measurement", label_sim1)},
+        {'measured': (hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2),
+         'simulated': (hist_sim_masked2, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1),
+         'title': None, 'map_labels': ("Sample 2 Measurement", label_sim2),
+         'legend_labels': ("Sample 2 Measurement", label_sim2)},
+    ]
+    fig = joint_comparison_figure(samples, q_min, q_max, y_plot_range, z_plot_range, split_view=split_view)
+    fig.savefig(savename, dpi=300)
     plt.close(fig)
     print(f"Created joint comparison plot: {savename}")
 

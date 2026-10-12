@@ -6,7 +6,7 @@ import numpy as np
 # from neutron_utilities import calculate_wavelength
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple, Any, Dict
 
 def show_or_save(output: str, filename_base: str) -> None:
     """
@@ -453,3 +453,69 @@ def extract_range_to_1d_vertical(
     z_bins = (z_edges[:-1] + z_edges[1:]) / 2 
     
     return values, errors, z_bins, y_limits
+
+def joint_comparison_figure(samples: List[Dict[str, Any]], q_min: float, q_max: float,
+                            y_plot_range: Optional[List[float]], z_plot_range: Optional[List[float]],
+                            split_view: bool = False, intensity_min: float = 1.0) -> plt.Figure:
+    """
+    Comparison figure of two samples (e.g. the two samples of a joint fit): with split_view the top row
+    holds one split map per sample (the measurement for Qy < 0, the simulation for Qy > 0), otherwise
+    two rows hold the separate measured and simulated maps of each sample; the bottom row (spanning the
+    figure) shows the Qy profiles of the Qz band [q_min, q_max] of all four datasets. The axes of the maps
+    and the Qy axis of the profiles are linked (zooming one zooms all).
+
+    Each sample is a dict with 'measured' and 'simulated' (hist, hist_error, y_edges, z_edges) tuples,
+    'title' (str or None: title of its map(s)), 'map_labels' (labels of the measured and the simulated
+    map / map half) and 'legend_labels' (labels of its two profiles).
+    """
+    colors = (('blue', 'cyan'), ('red', 'orange'))
+    if split_view:
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        bottom_row = 1
+    else:
+        fig, axes = plt.subplots(3, 2, figsize=(16, 16))
+        bottom_row = 2
+    map_axes = []  # (ax, z_edges of the band lines, sample index)
+    for i, sample in enumerate(samples):
+        meas, sim = sample['measured'], sample['simulated']
+        finite = meas[0][~np.isnan(meas[0])]
+        vmax = finite.max() if finite.size else 100.0
+        if split_view:
+            ax = axes[0, i]
+            split_plot_2d(meas[0], meas[2], meas[3], sim[0], sim[2], sim[3], label_left=sample['map_labels'][0],
+                          label_right=sample['map_labels'][1], ax=ax, intensity_min=intensity_min, intensity_max=vmax,
+                          y_range=y_plot_range, z_range=z_plot_range)
+            if sample.get('title'):
+                ax.set_title(sample['title'])
+            map_axes.append((ax, sim[3], i))
+        else:
+            for j, (data, label) in enumerate(zip((meas, sim), sample['map_labels'])):
+                ax = axes[i, j]
+                title = f"{sample['title']}: {label}" if sample.get('title') else label
+                log_plot_2d(data[0], data[2], data[3], title, ax=ax, intensity_min=intensity_min, intensity_max=vmax,
+                            y_range=y_plot_range, z_range=z_plot_range, output='none')
+                map_axes.append((ax, data[3], i))
+    gs = axes[bottom_row, 0].get_gridspec()
+    axes[bottom_row, 0].remove()
+    axes[bottom_row, 1].remove()
+    ax_bottom = fig.add_subplot(gs[bottom_row, :])
+    link_axes([ax for ax, _, _ in map_axes], ax_bottom)
+    z_limits = None
+    for i, sample in enumerate(samples):
+        for (data, label, color) in zip((sample['measured'], sample['simulated']), sample['legend_labels'], colors[i]):
+            hist, err, y_edges, z_edges = data
+            idx = [np.digitize(q_min, z_edges) - 1, np.digitize(q_max, z_edges) - 1]
+            values, errors, y_bins, limits = extract_range_to_1d(np.nan_to_num(hist, nan=0.0), err, y_edges, z_edges, idx)
+            z_limits = z_limits or limits
+            plot_q_1d(values, errors, y_bins, 'Qy [1/nm]', color=color, title_text='', label=label, ax=ax_bottom,
+                      limits=y_plot_range, output='none')
+    for ax, z_edges, i in map_axes:  # the band on the maps
+        idx = [np.digitize(q_min, z_edges) - 1, np.digitize(q_max, z_edges) - 1]
+        ax.axhline(z_edges[min(max(idx[0], 0), len(z_edges) - 2)], color='magenta', linestyle='--')
+        ax.axhline(z_edges[min(max(idx[1], 0), len(z_edges) - 2) + 1], color='magenta', linestyle='--')
+    ax_bottom.set_title(f"Qz=[{z_limits[0]:.4f} 1/nm, {z_limits[1]:.4f} 1/nm]")
+    ax_bottom.set_ylim(bottom=intensity_min)
+    ax_bottom.grid(True, which='major')
+    ax_bottom.legend(loc='upper left')
+    fig.tight_layout()
+    return fig

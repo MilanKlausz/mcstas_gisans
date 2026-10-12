@@ -250,6 +250,26 @@ With ``--split_view`` instead of ``--overlay``, the measurement and the
 simulation share one 2D map: the measurement for Qy < 0 and the simulation for
 Qy > 0, on a common colour scale.
 
+Two samples measured together (e.g. the two samples of a joint fit, see
+:doc:`fitting_guide`) can be shown in one figure: the measurement of the second
+sample with ``--nxs2`` (several files of one sample are summed) and two
+simulation files, the first for ``--nxs`` and the second for ``--nxs2``. With
+``--split_view`` the top row holds one split map per sample, and the bottom row,
+spanning the figure, the Qy profiles of the Qz band of all four datasets:
+
+.. code-block:: bash
+
+   mg_plot --nxs sample1.nxs --nxs2 sample2.nxs --filename sample1_sim.h5 sample2_sim.h5 \
+     --sample_labels "high pressure" "low pressure" --experiment_time 3600 \
+     --background 1.7 --background2 1.3 --q_min 0.15 --q_max 0.17 --split_view --png
+
+``--background2`` and ``--experiment_time2`` are those of the second sample (by
+default the values of the first); each measurement is interpreted with the
+instrument configuration of its own simulation file. Without ``--split_view``
+the measured and the simulated maps of each sample are shown separately, in two
+rows above the profiles (the layout of the joint-fit comparison plots of
+``mg_fit``).
+
 Like ``mg_beam_centre_correction``, ``mg_run`` defaults the beam angle to
 ``0.0`` (or whatever is configured for the instrument in
 ``instrument_defaults.py``) unless overridden with ``--instrument_beam_angle``

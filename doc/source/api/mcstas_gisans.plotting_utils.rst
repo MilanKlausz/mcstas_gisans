@@ -11,6 +11,7 @@
       add_map_colorbar
       extract_range_to_1d
       extract_range_to_1d_vertical
+      joint_comparison_figure
       link_axes
       log_plot_2d
       plot_q_1d

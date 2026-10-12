@@ -13,6 +13,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_plot`: joint figure of two samples (`--nxs2`, `--sample_labels`,
+  `--background2`, `--experiment_time2`, two simulation files): with
+  `--split_view` one split map per sample in the top row and the Qy profiles of
+  the Qz band of all four datasets spanning the bottom row; the same figure
+  function as the joint-fit comparison plots of `mg_fit`.
 - `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
   (the 1D panel of the comparison plots: the unmasked pixels of the band summed
   per Qy bin) are computed next to the 2D losses and written to the log and the
@@ -182,6 +187,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   different `depthsensitivitysample` sample is removed).
 
 ### Fixed
+- `mg_plot --overlay --plot_differences`: the legend of the difference axis
+  no longer covers the legend of the profiles.
 - `mg_plot --dual_plot` cut off the axis labels of the tall figure.
 - The built-in models `silica_air`, `silica_100nm_D2O`, `lamellas_and_spheres`,
   `hexagonal_spheres` and `depthsensitivitysample` used the BornAgain 21 API

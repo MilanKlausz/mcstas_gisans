@@ -31,6 +31,10 @@ def create_argparser():
 
     storedDataParamGroup = parser.add_argument_group('Stored data', 'Use stored data files for plotting or comparison.')
     storedDataParamGroup.add_argument('--nxs', nargs = '*', help = 'Measured NeXus file(s) to plot, each as its own dataset.')
+    storedDataParamGroup.add_argument('--nxs2', nargs='*', help='Joint (two-sample) figure: the measured NeXus file(s) of the second sample (summed). The --nxs files are then summed as the first sample, and two simulation files (--filename) are needed, the first for --nxs and the second for --nxs2 (each measurement is interpreted with the instrument configuration of its own simulation file). With --split_view: one split map per sample in the top row and the Qy profiles of the Qz band (--q_min, --q_max) of all four datasets in the bottom row; without it: the measured and the simulated maps of each sample in two rows above the profiles.')
+    storedDataParamGroup.add_argument('--sample_labels', nargs=2, default=['Sample 1', 'Sample 2'], help='Joint figure (--nxs2): the names of the two samples (map titles and profile labels).')
+    storedDataParamGroup.add_argument('--background2', default=None, type=float, help='Joint figure (--nxs2): the Poisson background of the second simulation (default: --background).')
+    storedDataParamGroup.add_argument('--experiment_time2', default=None, type=float, help='Joint figure (--nxs2): the experiment time of the second sample (default: --experiment_time).')
     storedDataParamGroup.add_argument('--nxs_label', nargs = '*', help = 'Label for Nexus input[s]. Must be used together with --nxs if a label is desired. If not provided, the label will be generated from the Nexus file name.')
     storedDataParamGroup.add_argument('--nxs_data_path', type=str, default=None, help='Explicit HDF5 path to the detector data inside the --nxs file(s), e.g. "entry0/data1/MultiDetector1_data". Overrides the default paths that are otherwise tried automatically.')
     storedDataParamGroup.add_argument('--overlay', action='store_true', help = 'Overlay stored data with simulated data.') #TODO isn't it more general than that?
@@ -100,7 +104,22 @@ def parse_args(parser):
     if args.normalise_to_nxs and not args.nxs:
         parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')
 
-    if args.split_view:
+    if args.nxs2 is not None:
+        if not args.nxs or not args.nxs2:
+            parser.error('The joint figure (--nxs2) needs the measured NeXus files of both samples (--nxs and --nxs2).')
+        if len(args.filename or []) != 2:
+            parser.error(f"The joint figure (--nxs2) needs two simulation files (--filename SIM1 SIM2), got {len(args.filename or [])}.")
+        conflicting = [name for name in ('multi2d', 'dual_plot', 'overlay', 'normalise_to_nxs') if getattr(args, name)]
+        if args.plot_differences:
+            conflicting.append('plot_differences')
+        if conflicting:
+            parser.error(f"--nxs2 (joint figure) cannot be combined with --{', --'.join(conflicting)}.")
+        if (args.experiment_time2 is not None) and args.experiment_time2 <= 0:
+            parser.error('The --experiment_time2 must be positive.')
+    elif args.background2 is not None or args.experiment_time2 is not None:
+        parser.error('--background2 and --experiment_time2 are only used with --nxs2 (joint figure).')
+
+    if args.split_view and args.nxs2 is None:
         conflicting = [name for name in ('multi2d', 'dual_plot') if getattr(args, name)]
         if args.plot_differences:
             conflicting.append('plot_differences')
