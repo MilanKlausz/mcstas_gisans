@@ -205,3 +205,19 @@ def test_incident_angle_search_uses_the_expected_position(tmp_path):
     alpha = np.rad2deg(0.5 * np.arctan(s / L))
     assert measure_incident_angle(str(paths[1]), str(paths[0]), sample_orientation=1, alpha=round(alpha, 2)) == pytest.approx(alpha, abs=1e-5)
     assert measure_incident_angle(str(paths[1]), str(paths[0]), sample_orientation=1) > alpha + 0.1  # without alpha: the brighter one
+
+
+def test_direct_beam_profile_figure_with_detector_resolutions(tmp_path):
+    """--profile_resolutions: a cut figure with one simulated beam per resolution; a wider resolution widens the
+    simulated beam along y (the tubes) but not along x, and the instrument's own resolution is the first curve."""
+    from mcstas_gisans.beam_centre_correction import compare_with_simulated_direct_beam
+    offset = find_required_centre_offset(DIRECT_BEAM_FILE, sample_orientation=2)
+    results = compare_with_simulated_direct_beam(
+        DIRECT_BEAM_FILE, "tests/data/d22_1e8/test_events.mcpl.gz", offset, sample_orientation=2,
+        figure='png', savename=str(tmp_path / "check"), profile_resolutions=[0.004, 0.012])
+    assert (tmp_path / "check_profiles.png").exists()
+    widths = results['profiles']
+    labels = [k for k in widths if k != 'measured']
+    assert len(labels) == 2 and "instrument" in labels[0] and "12.0 mm" in labels[1]   # 0.004 = the instrument's
+    assert widths[labels[1]][1] > widths[labels[0]][1]                                 # wider along y
+    assert widths[labels[1]][0] == pytest.approx(widths[labels[0]][0], rel=0.05)       # unchanged along x

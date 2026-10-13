@@ -13,6 +13,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_beam_centre_correction --mcpl --figure`: a second figure `<savename>_profiles` with horizontal and
+  vertical cuts through the measured and the simulated direct beam (linear and log scale, RMS width and
+  FWHM of each cut), to check that the McStas beam (slits, divergence) and the detector resolution reproduce
+  the measured beam; `--profile_resolutions FWHM ...` adds simulated beams with other detector resolutions
+  along the NeXus y axis (the tubes of D22).
 - `mg_plot`: joint figure of two samples (`--nxs2`, `--sample_labels`,
   `--background2`, `--experiment_time2`, two simulation files): with
   `--split_view` one split map per sample in the top row and the Qy profiles of
