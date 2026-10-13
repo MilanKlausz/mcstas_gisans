@@ -104,6 +104,10 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   regression tests on the D22 paper data.
 
 ### Changed
+- D22: the default detector position resolution along the tubes is 7 mm FWHM (was 4 mm), from the
+  core widths of four measured direct beams (individual best values 6-8.5 mm). Results of D22 simulations
+  change slightly near sharp features (the specular, Bragg rods); use
+  `--instrument_detector_resolution 0 0.004` to reproduce older results.
 - `mg_fit` comparison plots (`fit_eval_*.png`): the simulation curve is labelled
   'Simulation' and the parameters (4 significant digits) are a wrapped title of
   the simulated map, instead of the full parameter string in the legend, which

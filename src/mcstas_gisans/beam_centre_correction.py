@@ -318,7 +318,8 @@ def direct_beam_profiles_figure(measured, simulations, x_rel, y_rel, figure, sav
     of the centre (the FWHM of a stepped profile of a few pixels can be misleading) and the FWHM.
     Shows whether the McStas beam (slits, divergence)
     and the detector resolution reproduce the measured beam: the core width and the shape of the edges and tails.
-    simulations: list of (label, image). Returns {label: (FWHM_x, FWHM_y)} [m] of the cuts.
+    simulations: list of (label, image). Returns {label: {'fwhm': (x, y), 'rms': (x, y)}} [m] of the cuts (the RMS
+    within +-1 measured FWHM of the measured centre).
     """
     import matplotlib
     if figure != 'show':
@@ -375,7 +376,7 @@ def direct_beam_profiles_figure(measured, simulations, x_rel, y_rel, figure, sav
     rms.update({label: (_rms(cut_x(image * measured.sum() / image.sum()), x_rel, cx, win[0]),
                         _rms(cut_y(image * measured.sum() / image.sum()), y_rel, cy, win[1])) for label, image in simulations})
     print("Beam RMS width of the cuts within +-1 measured FWHM [mm] (x / y): " + "; ".join("%s %.2f / %.2f" % (k, v[0] * 1e3, v[1] * 1e3) for k, v in rms.items()))
-    return widths
+    return {label: {'fwhm': widths[label], 'rms': rms[label]} for label in widths}
 
 
 def _direct_beam_figure(measured, simulated, x_lab, y_lab, c_meas, c_sim, figure, savename, half):

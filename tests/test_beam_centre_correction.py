@@ -214,10 +214,11 @@ def test_direct_beam_profile_figure_with_detector_resolutions(tmp_path):
     offset = find_required_centre_offset(DIRECT_BEAM_FILE, sample_orientation=2)
     results = compare_with_simulated_direct_beam(
         DIRECT_BEAM_FILE, "tests/data/d22_1e8/test_events.mcpl.gz", offset, sample_orientation=2,
-        figure='png', savename=str(tmp_path / "check"), profile_resolutions=[0.004, 0.012])
+        figure='png', savename=str(tmp_path / "check"), profile_resolutions=[0.007, 0.012])
     assert (tmp_path / "check_profiles.png").exists()
     widths = results['profiles']
     labels = [k for k in widths if k != 'measured']
-    assert len(labels) == 2 and "instrument" in labels[0] and "12.0 mm" in labels[1]   # 0.004 = the instrument's
-    assert widths[labels[1]][1] > widths[labels[0]][1]                                 # wider along y
-    assert widths[labels[1]][0] == pytest.approx(widths[labels[0]][0], rel=0.05)       # unchanged along x
+    assert len(labels) == 2 and "7.0 mm (instrument)" in labels[0] and "12.0 mm" in labels[1]   # 0.007 = the D22 default
+    rms = {k: v['rms'] for k, v in widths.items()}
+    assert rms[labels[1]][1] > rms[labels[0]][1]                                       # wider along y
+    assert rms[labels[1]][0] == pytest.approx(rms[labels[0]][0], rel=0.05)             # unchanged along x
