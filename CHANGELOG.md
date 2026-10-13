@@ -13,6 +13,9 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_fit --mask_view`: the masked map shows the masked pixels as the measured data on a grey scale, under the
+  fitted pixels in colour (`--mask_view_style grey`, default); `--mask_view_style black` blacks them out as
+  before.
 - `mg_beam_centre_correction --mcpl --figure`: a second figure `<savename>_profiles` with horizontal and
   vertical cuts through the measured and the simulated direct beam (linear and log scale, RMS width and
   FWHM of each cut), to check that the McStas beam (slits, divergence) and the detector resolution reproduce

@@ -137,7 +137,8 @@ def save_view_masks_plot(hist_raw: np.ndarray,
                          y_plot_range: Tuple[float, float], 
                          z_plot_range: Tuple[float, float],
                          savename: str, 
-                         intensity_min: Optional[Union[float, int]] = None) -> None:
+                         intensity_min: Optional[Union[float, int]] = None,
+                         masked_style: str = 'grey') -> None:
     """
     Generates a comparison plot showing raw data vs applied detector masks.
 
@@ -167,6 +168,9 @@ def save_view_masks_plot(hist_raw: np.ndarray,
         The file path to save the generated plot.
     intensity_min : float or int, optional
         The minimum intensity to use for the log-scaled 2D plots. Defaults to 1.0.
+    masked_style : {'grey', 'black'}, optional
+        How the masked pixels are shown in the masked map: 'grey' (default) shows the measured data there on a grey
+        scale, under the fitted pixels in colour; 'black' blacks them out.
     """
     import matplotlib.pyplot as plt
     from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d
@@ -185,9 +189,21 @@ def save_view_masks_plot(hist_raw: np.ndarray,
                 y_range=y_plot_range, z_range=z_plot_range, output='none')
 
     # Plot masked 2D
-    log_plot_2d(hist_masked, y_edges_nxs, z_edges_nxs, "Masked NeXus data", ax=axes[0, 1],
-                intensity_min=intensity_min, intensity_max=hist_raw.max(),
-                y_range=y_plot_range, z_range=z_plot_range, output='none')
+    if masked_style not in ('grey', 'black'):
+        raise ValueError(f"masked_style must be 'grey' or 'black', got {masked_style!r}")
+    title = "Masked NeXus data" + (" (masked pixels in grey)" if masked_style == 'grey' else "")
+    mesh = log_plot_2d(hist_masked, y_edges_nxs, z_edges_nxs, title, ax=axes[0, 1],
+                       intensity_min=intensity_min, intensity_max=hist_raw.max(),
+                       y_range=y_plot_range, z_range=z_plot_range, output='none')
+    if masked_style == 'grey':
+        import copy
+        from matplotlib.colors import LogNorm
+        cmap = copy.copy(mesh.get_cmap())
+        cmap.set_bad((0, 0, 0, 0))              # masked (NaN) pixels transparent: the grey map below shows through
+        mesh.set_cmap(cmap)
+        # zero counts below the colour scale (black, as in the raw map) instead of invalid on the log scale
+        axes[0, 1].pcolormesh(y_edges_nxs, z_edges_nxs, np.maximum(hist_raw, 0.5 * intensity_min).T, cmap='gray',
+                              norm=LogNorm(vmin=intensity_min, vmax=hist_raw.max()), zorder=mesh.get_zorder() - 0.5)
 
     gs = axes[1, 0].get_gridspec()
     axes[1, 0].remove()

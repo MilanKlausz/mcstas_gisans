@@ -230,3 +230,21 @@ def test_mg_plot_joint_figure_option_errors(monkeypatch, capsys, argv, message):
     with pytest.raises(SystemExit):
         parse_args(create_argparser())
     assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("style, n_meshes", [("grey", 2), ("black", 1)])
+def test_mask_view_masked_style(tmp_path, monkeypatch, style, n_meshes):
+    """mg_fit --mask_view: with 'grey' (default) the masked map shows the measured data in grey under the fitted
+    pixels (two meshes, masked pixels transparent); with 'black' the masked pixels are blacked out (one mesh)."""
+    from mcstas_gisans.masking import save_view_masks_plot
+    figures = _capture_closed_figures(monkeypatch)
+    hist = np.full((7, 5), 10.0)
+    masked = hist.copy()
+    masked[2:5, :] = np.nan
+    save_view_masks_plot(hist, np.ones_like(hist), masked, np.ones_like(hist), Y_EDGES, Z_EDGES, 0.3, 0.6,
+                         [-0.3, 0.3], [0.0, 1.0], str(tmp_path / f"m_{style}.png"), 1.0, masked_style=style)
+    monkeypatch.undo()
+    fig = figures[0] if figures else plt.gcf()
+    masked_ax = [ax for ax in fig.axes if ax.get_title().startswith("Masked NeXus data")][0]
+    assert len(masked_ax.collections) == n_meshes
+    assert ("grey" in masked_ax.get_title()) == (style == "grey")

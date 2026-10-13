@@ -1626,7 +1626,7 @@ def main() -> None:
             hist_nxs, hist_nxs_error,
             y_edges_nxs, z_edges_nxs,
             args.q_min, args.q_max, y_plot_range, z_plot_range,
-            plot_path, intensity_min
+            plot_path, intensity_min, masked_style=getattr(args, 'mask_view_style', 'grey')
         )
         return
 

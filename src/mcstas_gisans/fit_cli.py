@@ -45,6 +45,7 @@ def create_fit_parser():
 
     scan_mask_group = parser.add_argument_group('Masking options to exclude data ranges for the fitness calculation')
     scan_mask_group.add_argument('--mask_view', action='store_true', help='Only view the applied masks on the experimental NeXus data, then exit.')
+    scan_mask_group.add_argument('--mask_view_style', choices=['grey', 'black'], default='grey', help="With --mask_view: show the masked pixels of the masked map as the measured data on a grey scale ('grey', default) or black them out ('black').")
     scan_mask_group.add_argument('--mask_qy_range', nargs=2, type=float, default=None, help='Qy range to mask out from the fitness calculation (e.g., -0.05 0.05) [1/nm].')
     scan_mask_group.add_argument('--mask_qy_min_cut', type=float, default=None, help='Lower Qy cut option. Any data below this Qy value is disregarded [1/nm].')
     scan_mask_group.add_argument('--mask_qy_max_cut', type=float, default=None, help='Upper Qy cut option. Any data above this Qy value is disregarded [1/nm].')
