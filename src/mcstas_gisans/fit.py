@@ -343,6 +343,15 @@ def qz_band_profile(
     return counts, expected, mc_error_1d, n_pixels
 
 
+def format_parameter_label(grid_point: Dict[str, Any]) -> str:
+    """Short, readable parameter list for plot titles: 4 significant digits (e.g. 'radius = 77.22, microgel_sld = 4.404e-06')."""
+    def value(v):
+        if isinstance(v, (bool, np.bool_)) or not isinstance(v, (int, float, np.integer, np.floating)):
+            return str(v)
+        return str(int(v)) if float(v).is_integer() and abs(v) < 1e6 else f"{float(v):.4g}"
+    return ", ".join(f"{k} = {value(v)}" for k, v in grid_point.items())
+
+
 def save_comparison_plot(
     hist_nxs: np.ndarray,
     hist_nxs_error: np.ndarray,
@@ -396,12 +405,14 @@ def save_comparison_plot(
     savename : str
         Path to save the generated plot.
     label_sim : str
-        Label for the simulated data plot.
+        Description of the simulation (e.g. its parameters), shown wrapped as the title of the simulated map;
+        the curves are labelled 'D22 measurement' and 'Simulation'.
     intensity_min : float, optional
         Minimum intensity for color scaling.
     split_view : bool, optional
         One split 2D map instead of two separate maps.
     """
+    import textwrap
     import matplotlib.pyplot as plt
     from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
 
@@ -416,7 +427,7 @@ def save_comparison_plot(
         # to the right of the map instead of taking its width, so that the Qy axes line up)
         fig, (ax_map, ax_bottom) = plt.subplots(2, 1, figsize=(10, 12))
         split_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, hist_sim, y_edges_sim, z_edges_sim,
-                      label_left="D22 measurement", label_right="Simulation", title_text=label_sim, ax=ax_map,
+                      label_left="D22 measurement", label_right="Simulation", title_text=textwrap.fill(label_sim, 90), ax=ax_map,
                       intensity_min=intensity_min, intensity_max=intensity_max,
                       y_range=y_plot_range, z_range=z_plot_range, match_horizontal_axes=True)
         map_axes = [ax_map]
@@ -428,7 +439,7 @@ def save_comparison_plot(
                     intensity_min=intensity_min, intensity_max=intensity_max,
                     y_range=y_plot_range, z_range=z_plot_range, output='none')
 
-        log_plot_2d(hist_sim, y_edges_sim, z_edges_sim, label_sim, ax=axes[0, 1],
+        log_plot_2d(hist_sim, y_edges_sim, z_edges_sim, textwrap.fill(label_sim, 70), ax=axes[0, 1],
                     intensity_min=intensity_min, intensity_max=intensity_max,
                     y_range=y_plot_range, z_range=z_plot_range, output='none')
         map_axes = [axes[0, 0], axes[0, 1]]
@@ -457,7 +468,7 @@ def save_comparison_plot(
         hist_sim_1d, hist_sim_error, y_edges_sim, z_edges_sim, [qz_min_index, qz_max_index]
     )
     plot_q_1d(values_sim, errors_sim, y_bins_sim, 'Qy [1/nm]', color='green',
-              label=label_sim, ax=ax_bottom, limits=y_plot_range, output='none')
+              label='Simulation', ax=ax_bottom, limits=y_plot_range, output='none')
 
     for ax in map_axes:
         for z_limit in z_limits:  # the summed Qz range
@@ -988,7 +999,8 @@ def run_simulation_evaluation(
             hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
             hist_sim_masked, hist_sim_error_masked, edges[1], edges[2],
             args.q_min, args.q_max, y_plot_range, z_plot_range,
-            plot_path, f"Sim ({param_str})", intensity_min, split_view=getattr(args, 'split_view', False)
+            plot_path, f"Simulation: {format_parameter_label(grid_point)}", intensity_min,
+            split_view=getattr(args, 'split_view', False)
         )
 
     sim_data = {

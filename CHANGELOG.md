@@ -99,6 +99,10 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   regression tests on the D22 paper data.
 
 ### Changed
+- `mg_fit` comparison plots (`fit_eval_*.png`): the simulation curve is labelled
+  'Simulation' and the parameters (4 significant digits) are a wrapped title of
+  the simulated map, instead of the full parameter string in the legend, which
+  squeezed the figure; the file names are unchanged.
 - **Average materials by default**: the simulations use BornAgain's average
   materials (`--use_avg_materials`, now the default, as in BornAgain 24: the
   reflection and transmission use the effective refractive index of layers with
