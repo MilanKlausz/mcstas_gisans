@@ -196,3 +196,17 @@ def test_mg_plot_split_view_with_overlay(monkeypatch):
     assert ax_map.get_position().x1 == pytest.approx(ax_slice.get_position().x1, abs=TOL)
     _assert_linked([ax_map], ax_slice)
     plt.close('all')
+
+
+@pytest.mark.parametrize("nxs, has_simulation, normalise, experiment_time, expected", [
+    (['m.nxs'], False, False, None, 0.5),        # measured data only (e.g. a TOF slice of raw SANS2D data): counts
+    (['m.nxs'], True, True, None, 0.5),          # simulations normalised to the measurement: counts
+    (['m.nxs'], True, False, None, 1e-9),        # simulations per second next to the measurement
+    (None, True, False, None, 1e-9),             # simulations per second
+    (None, True, False, 3600.0, 1),              # simulations upscaled to an experiment time
+])
+def test_default_intensity_min(nxs, has_simulation, normalise, experiment_time, expected):
+    from types import SimpleNamespace
+    from mcstas_gisans.plot import default_intensity_min
+    args = SimpleNamespace(nxs=nxs, normalise_to_nxs=normalise, experiment_time=experiment_time)
+    assert default_intensity_min(args, has_simulation) == expected

@@ -13,6 +13,15 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- Instrument `csns_vsans` (CSNS VSANS, BL14, TOF), for the McStas model
+  `CSNS_VSANS_GISANS.instr` derived from the CSNS normal-mode model: source to
+  sample 22.1077 m, sample to detector 11.5 m; the detector is a placeholder
+  flat 2D detector (0.5 x 0.5 m, 2 mm pixels) until the VSANS detector
+  geometry is implemented.
+- `mg_plot`: without `--intensity_min`, the colour scale of maps that are all in
+  counts (measured NeXus data alone, e.g. a wavelength slice of raw TOF data,
+  or with simulations normalised by `--normalise_to_nxs`) starts at half a
+  count instead of 1e-9.
 - `mg_fit` for time-of-flight instruments (`--wavelength_slice MIN MAX`,
   repeatable): the measured and the simulated counts of every detector pixel
   and TOF bin are converted to (Qy, Qz) in the same way (the wavelength of a
@@ -43,7 +52,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 - Instrument `sans2d` (ISIS SANS2D, time-of-flight): source-sample 19.2625 m
   (the McStas model `ISIS_SANS2d_12m.instr`), the rear tube detector of the
   2019 measurements (120 tubes x 512 pixels, 1.0414 x 0.972 m, 11.999 m from
-  the sample, centre offset [-0.0018, 0.085] m from the direct beam), the T0
+  the sample, centre offset [-0.0018, 0.0825] m from the direct beam: the
+  direct beam of run 60993 2.6 mm above the centre of its tube), the T0
   monitor `Source_TOF_Lambda`; no MCPL TOF-filtering monitor.
 - `mg_plot --nxs` reads raw ISIS SANS2D NeXus files as event data (the
   detection events of the rear tube detector, `--nxs_format`, recognised

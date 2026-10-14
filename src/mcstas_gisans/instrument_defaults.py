@@ -50,9 +50,24 @@ instrument_defaults = {
         'detector': { #rear detector: 120 horizontal tubes (8.1 mm pitch) x 512 pixels (1041.4 mm active length), Mantid
             # IDF SANS2D_Definition_Tubes.xml; the 3 mm stagger of the left/right tubes is ignored
             'size': [1.0414, 0.972], #[m]
-            # direct beam of run 60993 at y -85.0 mm on the detector; x from the specular of run 60998 (+1.8 mm)
-            'direct_beam_centre_offset': [-0.0018, 0.0850], #[m]
+            # direct beam of run 60993 at y -82.5 mm on the detector (2.6 mm above the centre of its tube, from the
+            # wavelength at which the falling beam crosses into the next tube); x from the specular of run 60998 (+1.8 mm)
+            'direct_beam_centre_offset': [-0.0018, 0.0825], #[m]
             'pixels': [512, 120],
+            'resolution': [0.0, 0.0] #fwhm[m], unknown
+        },
+    },
+    'csns_vsans': { #CSNS VSANS (BL14), TOF. McStas model CSNS_VSANS_GISANS.instr (csns_vsans_local), from the CSNS
+        # normal-mode model VSANS_Normal_Mode2.5mColli.instr; band 1.96-6.73 AA with its chopper settings
+        # moderator (z=0, t=0) to armSample along the beam axis: sample aperture A2 at 22.0077 m + 0.1 m
+        'nominal_source_sample_distance' : 22.1077, #[m]
+        'sample_detector_distance' : 11.5, #[m] as the detector of the McStas model (11.5 m after the sample)
+        'tof_instrument' : True, # no mcpl_monitor_name / t0 monitor: use --no_mcpl_filtering and --no_t0_correction
+        'detector': { # PLACEHOLDER flat 2D detector until the VSANS detector geometry is implemented: 0.5 x 0.5 m,
+            # 2 mm pixels, centred 150 mm above the direct beam (direct beam, specular and lattice peaks at 6 AA on it)
+            'size': [0.5, 0.5], #[m]
+            'direct_beam_centre_offset': [0.0, 0.15], #[m]
+            'pixels': [250, 250],
             'resolution': [0.0, 0.0] #fwhm[m], unknown
         },
     },

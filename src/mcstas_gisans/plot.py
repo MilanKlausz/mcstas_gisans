@@ -506,6 +506,22 @@ def _setup_main_plot(args: Any, datasets: List[Any]) -> Tuple[Any, Any, Any, Any
 
     return match_horizontal_axes, ax1, ax2, axes_top, axes_bottom, plot_output, axes_multi2d
 
+def default_intensity_min(args: Any, has_simulation: bool) -> float:
+    """
+    Lower end of the logarithmic colour scale when --intensity_min is not given.
+
+    1 for simulations scaled to an experiment time (--experiment_time, counts); half a count when every dataset
+    is in counts (measured NeXus data only, or simulations normalised to them with --normalise_to_nxs), so that
+    measured maps (lowest non-zero value 1 count, e.g. a TOF wavelength slice) do not start nine decades below;
+    1e-9 otherwise (simulated intensities per second).
+    """
+    if args.experiment_time:
+        return 1
+    if args.nxs and (not has_simulation or args.normalise_to_nxs):
+        return 0.5
+    return 1e-9
+
+
 def main() -> None:
     """
     Main plotting routine.
@@ -527,8 +543,7 @@ def main() -> None:
     if args.intensity_min is not None:
         intensity_min = float(args.intensity_min)
     else:
-        is_upscaled = args.experiment_time
-        intensity_min = 1e-9 if not is_upscaled else 1
+        intensity_min = default_intensity_min(args, has_simulation=len(datasets) > len(args.nxs or []))
 
     if args.split_view:
         _plot_split_view(args, datasets, intensity_min, plot_output)
