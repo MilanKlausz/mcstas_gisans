@@ -99,5 +99,12 @@
    "bornagain": "23.0",
    "plain": 4936.044278591788
   }
+ },
+ "silicon_line_grating": {
+  "ba24": {
+   "avg_materials": 1232908472.1343777,
+   "bornagain": "24.1",
+   "plain": 3033111498.699893
+  }
  }
 }
