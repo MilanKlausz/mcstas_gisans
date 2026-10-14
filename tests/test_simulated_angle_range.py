@@ -310,3 +310,88 @@ def test_auto_windows_parallel_is_identical_to_sequential(monkeypatch):
     assert sequential['pixelHist'].sum() > 0
     np.testing.assert_allclose(parallel['pixelHist'], sequential['pixelHist'], rtol=1e-12, atol=0)
     np.testing.assert_allclose(parallel['pixelHistWeightsSquared'], sequential['pixelHistWeightsSquared'], rtol=1e-12, atol=0)
+
+
+# --- directions aimed only at masked pixels are not simulated (BornAgain detector masks) ---
+
+def test_skipped_direction_rectangles_mask_exactly_those_bins():
+    """The rectangles of _skipped_direction_rectangles mask exactly the chosen bins of a jittered BornAgain grid:
+    those bins are 0, every other bin is the same as without masks."""
+    import bornagain as ba
+    from bornagain import deg, angstrom
+    from mcstas_gisans import run
+    from mcstas_gisans.bornagain_samples.ba22.gisans_model_air_d2o_interface import get_sample
+    rng = np.random.default_rng(2)
+    n_h, n_v, angle_range = 13, 9, [-1.1, 1.3, 0.3, 1.2]
+    skip = rng.random((n_h, n_v)) < 0.4
+    skip[:, 2:4] = skip[:, 2:3]  # neighbouring rows with the same runs are merged
+    rand_y, rand_z = -0.81, 0.37
+    jitter_phi, jitter_alpha = run._grid_jitter(angle_range, n_h, n_v, rand_y, rand_z)
+    alpha_f, phi_f = run._grid_centres(angle_range, n_h, n_v, jitter_phi, jitter_alpha)
+    rectangles = run._skipped_direction_rectangles(skip, alpha_f, phi_f)
+    assert len(rectangles) < skip.sum()
+    sample = get_sample()
+    images = []
+    for rects in (None, rectangles):
+        sim = run.get_simulation(sample, n_h, n_v, angle_range, 6.0, 0.43, 1.0, rand_y, rand_z, [], [0, 0, 0], 1.0, 0.5,
+                                 masked_rectangles=rects)
+        sim.options().setNumberOfThreads(1)
+        images.append(run.get_result_intensities(sim.simulate()).T)  # (phi, alpha) as the weights of run.py
+    full, masked = images
+    assert np.all(full > 0)
+    assert np.all(masked[skip] == 0)
+    np.testing.assert_allclose(masked[~skip], full[~skip], rtol=1e-12, atol=0)
+
+
+@pytest.mark.parametrize("orientation", [1, 2])
+def test_raw_pixel_mask_maps_back_to_the_compared_image(orientation):
+    """raw_pixel_mask is the mask of the compared (rotated) image in the raw pixel frame of the ray tracing."""
+    from mcstas_gisans.fit import raw_pixel_mask
+    instrument = Instrument(copy.deepcopy(instrument_defaults['d22']), 0.4, 6.0, orientation)
+    det = instrument.detector
+    rng = np.random.default_rng(orientation)
+    shape = det.coords.rotate_detector_image(np.zeros((det.pixels_x_nexus, det.pixels_y_nexus))).shape
+    mask = rng.random(shape) < 0.3
+    raw = raw_pixel_mask(instrument, mask)
+    assert raw.shape == (det.pixels_x_nexus, det.pixels_y_nexus) and raw.sum() == mask.sum()
+    np.testing.assert_array_equal(det.coords.rotate_detector_image(raw), mask)
+
+
+def test_skipped_directions_keep_the_image_in_the_region(monkeypatch):
+    """End to end (paper data, band with an excluded specular box): skipping the directions aimed only at masked
+    pixels leaves the image in the unmasked region as it was (the random numbers of the kept rays are unchanged; only
+    rays smeared by more than 2 sigma from a skipped direction are missing), skips a part of the directions and
+    empties the masked pixels far from the region."""
+    import io
+    import contextlib
+    from mcstas_gisans.parameters import pack_parameters
+    from mcstas_gisans.run import process_particles
+    results = {}
+    for keep in (False, True):
+        extra = ["--outgoing_directions_horizontal", "20", "--outgoing_directions_vertical", "6", "--seed", "3"]
+        args, particles, particle_type, mask, _ = _prepare_paper_fit(monkeypatch, 'auto', extra + (["--keep_masked_directions"] if keep else []))
+        params = pack_parameters(args, particle_type)
+        assert (params['direction_keep_pixels'] is None) == keep
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = process_particles(particles, params)
+        results[keep] = (params['instrument'].detector.coords.rotate_detector_image(result['pixelHist']), result)
+    (skipped_image, skipped), (full_image, full) = results[False], results[True]
+    assert full['directions_skipped'] == 0 and full['directions'] == skipped['directions']
+    assert 0.1 < skipped['directions_skipped'] / skipped['directions'] < 0.9
+    in_region, total = skipped_image[mask].sum(), full_image[mask].sum()
+    assert total > 0 and abs(in_region / total - 1) < SMEARED_LOST_MAX
+    assert np.mean(skipped_image[mask] == full_image[mask]) > 0.9  # most pixels identical
+    assert skipped_image[~mask].sum() < 0.8 * full_image[~mask].sum()
+
+
+def test_scan_with_skipped_directions_saves_its_output(tmp_path):
+    """A scan point with --simulate_mask_angle_range saves its simulation (the provenance records the derived
+    raw-pixel mask of args by its type and shape) and reports the skipped directions."""
+    import glob
+    import subprocess
+    argv = PAPER_ARGV[:-1] + [str(tmp_path), "--outgoing_directions", "6", "--seed", "1", "--parallel_processes", "2",
+                              "--bornagain_number_of_threads", "1"]
+    res = subprocess.run(argv, capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr[-2000:]
+    assert "Directions aimed only at masked pixels, not simulated:" in res.stdout
+    assert glob.glob(str(tmp_path / "**" / "*.h5"), recursive=True)

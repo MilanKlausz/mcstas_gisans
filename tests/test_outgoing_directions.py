@@ -72,7 +72,7 @@ def test_rays_use_the_directions_bornagain_evaluates(monkeypatch, seed):
     alpha_i, n_h, n_v = 1.0, 7, 9
     params = {'angle_range': [-0.6, 0.8, 0.1, 2.0], 'outgoing_directions_horizontal': n_h,
               'outgoing_directions_vertical': n_v, 'specular': 'include_specular'}
-    weights, alpha_f, phi_f = run._execute_bornagain_simulation(_substrate(), 6.0, alpha_i, 1.0, [], params)
+    weights, alpha_f, phi_f, _ = run._execute_bornagain_simulation(_substrate(), 6.0, alpha_i, 1.0, [], params)
 
     phi_centres, alpha_centres = detectors[0]
     np.testing.assert_allclose(phi_f, phi_centres, atol=1e-12)

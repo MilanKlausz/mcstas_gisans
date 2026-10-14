@@ -23,7 +23,87 @@ from .hardware import get_available_cores
 from .input_output import get_particles, save_simulation_results_as_scipp
 from .preconditioning import precondition
 from .tof_filtering import get_tof_filtering_limits
-from .parameters import pack_parameters, set_outgoing_directions_from_sampling, neutron_angle_windows
+from .parameters import pack_parameters, set_outgoing_directions_from_sampling, neutron_angle_windows, ANGLE_WINDOW_RESOLUTION_SIGMAS
+
+def _grid_centres(angle_range: List[float], n_horizontal: int, n_vertical: int, jitter_phi: float, jitter_alpha: float) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Jittered centres [deg] of the outgoing-direction bins: alpha_f from the highest downwards (the row order of the
+    BornAgain result), phi_f increasing. BornAgain's SphericalDetector(n, min, max) treats min/max as bin EDGES.
+    """
+    horiz_min, horiz_max, vert_min, vert_max = angle_range
+    bin_phi = (horiz_max - horiz_min) / n_horizontal
+    bin_alpha = (vert_max - vert_min) / n_vertical
+    alpha_f = np.linspace(vert_max - bin_alpha / 2, vert_min + bin_alpha / 2, n_vertical) + jitter_alpha
+    phi_f = np.linspace(horiz_min + bin_phi / 2, horiz_max - bin_phi / 2, n_horizontal) + jitter_phi
+    return alpha_f, phi_f
+
+def _skipped_direction_rectangles(skip: np.ndarray, alpha_f: np.ndarray, phi_f: np.ndarray) -> List[Tuple[float, float, float, float]]:
+    """
+    BornAgain mask rectangles (phi_low, alpha_low, phi_high, alpha_high) [deg] covering exactly the bins to skip.
+    skip has shape (len(phi_f), len(alpha_f)). Runs of skipped bins along phi_f are merged over neighbouring alpha_f
+    rows with the same runs. Each rectangle reaches a quarter bin beyond the centres of its first and last bins, so it
+    contains their centres and overlaps no other bin (whichever of the two BornAgain uses to decide).
+    """
+    bin_phi = abs(phi_f[1] - phi_f[0]) if len(phi_f) > 1 else 1.0
+    bin_alpha = abs(alpha_f[1] - alpha_f[0]) if len(alpha_f) > 1 else 1.0
+    def runs(column):
+        edges = np.diff(np.concatenate([[0], column.astype(np.int8), [0]]))
+        return tuple(zip(np.where(edges == 1)[0], np.where(edges == -1)[0] - 1))
+    rectangles = []
+    row_runs = [runs(skip[:, j]) for j in range(skip.shape[1])]
+    j = 0
+    while j < len(row_runs):
+        k = j
+        while k + 1 < len(row_runs) and row_runs[k + 1] == row_runs[j]:
+            k += 1
+        a_low, a_high = min(alpha_f[j], alpha_f[k]), max(alpha_f[j], alpha_f[k])
+        for i0, i1 in row_runs[j]:
+            rectangles.append((phi_f[i0] - bin_phi / 4, a_low - bin_alpha / 4, phi_f[i1] + bin_phi / 4, a_high + bin_alpha / 4))
+        j = k + 1
+    return rectangles
+
+def _reach_table(keep_pixels: np.ndarray) -> np.ndarray:
+    """Summed-area table of the raw-pixel mask of the region (padded with a zero row and column)."""
+    table = np.zeros((keep_pixels.shape[0] + 1, keep_pixels.shape[1] + 1), dtype=np.int64)
+    table[1:, 1:] = np.cumsum(np.cumsum(keep_pixels.astype(np.int64), axis=0), axis=1)
+    return table
+
+def directions_reaching_region(
+    instrument: Any, reach_table: np.ndarray, x: float, y: float, z: float, v: float, phi_i: float,
+    alpha_f: np.ndarray, phi_f: np.ndarray
+) -> np.ndarray:
+    """
+    Which outgoing directions (grid of phi_f x alpha_f [deg], as in process_particles) can reach a pixel of the
+    region (reach_table of its raw-pixel mask): the unsmeared hit point of the ray, widened by
+    ANGLE_WINDOW_RESOLUTION_SIGMAS sigma of the detector resolution along each detector axis (the margin of the
+    per-neutron windows), touches a pixel of the region. Deterministic (no random numbers are drawn), so the
+    resolution smearing of the simulated rays is unchanged. Returns a bool array of shape (len(phi_f), len(alpha_f)).
+    """
+    det = instrument.detector
+    alpha_grid, phi_grid = np.meshgrid(np.deg2rad(alpha_f), np.deg2rad(phi_i + phi_f))
+    vx = v * np.cos(alpha_grid) * np.cos(phi_grid)
+    vy = v * np.cos(alpha_grid) * np.sin(phi_grid)
+    vz = v * np.sin(alpha_grid)
+    _, x_int, y_int, z_int = det.detector_plane_intersection(x, y, z, vx, vy, vz, instrument.sample_detector_distance)
+    x_nexus, y_nexus, _ = det.coords.bornagain_to_nexus(x_int, y_int, z_int)
+    margin_x = ANGLE_WINDOW_RESOLUTION_SIGMAS * det.sigma_x_nexus
+    margin_y = ANGLE_WINDOW_RESOLUTION_SIGMAS * det.sigma_y_nexus
+    nx, ny = det.pixels_x_nexus, det.pixels_y_nexus
+    with np.errstate(invalid='ignore'):
+        ix0 = np.floor((x_nexus - margin_x - det.min_edge_x_nexus) / det.pixel_size_x_nexus)
+        ix1 = np.floor((x_nexus + margin_x - det.min_edge_x_nexus) / det.pixel_size_x_nexus)
+        iy0 = np.floor((y_nexus - margin_y - det.min_edge_y_nexus) / det.pixel_size_y_nexus)
+        iy1 = np.floor((y_nexus + margin_y - det.min_edge_y_nexus) / det.pixel_size_y_nexus)
+        on_detector = np.isfinite(ix0) & np.isfinite(iy0) & (ix1 >= 0) & (ix0 < nx) & (iy1 >= 0) & (iy0 < ny)
+    reach = np.zeros(alpha_grid.shape, dtype=bool)
+    if np.any(on_detector):
+        a0 = np.clip(ix0[on_detector], 0, nx - 1).astype(int)
+        a1 = np.clip(ix1[on_detector], 0, nx - 1).astype(int) + 1
+        b0 = np.clip(iy0[on_detector], 0, ny - 1).astype(int)
+        b1 = np.clip(iy1[on_detector], 0, ny - 1).astype(int) + 1
+        count = reach_table[a1, b1] - reach_table[a0, b1] - reach_table[a1, b0] + reach_table[a0, b0]
+        reach[on_detector] = count > 0
+    return reach
 
 def _grid_jitter(angle_range: List[float], n_horizontal: int, n_vertical: int, rand_y: float, rand_z: float) -> Tuple[float, float]:
     """
@@ -65,11 +145,13 @@ def get_simulation(
     polarization: List[float],
     analyzer_direction: List[float],
     analyzer_efficiency: float,
-    analyzer_transmission: float
+    analyzer_transmission: float,
+    masked_rectangles: Optional[List[Tuple[float, float, float, float]]] = None
 ) -> ba.ScatteringSimulation:
     """
     Create a simulation with outgoing_directions_horizontal and _vertical pixels covering the 4-element angle_range
-    [horiz_min, horiz_max, vert_min, vert_max] in degrees.
+    [horiz_min, horiz_max, vert_min, vert_max] in degrees. The bins inside masked_rectangles (phi_low, alpha_low,
+    phi_high, alpha_high) [deg] are masked: BornAgain does not compute them (their intensity is 0).
     """
     beam = ba.Beam(p, wavelength*angstrom, alpha_i*deg)
 
@@ -81,6 +163,8 @@ def get_simulation(
         outgoing_directions_horizontal, (horiz_min + rand_deg_phi)*deg, (horiz_max + rand_deg_phi)*deg,
         outgoing_directions_vertical, (vert_min + rand_deg_alpha)*deg, (vert_max + rand_deg_alpha)*deg
     )
+    for phi_low, alpha_low, phi_high, alpha_high in masked_rectangles or []:
+        detector.addMask(ba.Rectangle(phi_low*deg, alpha_low*deg, phi_high*deg, alpha_high*deg), True)
     if polarization:
         beam.setPolarization(ba.R3(*polarization))
         if analyzer_direction:
@@ -138,13 +222,15 @@ def _execute_bornagain_simulation(
     p: float,
     polarization: List[float],
     params: Dict[str, Any],
-    angle_range: Optional[List[float]] = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    angle_range: Optional[List[float]] = None,
+    direction_filter: Optional[Any] = None
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """
     Setup and run the BornAgain scattering simulation for a single particle, with its outgoing directions in
-    angle_range (default: params['angle_range']).
+    angle_range (default: params['angle_range']). direction_filter(alpha_f, phi_f) -> bool array (phi x alpha), if
+    given, selects the directions to simulate; the others are masked in BornAgain (weight 0).
     Returns:
-        (weights, alpha_f_grid, phi_f_grid)
+        (weights, alpha_f_grid, phi_f_grid, number of skipped directions)
     """
     if angle_range is None:
         angle_range = params['angle_range']
@@ -153,13 +239,28 @@ def _execute_bornagain_simulation(
 
     rand_y = 2*np.random.random()-1
     rand_z = 2*np.random.random()-1
-    
+
+    rand_deg_phi, rand_deg_alpha = _grid_jitter(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z)
+    # each intensity belongs to its bin centre; rows are ordered from the highest alpha_f downwards
+    alpha_f, phi_f = _grid_centres(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_deg_phi, rand_deg_alpha)
+
+    masked_rectangles = None
+    n_skipped = 0
+    if direction_filter is not None:
+        skip = ~direction_filter(alpha_f, phi_f)
+        n_skipped = int(skip.sum())
+        if skip.all():  # no direction can reach the region: nothing to simulate
+            return np.zeros(skip.size), alpha_f, phi_f, n_skipped
+        if n_skipped:
+            masked_rectangles = _skipped_direction_rectangles(skip, alpha_f, phi_f)
+
     sim = get_simulation(
         sample_model, outgoing_directions_horizontal, outgoing_directions_vertical,
         angle_range, wavelength, alpha_i, p, rand_y, rand_z, polarization,
         analyzer_direction=params.get('analyzer_direction', [0,0,0]),
         analyzer_efficiency=params.get('analyzer_efficiency', 1.0),
-        analyzer_transmission=params.get('analyzer_transmission', 0.5)
+        analyzer_transmission=params.get('analyzer_transmission', 0.5),
+        masked_rectangles=masked_rectangles
     )
     sim.options().setUseAvgMaterials(params.get('use_avg_materials', True))
     sim.options().setIncludeSpecular(params.get('specular') == 'include_specular')
@@ -170,18 +271,8 @@ def _execute_bornagain_simulation(
     res = sim.simulate()
     pout = get_result_intensities(res)
 
-    horiz_min, horiz_max, vert_min, vert_max = angle_range
-    rand_deg_phi, rand_deg_alpha = _grid_jitter(angle_range, outgoing_directions_horizontal, outgoing_directions_vertical, rand_y, rand_z)
-
-    # BornAgain's SphericalDetector(n, min, max) treats min/max as bin EDGES; each intensity
-    # belongs to its bin centre. Rows are ordered from the highest alpha_f downwards.
-    bin_phi = (horiz_max - horiz_min) / outgoing_directions_horizontal
-    bin_alpha = (vert_max - vert_min) / outgoing_directions_vertical
-    alpha_f = np.linspace(vert_max - bin_alpha / 2, vert_min + bin_alpha / 2, outgoing_directions_vertical) + rand_deg_alpha
-    phi_f = np.linspace(horiz_min + bin_phi / 2, horiz_max - bin_phi / 2, outgoing_directions_horizontal) + rand_deg_phi
-    
     weights = pout.T.flatten()
-    return weights, alpha_f, phi_f
+    return weights, alpha_f, phi_f, n_skipped
 
 def _calculate_nexus_hits(
     instrument: Any,
@@ -284,6 +375,10 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
         random_seed = params.get('random_seed')
         window_region = params.get('angle_window_region')
         windows = neutron_angle_windows(window_region, particles, instrument) if window_region is not None else None
+        # directions aimed only at pixels outside the region (raw-pixel mask) are masked in BornAgain (not computed)
+        keep_pixels = params.get('direction_keep_pixels')
+        reach_table = _reach_table(keep_pixels) if keep_pixels is not None else None
+        n_directions, n_skipped = 0, 0
 
         if not is_tof:
             pixel_hist = np.zeros((instrument.detector.pixels_x_nexus, instrument.detector.pixels_y_nexus), dtype=np.float64)
@@ -324,10 +419,16 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
                     instrument, x, y, z, t, np.array([vx]), np.array([vy]), np.array([vz])
                 )
             else:
-                weights, alpha_f_grid, phi_f_grid = _execute_bornagain_simulation(
+                direction_filter = None
+                if reach_table is not None:
+                    direction_filter = lambda a_f, p_f: directions_reaching_region(instrument, reach_table, x, y, z, v, phi_i, a_f, p_f)
+                weights, alpha_f_grid, phi_f_grid, skipped = _execute_bornagain_simulation(
                     sample_model, wavelength, alpha_i, p, polarization, params,
-                    angle_range=windows[id] if windows is not None else None
+                    angle_range=windows[id] if windows is not None else None,
+                    direction_filter=direction_filter
                 )
+                n_directions += weights.size
+                n_skipped += skipped
                 
                 phi_f_total = phi_i + phi_f_grid
                 alpha_grid_2d, phi_grid_2d = np.meshgrid(np.deg2rad(alpha_f_grid), np.deg2rad(phi_f_total))
@@ -405,7 +506,9 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
         return {
             'pixelHist': pixel_hist,
             'pixelHistWeightsSquared': pixel_hist_weights_squared,
-            'temp_h5_path': h5_temp_path
+            'temp_h5_path': h5_temp_path,
+            'directions': n_directions,
+            'directions_skipped': n_skipped
         }
     except Exception:
         # the exception propagates to the caller (multiprocessing re-raises it in the parent);
@@ -461,7 +564,9 @@ def process_particles_parallelly(particles: Any, params: Dict[str, Any], process
             
     result: Dict[str, Any] = {
         'pixelHist': pixel_hist,
-        'pixelHistWeightsSquared': pixel_hist_weights_squared
+        'pixelHistWeightsSquared': pixel_hist_weights_squared,
+        'directions': sum(r.get('directions', 0) for r in results),
+        'directions_skipped': sum(r.get('directions_skipped', 0) for r in results)
     }
     
     if is_tof:

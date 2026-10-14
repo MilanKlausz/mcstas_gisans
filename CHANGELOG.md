@@ -13,6 +13,15 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_fit --simulate_mask_angle_range`: the outgoing directions aimed only at masked pixels are no longer
+  simulated. Before each neutron's BornAgain simulation its rays are traced to the detector (without the
+  resolution smearing, so the random numbers of the simulated rays are unchanged); directions whose hit point,
+  widened by 2 sigma of the detector resolution along each detector axis, touches no unmasked pixel are masked in
+  the BornAgain detector, which does not compute them. The unmasked pixels get the same counts (up to rays smeared
+  by more than 2 sigma, as for the windows). The skipped fraction is printed after the first evaluation; measured:
+  a T-shaped fit region of a liquid-surface fit (46 x 36 directions) skips 56% and is 3.5 times faster, the D22
+  silica example (band with an excluded specular box, small grid) skips 30% and is 1.2 times faster.
+  `--keep_masked_directions` simulates all directions as before.
 - `mg_fit --mask_view`: the masked map shows the masked pixels as the measured data on a grey scale, under the
   fitted pixels in colour (`--mask_view_style grey`, default); `--mask_view_style black` blacks them out as
   before.

@@ -821,8 +821,30 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
         fmt = lambda r: f"horiz=[{r[0]:.4f}, {r[1]:.4f}], vert=[{r[2]:.4f}, {r[3]:.4f}]"
         print(f"Mask angle range [deg] (the unmasked pixels seen from the sample centre): {fmt(args.mask_angle_range)}"
               + ("" if factor == 'auto' else f"; simulated with factor {factor:g}: {fmt(args.angle_range)}"))
+        # the unmasked pixels in the raw detector frame of the ray tracing (run.directions_reaching_region): the
+        # outgoing directions aimed only at masked pixels are not simulated (unless --keep_masked_directions)
+        args.direction_keep_pixels = None if getattr(args, 'keep_masked_directions', False) else raw_pixel_mask(instrument, mask)
+    else:
+        args.direction_keep_pixels = None
 
     return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
+
+def raw_pixel_mask(instrument: Any, mask: np.ndarray) -> np.ndarray:
+    """
+    The mask of the compared image (the rotated detector image of run_simulation_evaluation, transposed there if its
+    shape requires) in the raw NeXus pixel frame [ix, iy] of the ray tracing.
+    """
+    det = instrument.detector
+    raw_index = np.arange(det.pixels_x_nexus * det.pixels_y_nexus).reshape(det.pixels_x_nexus, det.pixels_y_nexus)
+    rotated = det.coords.rotate_detector_image(raw_index)
+    if rotated.shape != mask.shape and rotated.T.shape == mask.shape:
+        rotated = rotated.T
+    if rotated.shape != mask.shape:
+        raise ValueError(f"The mask {mask.shape} does not match the detector image {rotated.shape}.")
+    keep = np.zeros(raw_index.size, dtype=bool)
+    keep[rotated[np.asarray(mask, dtype=bool)]] = True
+    return keep.reshape(raw_index.shape)
+
 
 def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
     """
@@ -919,6 +941,10 @@ def run_simulation_evaluation(
         result = process_particles_parallelly(particles, params, process_number)
 
     instrument = params['instrument']
+    if result.get('directions') and params.get('direction_keep_pixels') is not None and not getattr(args, '_skipped_directions_reported', False):
+        args._skipped_directions_reported = True
+        print(f"Directions aimed only at masked pixels, not simulated: {result['directions_skipped']} of {result['directions']} "
+              f"({100 * result['directions_skipped'] / result['directions']:.1f}%; --keep_masked_directions simulates them)")
 
     raw_hist = result['pixelHist']
     raw_err = np.sqrt(result['pixelHistWeightsSquared'])

@@ -234,6 +234,7 @@ def pack_parameters(args, particle_type):
         'outgoing_directions_vertical': outgoing_directions_vertical,
         'angle_range': angle_range,
         'angle_window_region': list(angle_window_region) if angle_window_region is not None else None,
+        'direction_keep_pixels': getattr(args, 'direction_keep_pixels', None),
         'sample': sample,
         'instrument': instrument,
         'use_avg_materials': args.use_avg_materials,

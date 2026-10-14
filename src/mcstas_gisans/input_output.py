@@ -248,7 +248,8 @@ def save_simulation_results_as_scipp(savename: str, params: Dict[str, Any], resu
 
     provenance_metadata = {
         'cli_command': sc.scalar(" ".join(sys.argv)),
-        'cli_args_json': sc.scalar(json.dumps(vars(args))),
+        # derived arrays (e.g. the raw-pixel mask of mg_fit) are recorded by their type and shape
+        'cli_args_json': sc.scalar(json.dumps(vars(args), default=lambda o: f"<{type(o).__name__} {getattr(o, 'shape', '')}>")),
         'random_seed': sc.scalar(str(getattr(args, 'seed', None))),
         'bornagain_version': sc.scalar(str(getattr(bornagain, 'version', 'unknown'))),
         'mcstas_gisans_version': sc.scalar(mg_version),
