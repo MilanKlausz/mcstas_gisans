@@ -53,7 +53,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   (the McStas model `ISIS_SANS2d_12m.instr`), the rear tube detector of the
   2019 measurements (120 tubes x 512 pixels, 1.0414 x 0.972 m, 11.999 m from
   the sample, centre offset [-0.0018, 0.0825] m from the direct beam: the
-  direct beam of run 60993 2.6 mm above the centre of its tube), the T0
+  direct beam of run 60993 2.6 mm above the centre of its tube), detector
+  resolution 8 mm FWHM along the tubes (the SANS2d tube array), the T0
   monitor `Source_TOF_Lambda`; no MCPL TOF-filtering monitor.
 - `mg_plot --nxs` reads raw ISIS SANS2D NeXus files as event data (the
   detection events of the rear tube detector, `--nxs_format`, recognised

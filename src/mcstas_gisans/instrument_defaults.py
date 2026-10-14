@@ -54,7 +54,9 @@ instrument_defaults = {
             # wavelength at which the falling beam crosses into the next tube); x from the specular of run 60998 (+1.8 mm)
             'direct_beam_centre_offset': [-0.0018, 0.0825], #[m]
             'pixels': [512, 120],
-            'resolution': [0.0, 0.0] #fwhm[m], unknown
+            # along the tubes (x): <= 8 mm FWHM measured for the SANS2d tube array (Duxbury et al., JINST 9 C12051,
+            # 2014); consistent with the direct beam 60993 for the 20 mm source aperture; across: the tube pitch
+            'resolution': [0.008, 0.0] #fwhm[m]
         },
     },
     'csns_vsans': { #CSNS VSANS (BL14), TOF. McStas model CSNS_VSANS_GISANS.instr (csns_vsans_local), from the CSNS
