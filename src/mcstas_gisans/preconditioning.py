@@ -120,14 +120,17 @@ def propagate_to_sample_surface(particles, sample_size_y, sample_size_x, allow_s
     return events_on_sample_surface
 
 def apply_t0_correction(particles, args):
-    """Apply t0 TOF correction for all particles. A fixed t0correction value can be
-    given to be subtracted, or a McStas TOFLambda monitor result with a selected
-    wavelength is used, in which case t0correction is retrieved as the mean value
-    from fitting a Gaussian function to the TOF spectrum of the wavelength bin
-    including the selected wavelength. The fitting is done for the full TOF range
-    unless the WFM mode is used, in which case it is done within the wavelength
-    dependent subpulse TOF limits. Rebinning along the wavelength axis can be
-    applied beforehand to improve the reliability of the fitting.
+    """Apply the t0 TOF correction: subtract ONE t0 value from the TOF of all particles.
+    The value is either fixed (--t0_fixed) or taken from a McStas TOFLambda monitor:
+    the centre of mass (weighted mean, not a fit) of the TOF spectrum of the
+    wavelength bin containing --wavelength, i.e. the mean emission time of neutrons
+    of that wavelength. Over the full TOF range of the monitor, or, in WFM mode,
+    within the sub-pulse TOF limits of that wavelength (hard-coded for SAGA).
+    Rebinning along the wavelength axis (--t0_wavelength_rebin) can make the
+    spectrum less noisy.
+    One value is correct for a simulation of one narrow wavelength band only; the
+    emission time depends on the wavelength, so there is no t0 per wavelength slice
+    (see TODO.md).
     WARNING: the TOF axis of the monitor is assumed to have microsecond units!
     """
     if args.t0_fixed is not None: #T0 correction with fixed input value

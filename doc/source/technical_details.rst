@@ -26,7 +26,7 @@ Two optional, McStas-monitor-driven corrections are applied to the input MCPL pa
 
      *Output of* ``mg_run test_events.mcpl.gz --instrument saga --wavelength 6.0 --input_wavelength_rebin 10 --tof_filtering_figure png`` *for a McStas simulation of SAGA (ESS) with a 5-7 Å source band: the TOF-wavelength spectrum of the* ``Mcpl_TOF_Lambda`` *monitor at the sample position (top) and its slice at 6 Å with the fitted Gaussian; the particles between the FWHM limits are kept (bottom).*
 
-* **T0 correction** (``apply_t0_correction``): subtracts a constant t0 from the TOF of every particle, either a fixed value (``--t0_fixed``, e.g. calculated from chopper settings) or the mean (weighted average, not a fit) of the TOF spectrum in the wavelength bin containing ``--wavelength`` of the instrument's ``t0_monitor_name`` McStas monitor placed at the source position. See :ref:`t0_correction_section` below. Disable with ``--no_t0_correction``; visualise with ``--t0_correction_figure``.
+* **T0 correction** (``apply_t0_correction``): subtracts one constant t0 from the TOF of every particle (one value per run, for a simulation of one narrow wavelength band), either a fixed value (``--t0_fixed``, e.g. calculated from chopper settings) or the mean (weighted average, not a fit) of the TOF spectrum in the wavelength bin containing ``--wavelength`` of the instrument's ``t0_monitor_name`` McStas monitor placed at the source position. See :ref:`t0_correction_section` below. Disable with ``--no_t0_correction``; visualise with ``--t0_correction_figure``.
 
 2. Coordinate Systems & Transformations
 ---------------------------------------
@@ -129,9 +129,14 @@ The T0 correction accounts for the pulse width of the source. It is only needed 
 
    Defining t0 from a TOF–wavelength McStas monitor at the source position (top): the wavelength bin containing the wavelength of interest (6.0 Å) is selected and t0 is the weighted average of its TOF spectrum (bottom). Output of ``--t0_correction_figure png`` for the SAGA simulation of the figure above (``Source_TOF_Lambda`` monitor).
 
+**What it can and cannot do.** One t0 is subtracted from every particle of the run. The mean emission time depends on the wavelength (e.g. for the SANS2D moderator 305, 361 and 398 µs at 4, 7 and 10 Å, which agree within 1–2 % with the mean emission delay of the simulated neutrons), so one value is right for a simulation of one narrow wavelength band (``--wavelength``, usually with MCPL TOF filtering), not for a whole band:
+
+* There is no t0 per wavelength slice. With ``--wavelength_slice`` (a whole band reduced in several slices) the monitor-based t0 is refused; use ``--no_t0_correction`` (the TOF then starts at the source pulse, as the raw TOF of measurements at short-pulse sources such as ISIS or CSNS, which are not corrected for the emission time either; the emission time gives the TOF resolution and a small wavelength offset, the same in the simulation and the measurement) or ``--t0_fixed``.
+* Long-pulse sources (ESS) need the time of flight from the arrival time with a lookup table (distance × arrival time), as in the ESS reduction software; this is not implemented. See ``TODO.md``.
+
 .. _wfm_mode_section:
 
-In Wavelength Frame Multiplication mode (``--wfm``) the mean is taken only over the sub-pulse containing the selected wavelength (sub-pulse limits are currently hardcoded for SAGA), from the ``wfm_t0_monitor_name`` monitor, and the flight path used to calculate the wavelength is shortened by ``wfm_virtual_source_distance``, because the corrected TOF refers to the virtual source.
+In Wavelength Frame Multiplication mode (``--wfm``) the mean is taken only over the sub-pulse containing the selected wavelength, from the ``wfm_t0_monitor_name`` monitor at the WFM choppers (the virtual source), and the flight path used to calculate the wavelength is shortened by ``wfm_virtual_source_distance``, because the corrected TOF refers to the virtual source. The sub-pulse TOF limits are hard-coded for SAGA: the sub-pulses overlap in wavelength, so the TOF spectrum of one wavelength bin can contain two sub-pulses and the right one has to be selected; a general solution needs the chopper settings (see ``TODO.md``).
 
 Outgoing directions
 ~~~~~~~~~~~~~~~~~~~
