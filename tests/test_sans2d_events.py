@@ -52,3 +52,45 @@ def test_mg_plot_reduces_measured_events_like_simulated_ones(tmp_path):
     args = create_argparser().parse_args(['--nxs', str(path), '--instrument', 'sans2d', '--alpha', '0.3',
                                           '--sample_orientation', '1'])
     assert get_datasets(args)[0][0].sum() == pytest.approx(3.0)
+
+
+def _tof_dataset(path, extra):
+    from mcstas_gisans.plot_cli import create_argparser
+    from mcstas_gisans.plot import get_datasets
+    args = create_argparser().parse_args(['--nxs', str(path), '--instrument', 'sans2d', '--alpha', '0.3',
+                                          '--sample_orientation', '1'] + extra)
+    return get_datasets(args)[0]
+
+
+def test_tof_q_bins_do_not_depend_on_the_plot_range(tmp_path):
+    # the plot range only sets the axis limits (as in Mantid / esssans, the Q bins are a separate choice): zooming
+    # must not make the bins narrower than a pixel (combs of empty bins)
+    pytest.importorskip('scipp')
+    pytest.importorskip('scippneutron')
+    path = tmp_path / 'raw.nxs'
+    _write_raw_with_events(path, [9, 10, 10, 11], [50000.0, 50000.0, 70000.0, 50000.0])
+    hist, _, y_edges, z_edges, _ = _tof_dataset(path, [])
+    zoomed, _, y_zoomed, z_zoomed, _ = _tof_dataset(path, ['--y_plot_range', '-0.05', '0.05', '--z_plot_range', '0', '0.1'])
+    np.testing.assert_array_equal(y_zoomed, y_edges)
+    np.testing.assert_array_equal(z_zoomed, z_edges)
+    np.testing.assert_array_equal(zoomed, hist)
+
+
+def test_tof_q_bins_option_sets_the_bin_edges(tmp_path):
+    pytest.importorskip('scipp')
+    pytest.importorskip('scippneutron')
+    path = tmp_path / 'raw.nxs'
+    _write_raw_with_events(path, [9, 10, 10, 11], [50000.0, 50000.0, 70000.0, 50000.0])
+    hist, _, y_edges, z_edges, _ = _tof_dataset(path, ['--qy_bins', '-5', '5', '40', '--qz_bins', '-5', '5', '25'])
+    np.testing.assert_allclose(y_edges, np.linspace(-5, 5, 41))
+    np.testing.assert_allclose(z_edges, np.linspace(-5, 5, 26))
+    assert hist.shape == (40, 25)
+    assert hist.sum() == pytest.approx(3.0)  # all rear events inside the bins
+
+
+@pytest.mark.parametrize('bins', [['0.2', '-0.2', '10'], ['-0.2', '0.2', '0'], ['-0.2', '0.2', '2.5']])
+def test_invalid_q_bins_are_rejected(monkeypatch, bins):
+    from mcstas_gisans.plot_cli import create_argparser, parse_args
+    monkeypatch.setattr('sys.argv', ['mg_plot', '--nxs', 'x.nxs', '--qy_bins'] + bins)
+    with pytest.raises(SystemExit):
+        parse_args(create_argparser())

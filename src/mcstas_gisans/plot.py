@@ -167,9 +167,12 @@ def build_plot_instrument(args: Any, metadata: Dict[str, Any], label: str = 'the
 
 def _tof_events_to_q_histogram(args: Any, instrument: Any, scipp_da: Any, y_edges: np.ndarray, z_edges: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    TOF event data (simulated by mg_run, or measured): Q per event (with the wavelength from its TOF), the events of
-    --wavelength_slice, histogrammed in a Q grid with the numbers of bins of the pixel grid (y_edges, z_edges) over
-    the plot ranges (default: the extent of the events). Returns (hist, hist_error, y_edges, z_edges) in 1/nm.
+    TOF event data (simulated by mg_run, or measured): Q per event (with the wavelength from its TOF and the pixel
+    centre), the events of --wavelength_slice, histogrammed in the Q bins of --qy_bins / --qz_bins (as the QxBins /
+    QyBins of ESS esssans), by default the numbers of bins of the pixel grid (y_edges, z_edges) over the extent of
+    the events. The bins never depend on --y_plot_range / --z_plot_range, which only set the axis limits: bins
+    narrower than the Q width of a pixel leave bins without events (combs/stripes). Returns
+    (hist, hist_error, y_edges, z_edges) in 1/nm.
     """
     import scipp as sc
     scipp_da = instrument.compute_q_scipp(scipp_da)
@@ -177,13 +180,17 @@ def _tof_events_to_q_histogram(args: Any, instrument: Any, scipp_da: Any, y_edge
         min_w, max_w = args.wavelength_slice
         scipp_da = scipp_da.bin(wavelength=sc.array(dims=['wavelength'], values=[min_w, max_w], unit='angstrom'))
     scipp_da = scipp_da.bins.concat()
-    # default Q range: the extent of the events (all wavelengths), in 1/nm
+    # default Q bins: the number of pixel-grid bins over the extent of the events (of the slice), in 1/nm
     events = scipp_da.bins.constituents['data']
     event_qy, event_qz = events.coords['Qy'].values * 10.0, events.coords['Qz'].values * 10.0
     pad = lambda lo, hi: (lo - 1e-9 * max(1.0, abs(hi - lo)), hi + 1e-9 * max(1.0, abs(hi - lo)))
-    y_min, y_max = tuple(args.y_plot_range) if getattr(args, 'y_plot_range', None) else pad(np.nanmin(event_qy), np.nanmax(event_qy))
-    z_min, z_max = tuple(args.z_plot_range) if getattr(args, 'z_plot_range', None) else pad(np.nanmin(event_qz), np.nanmax(event_qz))
+    y_min, y_max = pad(np.nanmin(event_qy), np.nanmax(event_qy))
+    z_min, z_max = pad(np.nanmin(event_qz), np.nanmax(event_qz))
     bins_y, bins_z = len(y_edges) - 1, len(z_edges) - 1
+    if getattr(args, 'qy_bins', None):
+        y_min, y_max, bins_y = args.qy_bins[0], args.qy_bins[1], int(args.qy_bins[2])
+    if getattr(args, 'qz_bins', None):
+        z_min, z_max, bins_z = args.qz_bins[0], args.qz_bins[1], int(args.qz_bins[2])
     scipp_binned = scipp_da.bin(
         Qy=sc.linspace(dim='Qy', start=y_min/10, stop=y_max/10, num=bins_y + 1, unit='1/angstrom'),
         Qz=sc.linspace(dim='Qz', start=z_min/10, stop=z_max/10, num=bins_z + 1, unit='1/angstrom')

@@ -74,6 +74,8 @@ def create_argparser():
     # Data slicing options
     sliceGroup = parser.add_argument_group('Data Slicing', 'Options for slicing event data (e.g. TOF).')
     sliceGroup.add_argument('--wavelength_slice', nargs=2, type=float, metavar=('MIN', 'MAX'), help='Slice TOF event data by wavelength range [angstrom] before plotting.')
+    sliceGroup.add_argument('--qy_bins', nargs=3, type=float, metavar=('START', 'STOP', 'NBINS'), help='Qy bins [1/nm] of TOF event data (like QyBins of ESS esssans): NBINS equal bins from START to STOP. Default: as many bins as detector pixels over the Qy extent of the events. Choose bins no narrower than the Q width of a pixel at the shortest wavelength, else some bins get no events. The 2D image data of monochromatic instruments keep their pixel grid. --y_plot_range only sets the axis limits.')
+    sliceGroup.add_argument('--qz_bins', nargs=3, type=float, metavar=('START', 'STOP', 'NBINS'), help='Qz bins [1/nm] of TOF event data, as --qy_bins.')
 
     return parser
 
@@ -101,6 +103,11 @@ def parse_args(parser):
 
     if args.normalise_to_nxs and not args.nxs:
         parser.error('The --normalise_to_nxs option can only be used when --nxs is also in use.')
+
+    for name in ('qy_bins', 'qz_bins'):
+        bins = getattr(args, name)
+        if bins and (not bins[0] < bins[1] or bins[2] < 1 or bins[2] != int(bins[2])):
+            parser.error(f"--{name} needs START < STOP and a positive integer NBINS, got {' '.join(f'{b:g}' for b in bins)}.")
 
     if args.split_view:
         conflicting = [name for name in ('multi2d', 'dual_plot') if getattr(args, name)]

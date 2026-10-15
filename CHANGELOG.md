@@ -18,6 +18,10 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   sample 22.1077 m, sample to detector 11.5 m; the detector is a placeholder
   flat 2D detector (0.5 x 0.5 m, 2 mm pixels) until the VSANS detector
   geometry is implemented.
+- `mg_plot --qy_bins START STOP NBINS` and `--qz_bins START STOP NBINS`: the Q
+  bins [1/nm] of TOF event data (simulated or raw SANS2D), as `QxBins`/`QyBins`
+  of ESS esssans. Default: as many bins as detector pixels over the Q extent of
+  the events (of the wavelength slice).
 - `mg_plot`: without `--intensity_min`, the colour scale of maps that are all in
   counts (measured NeXus data alone, e.g. a wavelength slice of raw TOF data,
   or with simulations normalised by `--normalise_to_nxs`) starts at half a
@@ -141,6 +145,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   regression tests on the D22 paper data.
 
 ### Changed
+- `mg_plot`, TOF event data: `--y_plot_range`/`--z_plot_range` only set the axis
+  limits; they no longer set the range of the Q bins (zoomed plots had bins
+  narrower than one pixel at short wavelengths, i.e. combs of empty bins). Pixel
+  centres give Q, the bins are a separate choice (`--qy_bins`/`--qz_bins`), as in
+  Mantid (Q1D/Qxy) and ESS esssans.
 - **Average materials by default**: the simulations use BornAgain's average
   materials (`--use_avg_materials`, now the default, as in BornAgain 24: the
   reflection and transmission use the effective refractive index of layers with
