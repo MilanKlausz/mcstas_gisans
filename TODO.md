@@ -42,3 +42,34 @@ whole bin would be wrong.
 - Do it correctly for any WFM instrument: assign every neutron (or wavelength/TOF region) to its sub-pulse from the
   chopper settings (opening times and positions of the WFM choppers), instead of hard-coded limits.
 - Not needed at the moment (no WFM instrument in use).
+
+## Data reduction on ESS/scipp code (review 2026-10-15)
+Rule: no own data-reduction code where scippneutron / scippnexus / essreduce / esssans provide it (dependency +
+tests); simulated and measured data in the same format, converters per facility. Today scippneutron is used once
+(tof -> wavelength in mg_plot); readers, geometry, mg_fit tof -> wavelength, Q with gravity, binning, masks and
+beam-centre finding are own code. Simulation-only parts stay own (MCPL handling, BornAgain, ray tracing, detector
+smearing, virtual-experiment Poisson noise, fit losses).
+
+Open decisions:
+- Python 3.12 environments (the current essreduce / essreflectometry / scippneutron releases need >= 3.12; ours are
+  3.11, where essreduce <= 26.8, esssans 26.6, essreflectometry 26.6 without the Freia sample-normal angle code):
+  check BornAgain for 3.12 and the cluster container, or stay on 3.11 and copy the few Freia functions (BSD-3).
+- Weighted events: NeXus has no weight field (scippnexus sets weights to 1, essreduce sets variance = value).
+  Proposal: keep weights as a documented `event_weight` field + our own loader step (variance w^2, as ESS's
+  BIFROST/Freia McStas loaders), plus an optional unit-weight "virtual measurement" export (Poisson(weight x time),
+  folded into frames) that any standard tool reads unchanged.
+
+Plan:
+1. No new dependencies: scippneutron for the mg_fit tof -> wavelength (tof_slices.py), scippnexus for the SANS2D
+   events (event_time_zero kept), regression tests against the current results.
+2. NeXus writer for simulated events: NXevent_data (one pulse costs 16 bytes; event_time_offset uint32 ns,
+   event_id, event_weight, gzip/lzf + shuffle, sorted by pixel: ~10 bytes/event vs 28 now), NXdetector geometry,
+   NXsource (L1), NXsample (alpha), provenance. Converters: raw SANS2D (copy events + our geometry + monitors),
+   D22 images (histogram + wavelength; esssans has no monochromatic path), CSNS placeholder (40 ms frames).
+3. Loading with essreduce GenericNeXusWorkflow + weight provider; tof from event_time_offset (ISIS) or essreduce
+   lookup tables (ESS, CSNS frames); wavelength with scippneutron; scipp masks.
+4. GISANS Q (alpha_i, alpha_f, in-plane angle, gravity) as a scippneutron conversion-graph step on the Freia /
+   scippneutron building blocks (no GISANS conversion exists in ESS code), regression-tested against
+   Instrument.calculate_q_from_nexus_positions.
+5. mg_fit histogram path (per pixel and TOF bin) on the same graph; esssans binning / normalisation where it fits.
+Details: ESS_REUSE_REVIEW_local.md (owner's notes, not in the repository).
