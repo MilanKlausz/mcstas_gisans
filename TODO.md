@@ -1,6 +1,66 @@
 # TODO
 
-Planned work that is not in the code yet. See `CHANGELOG.md` for what is done.
+Possible future improvements and planned work, not yet implemented (see `CHANGELOG.md` for what is done).
+
+## General
+
+Possible future improvements, not yet implemented. Most were deliberately deferred during the dev-scipp review
+(Sept-Oct 2026); see `review_dev_scipp_findings_local.md` for context.
+
+* **Direct-beam attenuation / dead time in the intensity factor.** Direct-beam measurements are often taken with an attenuator (and at high count rates detector dead time matters). The intensity-factor formula `NXS sum / NXS time / MCPL sum(weights)` ignores both. A user-supplied attenuation factor (and optionally a dead-time correction) could be added once the necessary information is available for each instrument. Not read from NeXus files, since their layout differs between facilities.
+* **Parallel performance tuning.** Processes × BornAgain threads should not exceed the allocated cores (BornAgain defaults to all node cores). Needs a benchmark grid on the cluster before changing defaults.
+* **Instrument definitions, stage B.** Built-in instrument definitions as data files; user-supplied instrument files (`extends: d22` + overrides) so users need not edit version-controlled code.
+* **Instrument definitions, stage C.** Move to scipp/NeXus JSON-template instrument definitions (separate project).
+* **TOF incident angle vs wavelength.** For horizontal samples in TOF mode the real incident angle depends on wavelength (gravity along the collimation, e.g. REFSANS: 0.62°→0.69°). Support both horizontal and vertical samples in TOF mode; the direct-beam centroid vs λ² can calibrate it.
+* **Optional NeXus sanity checks.** Where a facility's NeXus layout is known (e.g. D22 `entry0/D22/selector/wavelength`), compare with user input and warn (never used as the value itself).
+* **Automatic background from the measurement (`--background auto` / `--background_region`).** Estimate the flat background once, before a fit, from measured bins where the sample cannot scatter, and use it as a fixed value (model-independent, unlike `--fit_background`, whose value is conditional on the simulated pattern and absorbs model errors far from the optimum). Example (D22 high-res microgel, 8 files, 14064 s): 6.1 counts/pixel below the sample horizon (Qz < 0), the same at |Qy| > 0.25 and at high Qz, with a Poisson-like spread; the hand-chosen `--background 1.0` was far too low, and the fit compensated with a too intense pattern. Needs:
+  - a CLI to determine and inspect it before fitting (e.g. `mg_background`): the user selects one or more Q-boxes (`--background_region qy_min qy_max qz_min qz_max`, repeatable), with a dry-run plot of the measured map showing the regions, the mean counts per bin in each region, their spread vs. Poisson, and the resulting value;
+  - a default region for `auto` (e.g. below the sample horizon, excluding a box around the direct/transmitted beam) — not general: it depends on the geometry (horizontal/vertical sample, beam declination) and on the instrument, and may not exist for every measurement;
+  - a robust estimator (mean after outlier rejection; the median is biased for low integer counts);
+  - a check of flatness (compare regions; e.g. incoherent scattering of the subphase is not necessarily flat);
+  - printing the estimate next to the fitted value in `--fit_background` runs as a sanity check;
+  - mutually exclusive with `--fit_background` and a numeric `--background`; per sample in joint fits (`--background2`).
+* **Adaptive outgoing-direction sampling.** The `--sampling` presets choose the outgoing-direction grid from the number of rays per detector pixel (R = N_eff * rho, direction-sampling noise ~1.3/sqrt(R)), before anything is known about the pattern. What matters for a fit is the Monte Carlo variance of the simulated counts relative to the counting variance of the measurement (`mc_to_poisson_variance`, which `mg_fit` already reports and warns about above 1). Option: after the first evaluation, scale the grid (both directions, keeping the bin width balanced in pixels) so that the MC variance stays below the counting variance in most unmasked pixels, and keep that grid for the rest of the fit (a changing grid between evaluations would add noise to the loss). Sharp features (BornAgain evaluates each virtual pixel at its centre) may need a finer grid than the noise alone suggests.
+
+## From the first-time-user documentation reviews (2026-10-09)
+
+Details, file:line references and more minor points in `DOCS_REVIEW_A_D22_newcomer_local.md` (a D22 user on macOS with a
+liquid-surface sample) and `DOCS_REVIEW_B_TOF_instrument_scientist_local.md` (a TOF-SANS instrument scientist adding an
+instrument). Quick fixes (dead McStas links, `--max_evals` in the fit examples, section numbering, thread advice,
+quickstart working directory) are done.
+
+* **Liquid-surface example.** No page covers a horizontal sample with a downward-inclined beam (sign of
+  `--instrument_beam_angle`, `--sample_orientation 1`, particles already below the surface in the MCPL file); the
+  liquid-surface McStas models and MCPL outputs are only in `*_local` files. Add a worked example (with a small MCPL
+  file and a measurement), and a catalogue of the built-in sample models with their parameters.
+* **Adding an instrument.** Only possible by editing `instrument_defaults.py` (one sentence in technical_details);
+  `--instrument` accepts only built-in names; `mcpl_monitor_name` has no override; `mg_beam_centre_correction` has no
+  `--instrument_*` overrides (e.g. the detector distance). Needs a how-to page (and see "Instrument definitions, stage B").
+* **TOF workflow and example.** Explain the roles of `--wavelength` (TOF filter centre, T0 wavelength, WFM sub-pulse),
+  that by default only one TOF-FWHM window is kept (`--no_mcpl_filtering` for the full band), and the TOF units (ms,
+  s, µs); store the T0 and the TOF limits in the `.h5`; add a small TOF example (SAGA/LoKI model with MCPL file and
+  `mccode.sim`); show `mg_fit_monitor` in use.
+* **Measured TOF NeXus data.** 3D (TOF) detector data are summed over time and converted to Q at a single wavelength
+  with only a warning: physically wrong. Error out until TOF NeXus data are supported (event mode, ISIS spectra).
+* **`--wfm` sub-pulse limits** are hard-coded for SAGA and used for any instrument with the WFM keys, without a
+  warning: make them instrument keys or refuse other instruments.
+* **macOS installation.** A tested build script or a prebuilt arm64 wheel of BornAgain 23, or a Docker/apptainer
+  fallback; INSTALL.md lacks repository URLs and the dependency/CMake commands.
+* **McStas model for one's own measurement.** `ILL_D22.instr` hard-codes the pinhole and the sample aperture
+  (`D22_collimation` other than 17.6 m puts the pinhole inside the guide without warning); document which NeXus
+  fields hold the detector distance, wavelength, detector translation, slits and attenuator.
+* **Consistent CLI.** `mg_run`/`mg_fit` require `--wavelength_selected` for monochromatic instruments, `mg_plot` and
+  `mg_beam_centre_correction` only accept `--wavelength`. Defaults are the paper values (`--alpha 0.24`, 6 x 8 cm
+  sample) or not the recommended ones (`--specular none`, while `specular_simulation` is recommended everywhere);
+  `mg_fit --output_dir` defaults to `scan_results` also for fits.
+* **Small code issues.** An empty `--wavelength_slice` range crashes with a numpy `ValueError`; a misspelled `--fit`
+  parameter only warns (costly on a cluster: consider an error); the detector image orientation (x to the left looking
+  along the beam) cannot be flipped/transposed, a mirrored detector gives a mirrored Qy silently.
+* **Documentation structure.** The loss functions are explained three times and the BornAgain version list four times;
+  troubleshooting/known issues sit under the internals; the calibration guide ("Replicating a Measurement") should come
+  before the long workflow page; worked examples need expected results and run times; the output-format page needs a
+  loading snippet and TOF file-size guidance; the intensity-factor procedure is described three times.
+* **mg_plot legend overlap.** mg_plot overlay/dual plot: the legend of the "Relative absolute difference" axis covers the "measured" entry of the profile legend (seen in the NP joint figures, 2026-10-10).
 
 ## Time of flight
 
