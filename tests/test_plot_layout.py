@@ -210,3 +210,55 @@ def test_default_intensity_min(nxs, has_simulation, normalise, experiment_time, 
     from mcstas_gisans.plot import default_intensity_min
     args = SimpleNamespace(nxs=nxs, normalise_to_nxs=normalise, experiment_time=experiment_time)
     assert default_intensity_min(args, has_simulation) == expected
+
+
+SIM = "data/paper/bornagain_output/d22_1e9_silica_100nm_air_sampling_long.h5"
+
+
+@pytest.mark.parametrize("split_view, n_maps", [(True, 2), (False, 4)])
+def test_mg_plot_joint_figure(monkeypatch, split_view, n_maps):
+    """--nxs2: two samples (each with its measurement and simulation): the maps of both samples above
+    (one split map per sample with --split_view) and the profiles of all four datasets in one full-width
+    slice below, with the axes linked."""
+    extra = ["--nxs2", NXS_FILES[1], "--filename", SIM, SIM, "--sample_labels", "high", "low",
+             "--experiment_time", "100", "--background2", "1.0"] + (["--split_view"] if split_view else [])
+    fig = _mg_plot_figure(monkeypatch, NXS_FILES[:1], extra)
+    maps, ax_slice = _maps_and_slice(fig)
+    assert len(maps) == n_maps
+    assert [t.get_text() for t in ax_slice.get_legend().get_texts()] == [
+        'high measured', 'high simulated', 'low measured', 'low simulated']
+    assert ax_slice.get_position().x0 == pytest.approx(min(ax.get_position().x0 for ax in maps), abs=0.05)
+    assert ax_slice.get_position().x1 > max(ax.get_position().x0 for ax in maps)
+    _assert_linked(maps, ax_slice)
+    plt.close('all')
+
+
+@pytest.mark.parametrize("argv, message", [
+    (["--nxs", NXS_FILES[0], "--nxs2", NXS_FILES[1], "--filename", SIM], "two simulation files"),
+    (["--nxs", NXS_FILES[0], "--nxs2", NXS_FILES[1], "--filename", SIM, SIM, "--overlay"], "cannot be combined"),
+    (["--nxs", NXS_FILES[0], "--filename", SIM, "--background2", "1"], "only used with --nxs2"),
+])
+def test_mg_plot_joint_figure_option_errors(monkeypatch, capsys, argv, message):
+    from mcstas_gisans.plot_cli import create_argparser, parse_args
+    monkeypatch.setattr(sys, "argv", ["mg_plot", *argv])
+    with pytest.raises(SystemExit):
+        parse_args(create_argparser())
+    assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("style, n_meshes", [("grey", 2), ("black", 1)])
+def test_mask_view_masked_style(tmp_path, monkeypatch, style, n_meshes):
+    """mg_fit --mask_view: with 'grey' (default) the masked map shows the measured data in grey under the fitted
+    pixels (two meshes, masked pixels transparent); with 'black' the masked pixels are blacked out (one mesh)."""
+    from mcstas_gisans.masking import save_view_masks_plot
+    figures = _capture_closed_figures(monkeypatch)
+    hist = np.full((7, 5), 10.0)
+    masked = hist.copy()
+    masked[2:5, :] = np.nan
+    save_view_masks_plot(hist, np.ones_like(hist), masked, np.ones_like(hist), Y_EDGES, Z_EDGES, 0.3, 0.6,
+                         [-0.3, 0.3], [0.0, 1.0], str(tmp_path / f"m_{style}.png"), 1.0, masked_style=style)
+    monkeypatch.undo()
+    fig = figures[0] if figures else plt.gcf()
+    masked_ax = [ax for ax in fig.axes if ax.get_title().startswith("Masked NeXus data")][0]
+    assert len(masked_ax.collections) == n_meshes
+    assert ("grey" in masked_ax.get_title()) == (style == "grey")

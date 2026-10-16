@@ -10,6 +10,7 @@
    
       build_plot_instrument
       get_datasets
+      get_joint_samples
       get_overlay_plot_axes
       get_plot_ranges
       main

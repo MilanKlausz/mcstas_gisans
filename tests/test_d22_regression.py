@@ -73,6 +73,7 @@ def test_d22_paper_comparison(tmp_path):
         assert loss(expected, expected_err, shift)['poisson_deviance'] > metrics['poisson_deviance']
 
 
-# seed 3, BornAgain 23, detector offset 0.290838 -0.016061 of the current mg_beam_centre_correction (with the
-# previous 0.290852 -0.016066: 3.28639 / 7.32431)
-REFERENCE = {'poisson_deviance': 3.28820, 'reduced_chi2': 7.33352}
+# seed 3, BornAgain 23, detector offset 0.290838 -0.016061 of the current mg_beam_centre_correction, D22 detector
+# resolution 7 mm FWHM along the tubes (with 4 mm: 3.28820 / 7.33352; with the previous offset 0.290852 -0.016066 and
+# 4 mm: 3.28639 / 7.32431)
+REFERENCE = {'poisson_deviance': 3.27088, 'reduced_chi2': 7.39955}

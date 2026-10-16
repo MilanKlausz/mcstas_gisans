@@ -65,9 +65,10 @@ def test_single_eval_fit_with_specular_mask(tmp_path):
     deviance = best["poisson_deviance"]
     print(f"Single-evaluation masked Poisson deviance per pixel: {deviance}")
     # deterministic with the fixed seed (BornAgain 23, detector offset 0.290838 -0.016061 of the current
-    # mg_beam_centre_correction; 3.2862 with the previous 0.290852 -0.016066); printed with 4 decimals.
+    # mg_beam_centre_correction, D22 detector resolution 7 mm along the tubes; 3.2880 with 4 mm, 3.2862 with the
+    # previous offset 0.290852 -0.016066 and 4 mm); printed with 4 decimals.
     # The physical checks (intensity scale, alignment) are in test_d22_regression.py.
-    assert deviance == pytest.approx(3.2880, abs=2e-4)
+    assert deviance == pytest.approx(3.2731, abs=2e-4)
 
 
 def test_specular_box_mask_excludes_the_specular_peak(monkeypatch):

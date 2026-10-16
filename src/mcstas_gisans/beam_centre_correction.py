@@ -91,10 +91,12 @@ def find_required_centre_offset(filepath, beam_angle=None, wavelength=6.0, sampl
     return offset
 
 
-def _instrument(instrument_name, offset, beam_angle, wavelength, sample_orientation, alpha=0.0):
+def _instrument(instrument_name, offset, beam_angle, wavelength, sample_orientation, alpha=0.0, detector_resolution=None):
     params = copy.deepcopy(instrument_defaults[instrument_name])
     params.setdefault('detector', copy.deepcopy(default_detector))
     params['detector']['direct_beam_centre_offset'] = list(offset)
+    if detector_resolution is not None:
+        params['detector']['resolution'] = [float(r) for r in detector_resolution]
     if beam_angle is not None:
         params['beam_angle'] = beam_angle
     return Instrument(params, alpha, wavelength, sample_orientation)
@@ -187,15 +189,18 @@ def image_statistics(image, detector, window=None):
     return spot['centre'], spot['width'], x_rel, y_rel
 
 
-def simulate_direct_beam(mcpl_path, offset, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', seed=0):
+def simulate_direct_beam(mcpl_path, offset, beam_angle=None, wavelength=6.0, sample_orientation=1, instrument_name='d22', seed=0,
+                         detector_resolution=None):
     """
     Ray-trace the neutrons of a McStas MCPL file (at the sample position) straight to the detector,
     exactly as mg_run does for a direct-beam simulation (no sample, gravity included), and return
     the raw detector image (sum of weights, i.e. rate per second) and some beam properties.
+    detector_resolution: [FWHM_x, FWHM_y] of the Gaussian detector position resolution [m]
+    (default: the instrument's).
     """
     from .input_output import get_particles
     from .preconditioning import transform_to_bornagain_coordinate_system, calculate_beam_angle
-    instrument = _instrument(instrument_name, offset, beam_angle, wavelength, sample_orientation)
+    instrument = _instrument(instrument_name, offset, beam_angle, wavelength, sample_orientation, detector_resolution=detector_resolution)
     particles, _, _ = get_particles(mcpl_path, 1.0, [float('-inf'), float('inf')], 0.0, use_polarization=False)
     p, _, _, _, vx, vy, vz, lam = particles.T[:8]
     info = {
@@ -214,13 +219,17 @@ def simulate_direct_beam(mcpl_path, offset, beam_angle=None, wavelength=6.0, sam
 
 def compare_with_simulated_direct_beam(filepath, mcpl_path, offset, beam_angle=None, wavelength=6.0, sample_orientation=1,
                                        instrument_name='d22', nxs_data_path=None, experiment_time=None, figure=None,
-                                       savename='beam_centre_check', residual_warning_pixels=0.5, beam_window=None):
+                                       savename='beam_centre_check', residual_warning_pixels=0.5, beam_window=None,
+                                       profile_resolutions=None):
     """
     Cross-check the detector offset with a direct-beam simulation of the McStas beam: report the
     centroid residual (simulated - measured), the spot widths, the MCPL beam angle and wavelength,
     and the intensity factor (if experiment_time is given). The offset itself always comes from
     the measurement; a residual points at the McStas model (beam direction/position, slits),
     the beam angle, or the wavelength. Returns a dict of the results.
+    With a figure, a second figure '<savename>_profiles' compares horizontal and vertical cuts through the
+    beam (linear and log); profile_resolutions (FWHM values [m] of the detector resolution along the NeXus y
+    axis, the tubes of D22) adds a simulated beam for each of them.
     """
     measured = read_nexus_raw(filepath, nxs_data_path)
     simulated, info, instrument = simulate_direct_beam(mcpl_path, offset, beam_angle, wavelength, sample_orientation, instrument_name)
@@ -257,7 +266,117 @@ def compare_with_simulated_direct_beam(filepath, mcpl_path, offset, beam_angle=N
     if figure:
         _direct_beam_figure(measured, simulated, x_rel + offset[0], y_rel + offset[1], c_meas + offset, c_sim + offset, figure, savename,
                             spot_meas['half'])
+        default_res = list(det_resolution_fwhm(instrument))
+        sims = [("simulated, detector FWHM %.1f mm (instrument)" % (default_res[1] * 1e3), simulated)]
+        for res in profile_resolutions or []:
+            if abs(res - default_res[1]) < 1e-9:
+                continue
+            image, _, _ = simulate_direct_beam(mcpl_path, offset, beam_angle, wavelength, sample_orientation, instrument_name,
+                                               detector_resolution=[default_res[0], res])
+            sims.append(("simulated, detector FWHM %.1f mm" % (res * 1e3), image))
+        results['profiles'] = direct_beam_profiles_figure(measured, sims, x_rel, y_rel, figure, f"{savename}_profiles")
     return results
+
+
+def det_resolution_fwhm(instrument):
+    """FWHM [m] of the Gaussian detector position resolution along NeXus x and y."""
+    det = instrument.detector
+    return np.array([det.sigma_x_nexus, det.sigma_y_nexus], dtype=float) * 2.355   # the factor used by the Detector
+
+
+def _fwhm(profile, coords):
+    """FWHM of a peaked profile, with linear interpolation of the half-maximum crossings."""
+    pk = int(np.argmax(profile))
+    half = 0.5 * profile[pk]
+    left, right = pk, pk
+    while left > 0 and profile[left - 1] > half:
+        left -= 1
+    while right < profile.size - 1 and profile[right + 1] > half:
+        right += 1
+    step = coords[1] - coords[0]
+    x_left = coords[left] - step * (profile[left] - half) / max(profile[left] - profile[left - 1], 1e-30) if left > 0 else coords[0]
+    x_right = coords[right] + step * (profile[right] - half) / max(profile[right] - profile[right + 1], 1e-30) \
+        if right < profile.size - 1 else coords[-1]
+    return abs(x_right - x_left)
+
+
+def _rms(profile, coords, centre=None, half_window=None):
+    """RMS width of a profile within +-half_window of centre (the FWHM of a stepped, pixelated beam profile can be
+    misleading; the window keeps far tails and background out)."""
+    w = np.maximum(profile, 0)
+    if half_window is not None:
+        w = np.where(np.abs(coords - centre) <= half_window, w, 0)
+    mean = np.average(coords, weights=w)
+    return float(np.sqrt(np.average((coords - mean) ** 2, weights=w)))
+
+
+def direct_beam_profiles_figure(measured, simulations, x_rel, y_rel, figure, savename):
+    """
+    Horizontal and vertical cuts through the direct beam, measured vs simulated (each scaled to the measured
+    total), on linear and logarithmic scales: the horizontal cut sums the rows, the vertical cut the columns,
+    within the measured beam's full width at half maximum. The legend gives the RMS width within +-1 measured FWHM
+    of the centre (the FWHM of a stepped profile of a few pixels can be misleading) and the FWHM.
+    Shows whether the McStas beam (slits, divergence)
+    and the detector resolution reproduce the measured beam: the core width and the shape of the edges and tails.
+    simulations: list of (label, image). Returns {label: {'fwhm': (x, y), 'rms': (x, y)}} [m] of the cuts (the RMS
+    within +-1 measured FWHM of the measured centre).
+    """
+    import matplotlib
+    if figure != 'show':
+        matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    ix, iy = np.unravel_index(np.argmax(measured), measured.shape)
+    rows = measured[ix, :] >= 0.5 * measured[ix, :].max()     # the measured beam core, along y
+    cols = measured[:, iy] >= 0.5 * measured[:, iy].max()     # and along x
+    cut_x = lambda image: image[:, rows].sum(axis=1)
+    cut_y = lambda image: image[cols, :].sum(axis=0)
+    mx, my = cut_x(measured), cut_y(measured)
+    cx = np.average(x_rel, weights=np.maximum(mx, 0) * (mx > 0.1 * mx.max()))
+    cy = np.average(y_rel, weights=np.maximum(my, 0) * (my > 0.1 * my.max()))
+    widths = {'measured': (_fwhm(mx, x_rel), _fwhm(my, y_rel))}
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    colours = ['tab:green', 'tab:orange', 'tab:red', 'tab:purple', 'tab:brown']
+    for row, (coords, centre, cut, mcut, name) in enumerate(((x_rel, cx, cut_x, mx, 'horizontal (x)'),
+                                                            (y_rel, cy, cut_y, my, 'vertical (y)'))):
+        d = (coords - centre) * 1e3
+        fw = widths['measured'][row] * 1e3
+        lim = 1.2 * fw + 40
+        for ax in axes[row]:
+            ax.errorbar(d, mcut, yerr=np.sqrt(np.maximum(mcut, 1)), fmt='o', ms=3, color='blue',
+                        label='measured (RMS %.1f mm, FWHM %.1f mm)' % (_rms(mcut, coords, centre, fw / 1e3) * 1e3, fw))
+        for i, (label, image) in enumerate(simulations):
+            scaled = image * measured.sum() / image.sum()
+            scut = cut(scaled)
+            fw_sim = (_fwhm(cut_x(scaled), x_rel), _fwhm(cut_y(scaled), y_rel))
+            widths[label] = fw_sim
+            for ax in axes[row]:
+                ax.step(d, scut, where='mid', color=colours[i % len(colours)],
+                        label='%s (RMS %.1f mm, FWHM %.1f mm)' % (label, _rms(scut, coords, centre, fw / 1e3) * 1e3, fw_sim[row] * 1e3))
+        for ax, scale in zip(axes[row], ('linear', 'log')):
+            ax.set_yscale(scale)
+            ax.set_xlim(-lim, lim)
+            if scale == 'log':
+                ax.set_ylim(max(0.3, mcut[mcut > 0].min() * 0.5), mcut.max() * 3)
+            ax.set_xlabel('%s position from the measured beam centre [mm]' % name)
+            ax.set_ylabel('counts (summed over the beam core)')
+            ax.set_title('%s cut, %s scale' % (name, scale))
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=8)
+    plt.tight_layout()
+    if figure == 'show':
+        plt.show()
+    else:
+        path = f"{savename}.{figure}"
+        plt.savefig(path, dpi=120)
+        print(f"Created {path}")
+    plt.close(fig)
+    print("Beam FWHM of the cuts [mm] (x / y): " + "; ".join("%s %.1f / %.1f" % (k, v[0] * 1e3, v[1] * 1e3) for k, v in widths.items()))
+    win = widths['measured']   # RMS within +-1 measured FWHM of the measured centre
+    rms = {'measured': (_rms(mx, x_rel, cx, win[0]), _rms(my, y_rel, cy, win[1]))}
+    rms.update({label: (_rms(cut_x(image * measured.sum() / image.sum()), x_rel, cx, win[0]),
+                        _rms(cut_y(image * measured.sum() / image.sum()), y_rel, cy, win[1])) for label, image in simulations})
+    print("Beam RMS width of the cuts within +-1 measured FWHM [mm] (x / y): " + "; ".join("%s %.2f / %.2f" % (k, v[0] * 1e3, v[1] * 1e3) for k, v in rms.items()))
+    return {label: {'fwhm': widths[label], 'rms': rms[label]} for label in widths}
 
 
 def _direct_beam_figure(measured, simulated, x_lab, y_lab, c_meas, c_sim, figure, savename, half):
@@ -435,6 +554,10 @@ def create_argparser():
     check.add_argument('--mcpl', type=str, default=None, help="McStas MCPL file of the direct-beam configuration: ray-trace it with the found offset and compare the simulated with the measured direct beam (centroid residual, widths, beam angle, wavelength, intensity factor).")
     check.add_argument('--experiment_time', type=float, default=None, help="Duration of the direct-beam measurement [s], for the intensity factor (with --mcpl).")
     check.add_argument('--figure', choices=['png', 'pdf', 'show'], default=None, help="Figures with the found centres and the windows used to find them: the measured and simulated direct beam (with --mcpl) and the incident-angle measurement (with --sample_nxs). Save as png/pdf, or show them.")
+    check.add_argument('--profile_resolutions', type=float, nargs='+', default=None, metavar='FWHM',
+                       help="With --mcpl and --figure: also simulate the direct beam with these FWHM values [m] of the detector "
+                            "position resolution along the NeXus y axis (along the tubes of D22), shown in the profile figure "
+                            "(<savename>_profiles) next to the instrument's resolution, e.g. 0.004 0.0075 0.012.")
     check.add_argument('--savename', type=str, default='beam_centre_check', help="Output file name (without extension) for --figure png/pdf (default: beam_centre_check; the incident-angle figure gets the suffix _incident_angle).")
     check.add_argument('--sample_nxs', type=str, default=None, help="Sample measurement (same wavelength and detector position): measure the real incident angle from the distance of the specular spot to the direct beam, and compare it with --alpha.")
     check.add_argument('--alpha', type=float, default=None, help="Intended incident angle [deg], compared with the angle measured from --sample_nxs.")
@@ -467,7 +590,8 @@ def main():
             compare_with_simulated_direct_beam(args.filepath, args.mcpl, offset, beam_angle=args.beam_angle, wavelength=args.wavelength,
                                                sample_orientation=args.sample_orientation, instrument_name=args.instrument,
                                                nxs_data_path=args.nxs_data_path, experiment_time=args.experiment_time,
-                                               figure=args.figure, savename=args.savename, beam_window=args.beam_window)
+                                               figure=args.figure, savename=args.savename, beam_window=args.beam_window,
+                                               profile_resolutions=args.profile_resolutions)
         if args.sample_nxs:
             alpha_measured = measure_incident_angle(args.sample_nxs, args.filepath, args.instrument, args.sample_orientation, args.nxs_data_path,
                                                     beam_window=args.beam_window, specular_window=args.specular_window,

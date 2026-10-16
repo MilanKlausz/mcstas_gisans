@@ -342,6 +342,52 @@ def get_datasets(args: Any) -> List[Tuple[np.ndarray, np.ndarray, np.ndarray, np
                         for hist, err, y, z, label in sim_datasets]
     return nxs_datasets + sim_datasets
 
+def get_joint_samples(args: Any) -> List[Dict[str, Any]]:
+    """
+    The two samples of a joint figure (--nxs2): the summed measured NeXus files of each sample
+    (--nxs, --nxs2) and its simulation (the first and the second --filename), each measurement
+    interpreted with the instrument configuration of its own simulation file, each simulation scaled
+    with its own experiment time and background (--experiment_time/--background,
+    --experiment_time2/--background2). Returns the sample dicts of joint_comparison_figure.
+    """
+    import copy
+    samples = []
+    for i, (nxs_files, filename) in enumerate(zip((args.nxs, args.nxs2), args.filename)):
+        sample_args = copy.copy(args)
+        sample_args.filename, sample_args.label = [filename], None
+        sample_args.nxs, sample_args.nxs_label = nxs_files, None
+        if i == 1:
+            if args.experiment_time2 is not None:
+                sample_args.experiment_time = args.experiment_time2
+            if args.background2 is not None:
+                sample_args.background = args.background2
+        (sim,), reference = _load_sim_datasets(sample_args)
+        measured, _ = _load_nexus_datasets(sample_args, reference)
+        hist = np.sum([d[0] for d in measured], axis=0)
+        error = np.sqrt(np.sum([d[1] ** 2 for d in measured], axis=0))
+        name = args.sample_labels[i]
+        samples.append({'measured': (hist, error, measured[0][2], measured[0][3]), 'simulated': sim[:4],
+                        'title': name, 'map_labels': ('measured', 'simulated'),
+                        'legend_labels': (f'{name} measured', f'{name} simulated')})
+    return samples
+
+
+def _plot_joint(args: Any) -> None:
+    """The joint (two-sample) figure of --nxs2, with or without --split_view."""
+    from .plotting_utils import joint_comparison_figure
+    samples = get_joint_samples(args)
+    if args.intensity_min is not None:
+        intensity_min = float(args.intensity_min)
+    else:
+        intensity_min = 1 if args.experiment_time else 1e-9
+    y_plot_range, z_plot_range, _, _ = get_plot_ranges(
+        [s[k] + ('',) for s in samples for k in ('measured', 'simulated')], args.y_plot_range, args.z_plot_range)
+    joint_comparison_figure(samples, args.q_min, args.q_max, y_plot_range, z_plot_range,
+                            split_view=args.split_view, intensity_min=intensity_min)
+    plot_output = '.pdf' if args.pdf else '.png' if args.png else 'show'
+    show_or_save(plot_output, args.savename)
+
+
 def _plot_differences(args: Any, 
                       dataset_index: int, 
                       datasets: List[Any], 
@@ -408,7 +454,7 @@ def _plot_differences(args: Any,
                 ax_rel.plot(y_bins, norm_residuals, color='gray', linestyle='dashdot', linewidth=1.5, label='Normalized residuals')
                 ax_rel.set_ylabel("Normalized residuals")
                 ax_rel.set_ylim(-20, 20)
-        ax_rel.legend(loc=0)
+        ax_rel.legend(loc='upper right')  # the profile legend is upper left
 
         plot_2d_axes = axes_top[len(datasets)]  # the extra panel after the dataset panels
         hist_0, hist_error_0, y_edges_0, z_edges_0, _ = datasets[0]
@@ -541,6 +587,10 @@ def main() -> None:
 
     # set global font size for axis labels, titles, and tick marks
     plt.rcParams.update({'font.size': args.font_size})
+
+    if args.nxs2 is not None:
+        _plot_joint(args)
+        return
 
     datasets = get_datasets(args)
     if args.plot_differences > 0 and (not args.overlay or len(datasets) < 2):

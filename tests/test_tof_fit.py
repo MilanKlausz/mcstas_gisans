@@ -6,6 +6,7 @@ that can reach a slice, and a single-evaluation mg_fit smoke test on a synthetic
 file (whose neutrons have no emission time: their TOF over L1 + L2 gives their true wavelength).
 """
 import csv
+import re
 import os
 import subprocess
 import sys
@@ -291,6 +292,48 @@ def test_single_eval_tof_fit_with_two_slices(tmp_path):
         assert 0.2 < float(row[key]) < 0.5
     assert (tmp_path / "fit_eval_1_radius_51.0.png").exists()
     assert (tmp_path / "fit_eval_1_radius_51.0_slice2.png").exists()
+
+
+def _tof_fit_row(tmp_path, nxs, extra):
+    cmd = [
+        sys.executable, "-m", "mcstas_gisans.fit", D22_MCPL,
+        "--instrument", "sans2d", "--instrument_nominal_source_sample_distance", str(D22_MCPL_SOURCE_SAMPLE_DISTANCE),
+        "--no_t0_correction", "--wavelength_slice", "5.6", "6.0", "--wavelength_slice", "6.0", "6.4",
+        "--model", "silica_100nm_air", "--sample_arguments", "radius=51;interferenceRange=5;latticeParameter=114",
+        "--sample_size_y", "0.10", "--sample_size_x", "0.10", "--alpha", "0.24", "--allow_sample_miss",
+        "--outgoing_directions_horizontal", "12", "--outgoing_directions_vertical", "8", "--specular", "specular_simulation",
+        "--nxs", nxs, "--experiment_time", "3600",
+        "--mask_qz_min_cut", "0.02", "--mask_qz_max_cut", "0.2", "--mask_qy_range", "-0.03", "0.03",
+        "--q_min", "0.08", "--q_max", "0.1", "--simulate_mask_angle_range",
+        "--fit", "radius", "51", "40", "60", "--max_evals", "1",
+        "--parallel_processes", "2", "--bornagain_number_of_threads", "1",
+        "--output_dir", str(tmp_path), "--seed", "7",
+    ] + extra
+    res = subprocess.run(cmd, capture_output=True, text=True, env=dict(os.environ, MPLBACKEND="Agg"))
+    if res.returncode != 0:
+        pytest.fail(f"mg_fit failed:\n{res.stderr}\n{res.stdout}")
+    with open(tmp_path / "fit_summary.csv") as f:
+        table = f.read().split("\n\n")[0].splitlines()
+    return list(csv.DictReader(table))[0], res.stdout
+
+
+def test_tof_fit_skips_directions_aimed_only_at_masked_pixels(tmp_path):
+    """mg_fit --wavelength_slice --simulate_mask_angle_range: the outgoing directions aimed only at pixels without a
+    TOF bin in an unmasked Q bin of any slice are not simulated (reported), and the losses of the slices stay as with
+    --keep_masked_directions (only rays smeared by more than 2 sigma of the resolution from a skipped direction are
+    missing)."""
+    nxs = str(tmp_path / "SANS2D_synthetic.nxs")
+    _synthetic_measurement(nxs)
+    (tmp_path / "skip").mkdir()
+    (tmp_path / "keep").mkdir()
+    skipped, out_skip = _tof_fit_row(tmp_path / "skip", nxs, [])
+    kept, out_keep = _tof_fit_row(tmp_path / "keep", nxs, ["--keep_masked_directions"])
+    assert "Directions aimed only at masked pixels, not simulated:" in out_skip
+    assert "Directions aimed only at masked pixels" not in out_keep
+    n_skipped, n_total = map(int, re.search(r"not simulated: (\d+) of (\d+)", out_skip).groups())
+    assert 0.05 < n_skipped / n_total < 0.95, (n_skipped, n_total)
+    for key in ("poisson_deviance_slice1", "poisson_deviance_slice2"):
+        assert float(skipped[key]) == pytest.approx(float(kept[key]), rel=0.02)
 
 
 def test_tof_fit_requires_wavelength_slices_and_no_monitor_t0_correction(tmp_path):

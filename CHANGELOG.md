@@ -64,6 +64,29 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   detection events of the rear tube detector, `--nxs_format`, recognised
   automatically) and reduces them like simulated TOF events (Q per event,
   `--wavelength_slice`), e.g. in a split view with a simulation.
+- `mg_fit --simulate_mask_angle_range`: the outgoing directions aimed only at masked pixels are no longer
+  simulated. Before each neutron's BornAgain simulation its rays are traced to the detector (without the
+  resolution smearing, so the random numbers of the simulated rays are unchanged); directions whose hit point,
+  widened by 2 sigma of the detector resolution along each detector axis, touches no unmasked pixel are masked in
+  the BornAgain detector, which does not compute them. The unmasked pixels get the same counts (up to rays smeared
+  by more than 2 sigma, as for the windows). The skipped fraction is printed after the first evaluation; measured:
+  a T-shaped fit region of a liquid-surface fit (46 x 36 directions) skips 56% and is 3.5 times faster, the D22
+  silica example (band with an excluded specular box, small grid) skips 30% and is 1.2 times faster.
+  `--keep_masked_directions` simulates all directions as before. Also for TOF fits (`--wavelength_slice`):
+  the region is the pixels with a TOF bin in an unmasked Q bin of any slice.
+- `mg_fit --mask_view`: the masked map shows the masked pixels as the measured data on a grey scale, under the
+  fitted pixels in colour (`--mask_view_style grey`, default); `--mask_view_style black` blacks them out as
+  before.
+- `mg_beam_centre_correction --mcpl --figure`: a second figure `<savename>_profiles` with horizontal and
+  vertical cuts through the measured and the simulated direct beam (linear and log scale, RMS width and
+  FWHM of each cut), to check that the McStas beam (slits, divergence) and the detector resolution reproduce
+  the measured beam; `--profile_resolutions FWHM ...` adds simulated beams with other detector resolutions
+  along the NeXus y axis (the tubes of D22).
+- `mg_plot`: joint figure of two samples (`--nxs2`, `--sample_labels`,
+  `--background2`, `--experiment_time2`, two simulation files): with
+  `--split_view` one split map per sample in the top row and the Qy profiles of
+  the Qz band of all four datasets spanning the bottom row; the same figure
+  function as the joint-fit comparison plots of `mg_fit`.
 - `mg_fit`: the losses of the 1D Qy profile of the Qz band `--q_min`/`--q_max`
   (the 1D panel of the comparison plots: the unmasked pixels of the band summed
   per Qy bin) are computed next to the 2D losses and written to the log and the
@@ -150,6 +173,14 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   narrower than one pixel at short wavelengths, i.e. combs of empty bins). Pixel
   centres give Q, the bins are a separate choice (`--qy_bins`/`--qz_bins`), as in
   Mantid (Q1D/Qxy) and ESS esssans.
+- D22: the default detector position resolution along the tubes is 7 mm FWHM (was 4 mm), from the
+  core widths of four measured direct beams (individual best values 6-8.5 mm). Results of D22 simulations
+  change slightly near sharp features (the specular, Bragg rods); use
+  `--instrument_detector_resolution 0 0.004` to reproduce older results.
+- `mg_fit` comparison plots (`fit_eval_*.png`): the simulation curve is labelled
+  'Simulation' and the parameters (4 significant digits) are a wrapped title of
+  the simulated map, instead of the full parameter string in the legend, which
+  squeezed the figure; the file names are unchanged.
 - **Average materials by default**: the simulations use BornAgain's average
   materials (`--use_avg_materials`, now the default, as in BornAgain 24: the
   reflection and transmission use the effective refractive index of layers with
@@ -238,6 +269,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   different `depthsensitivitysample` sample is removed).
 
 ### Fixed
+- `mg_plot --overlay --plot_differences`: the legend of the difference axis
+  no longer covers the legend of the profiles.
 - `mg_plot --dual_plot` cut off the axis labels of the tall figure.
 - The built-in models `silica_air`, `silica_100nm_D2O`, `lamellas_and_spheres`,
   `hexagonal_spheres` and `depthsensitivitysample` used the BornAgain 21 API

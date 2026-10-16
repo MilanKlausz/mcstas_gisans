@@ -380,6 +380,15 @@ def profile_plot_data(counts: np.ndarray, expected: np.ndarray, mc_error: np.nda
     }
 
 
+def format_parameter_label(grid_point: Dict[str, Any]) -> str:
+    """Short, readable parameter list for plot titles: 4 significant digits (e.g. 'radius = 77.22, microgel_sld = 4.404e-06')."""
+    def value(v):
+        if isinstance(v, (bool, np.bool_)) or not isinstance(v, (int, float, np.integer, np.floating)):
+            return str(v)
+        return str(int(v)) if float(v).is_integer() and abs(v) < 1e6 else f"{float(v):.4g}"
+    return ", ".join(f"{k} = {value(v)}" for k, v in grid_point.items())
+
+
 def save_comparison_plot(
     hist_nxs: np.ndarray,
     hist_nxs_error: np.ndarray,
@@ -435,7 +444,8 @@ def save_comparison_plot(
     savename : str
         Path to save the generated plot.
     label_sim : str
-        Label for the simulated data plot.
+        Description of the simulation (e.g. its parameters), shown wrapped as the title of the simulated map;
+        the curves are labelled 'D22 measurement' and 'Simulation'.
     intensity_min : float, optional
         Minimum intensity for color scaling.
     split_view : bool, optional
@@ -447,6 +457,7 @@ def save_comparison_plot(
         profiles 'counts', 'counts_error', 'expected', 'expected_error' (per Qy bin of y_edges_sim) and the
         'title'; q_min and q_max are then not used.
     """
+    import textwrap
     import matplotlib.pyplot as plt
     from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
 
@@ -461,7 +472,7 @@ def save_comparison_plot(
         # to the right of the map instead of taking its width, so that the Qy axes line up)
         fig, (ax_map, ax_bottom) = plt.subplots(2, 1, figsize=(10, 12))
         split_plot_2d(hist_nxs, y_edges_nxs, z_edges_nxs, hist_sim, y_edges_sim, z_edges_sim,
-                      label_left=label_nxs, label_right="Simulation", title_text=label_sim, ax=ax_map,
+                      label_left=label_nxs, label_right="Simulation", title_text=textwrap.fill(label_sim, 90), ax=ax_map,
                       intensity_min=intensity_min, intensity_max=intensity_max,
                       y_range=y_plot_range, z_range=z_plot_range, match_horizontal_axes=True)
         map_axes = [ax_map]
@@ -473,7 +484,7 @@ def save_comparison_plot(
                     intensity_min=intensity_min, intensity_max=intensity_max,
                     y_range=y_plot_range, z_range=z_plot_range, output='none')
 
-        log_plot_2d(hist_sim, y_edges_sim, z_edges_sim, label_sim, ax=axes[0, 1],
+        log_plot_2d(hist_sim, y_edges_sim, z_edges_sim, textwrap.fill(label_sim, 70), ax=axes[0, 1],
                     intensity_min=intensity_min, intensity_max=intensity_max,
                     y_range=y_plot_range, z_range=z_plot_range, output='none')
         map_axes = [axes[0, 0], axes[0, 1]]
@@ -508,7 +519,7 @@ def save_comparison_plot(
     plot_q_1d(values_nxs, errors_nxs, y_bins_nxs, 'Qy [1/nm]', color='blue',
               title_text='', label=label_nxs, ax=ax_bottom, limits=y_plot_range, output='none')
     plot_q_1d(values_sim, errors_sim, y_bins_sim, 'Qy [1/nm]', color='green',
-              label=label_sim, ax=ax_bottom, limits=y_plot_range, output='none')
+              label='Simulation', ax=ax_bottom, limits=y_plot_range, output='none')
 
     for ax in map_axes:
         for z_limit in z_limits:  # the summed Qz range
@@ -703,102 +714,20 @@ def save_joint_comparison_plot(
         One split 2D map per sample instead of two separate maps.
     """
     import matplotlib.pyplot as plt
-    from .plotting_utils import plot_q_1d, log_plot_2d, extract_range_to_1d, split_plot_2d, link_axes
+    from .plotting_utils import joint_comparison_figure
 
-    intensity_min = 1.0
-    vmax1 = hist_nxs1[~np.isnan(hist_nxs1)].max() if np.any(~np.isnan(hist_nxs1)) else 100.0
-    vmax2 = hist_nxs2[~np.isnan(hist_nxs2)].max() if np.any(~np.isnan(hist_nxs2)) else 100.0
-    if split_view:
-        # Row 0: one split map per sample; row 1: the 1D Q-slice overlay
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        split_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, hist_sim_masked1, edges_sim1_0, edges_sim1_1,
-                      label_left="Sample 1 Measurement", label_right=label_sim1, ax=axes[0, 0],
-                      intensity_min=intensity_min, intensity_max=vmax1, y_range=y_plot_range, z_range=z_plot_range)
-        split_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, hist_sim_masked2, edges_sim2_0, edges_sim2_1,
-                      label_left="Sample 2 Measurement", label_right=label_sim2, ax=axes[0, 1],
-                      intensity_min=intensity_min, intensity_max=vmax2, y_range=y_plot_range, z_range=z_plot_range)
-        bottom_row = 1
-        map_axes_1, map_axes_2 = [(axes[0, 0], edges_sim1_1)], [(axes[0, 1], edges_sim2_1)]
-    else:
-        fig, axes = plt.subplots(3, 2, figsize=(16, 16))
-
-        # 1. Row 0: Sample 1 NeXus & Sim
-        log_plot_2d(hist_nxs1, y_edges_nxs1, z_edges_nxs1, "Sample 1 Measurement", ax=axes[0, 0],
-                    intensity_min=intensity_min, intensity_max=vmax1,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-        log_plot_2d(hist_sim_masked1, edges_sim1_0, edges_sim1_1, label_sim1, ax=axes[0, 1],
-                    intensity_min=intensity_min, intensity_max=vmax1,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-
-        # 2. Row 1: Sample 2 NeXus & Sim
-        log_plot_2d(hist_nxs2, y_edges_nxs2, z_edges_nxs2, "Sample 2 Measurement", ax=axes[1, 0],
-                    intensity_min=intensity_min, intensity_max=vmax2,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-        log_plot_2d(hist_sim_masked2, edges_sim2_0, edges_sim2_1, label_sim2, ax=axes[1, 1],
-                    intensity_min=intensity_min, intensity_max=vmax2,
-                    y_range=y_plot_range, z_range=z_plot_range, output='none')
-        bottom_row = 2
-        map_axes_1 = [(axes[0, 0], z_edges_nxs1), (axes[0, 1], edges_sim1_1)]
-        map_axes_2 = [(axes[1, 0], z_edges_nxs2), (axes[1, 1], edges_sim2_1)]
-
-    # Last row: merged for the 1D Q-slice overlay
-    gs = axes[bottom_row, 0].get_gridspec()
-    axes[bottom_row, 0].remove()
-    axes[bottom_row, 1].remove()
-    ax_bottom = fig.add_subplot(gs[bottom_row, :])
-    # zooming one map zooms all of them, and the Qy axis of the 1D slice
-    link_axes([ax for ax, _ in map_axes_1 + map_axes_2], ax_bottom)
-
-    qz_min_index1 = np.digitize(q_min, edges_sim1_1) - 1
-    qz_max_index1 = np.digitize(q_max, edges_sim1_1) - 1
-
-    qz_min_index2 = np.digitize(q_min, edges_sim2_1) - 1
-    qz_max_index2 = np.digitize(q_max, edges_sim2_1) - 1
-
-    # Sample 1 1D curves
-    hist_nxs1_1d = np.nan_to_num(hist_nxs1, nan=0.0)
-    hist_sim1_1d = np.nan_to_num(hist_sim_masked1, nan=0.0)
-    val_nxs1, err_nxs1, y_bins_nxs1, z_limits1 = extract_range_to_1d(
-        hist_nxs1_1d, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1, [qz_min_index1, qz_max_index1]
-    )
-    plot_q_1d(val_nxs1, err_nxs1, y_bins_nxs1, 'Qy [1/nm]', color='blue',
-              title_text='', label='Sample 1 Measurement', ax=ax_bottom, limits=y_plot_range, output='none')
-
-    val_sim1, err_sim1, y_bins_sim1, _ = extract_range_to_1d(
-        hist_sim1_1d, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1, [qz_min_index1, qz_max_index1]
-    )
-    plot_q_1d(val_sim1, err_sim1, y_bins_sim1, 'Qy [1/nm]', color='cyan',
-              label=label_sim1, ax=ax_bottom, limits=y_plot_range, output='none')
-
-    # Sample 2 1D curves
-    hist_nxs2_1d = np.nan_to_num(hist_nxs2, nan=0.0)
-    hist_sim2_1d = np.nan_to_num(hist_sim_masked2, nan=0.0)
-    val_nxs2, err_nxs2, y_bins_nxs2, _ = extract_range_to_1d(
-        hist_nxs2_1d, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, [qz_min_index2, qz_max_index2]
-    )
-    plot_q_1d(val_nxs2, err_nxs2, y_bins_nxs2, 'Qy [1/nm]', color='red',
-              label='Sample 2 Measurement', ax=ax_bottom, limits=y_plot_range, output='none')
-
-    val_sim2, err_sim2, y_bins_sim2, _ = extract_range_to_1d(
-        hist_sim2_1d, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1, [qz_min_index2, qz_max_index2]
-    )
-    plot_q_1d(val_sim2, err_sim2, y_bins_sim2, 'Qy [1/nm]', color='orange',
-              label=label_sim2, ax=ax_bottom, limits=y_plot_range, output='none')
-
-    # Highlight Qz slice on 2D plots
-    for ax, z_edges, qz_min_idx, qz_max_idx in (
-        [(ax, z_edges, qz_min_index1, qz_max_index1) for ax, z_edges in map_axes_1] +
-        [(ax, z_edges, qz_min_index2, qz_max_index2) for ax, z_edges in map_axes_2]
-    ):
-        ax.axhline(z_edges[min(max(qz_min_idx, 0), len(z_edges) - 2)], color='magenta', linestyle='--')
-        ax.axhline(z_edges[min(max(qz_max_idx, 0), len(z_edges) - 2) + 1], color='magenta', linestyle='--')
-
-    ax_bottom.set_title(f"Qz=[{z_limits1[0]:.4f} 1/nm, {z_limits1[1]:.4f} 1/nm]")
-    ax_bottom.grid(True, which='major')
-    ax_bottom.legend(loc='upper left')
-
-    plt.tight_layout()
-    plt.savefig(savename, dpi=300)
+    samples = [
+        {'measured': (hist_nxs1, hist_nxs_error1, y_edges_nxs1, z_edges_nxs1),
+         'simulated': (hist_sim_masked1, hist_sim_error_masked1, edges_sim1_0, edges_sim1_1),
+         'title': None, 'map_labels': ("Sample 1 Measurement", label_sim1),
+         'legend_labels': ("Sample 1 Measurement", label_sim1)},
+        {'measured': (hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2),
+         'simulated': (hist_sim_masked2, hist_sim_error_masked2, edges_sim2_0, edges_sim2_1),
+         'title': None, 'map_labels': ("Sample 2 Measurement", label_sim2),
+         'legend_labels': ("Sample 2 Measurement", label_sim2)},
+    ]
+    fig = joint_comparison_figure(samples, q_min, q_max, y_plot_range, z_plot_range, split_view=split_view)
+    fig.savefig(savename, dpi=300)
     plt.close(fig)
     print(f"Created joint comparison plot: {savename}")
 
@@ -956,6 +885,8 @@ def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.nda
 
     if getattr(args, 'simulate_mask_angle_range', False):
         _set_mask_angle_range(args, instrument, mask)  # the Q bins are the detector pixels
+    else:
+        args.direction_keep_pixels = None
 
     return hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw
 
@@ -978,6 +909,26 @@ def _set_mask_angle_range(args: Any, instrument: Any, pixel_mask: np.ndarray) ->
     fmt = lambda r: f"horiz=[{r[0]:.4f}, {r[1]:.4f}], vert=[{r[2]:.4f}, {r[3]:.4f}]"
     print(f"Mask angle range [deg] (the unmasked pixels seen from the sample centre): {fmt(args.mask_angle_range)}"
           + ("" if factor == 'auto' else f"; simulated with factor {factor:g}: {fmt(args.angle_range)}"))
+    # the unmasked pixels in the raw detector frame of the ray tracing (run.directions_reaching_region): the
+    # outgoing directions aimed only at masked pixels are not simulated (unless --keep_masked_directions)
+    args.direction_keep_pixels = None if getattr(args, 'keep_masked_directions', False) else raw_pixel_mask(instrument, pixel_mask)
+
+
+def raw_pixel_mask(instrument: Any, mask: np.ndarray) -> np.ndarray:
+    """
+    The mask of the compared image (the rotated detector image of run_simulation_evaluation, transposed there if its
+    shape requires) in the raw NeXus pixel frame [ix, iy] of the ray tracing.
+    """
+    det = instrument.detector
+    raw_index = np.arange(det.pixels_x_nexus * det.pixels_y_nexus).reshape(det.pixels_x_nexus, det.pixels_y_nexus)
+    rotated = det.coords.rotate_detector_image(raw_index)
+    if rotated.shape != mask.shape and rotated.T.shape == mask.shape:
+        rotated = rotated.T
+    if rotated.shape != mask.shape:
+        raise ValueError(f"The mask {mask.shape} does not match the detector image {rotated.shape}.")
+    keep = np.zeros(raw_index.size, dtype=bool)
+    keep[rotated[np.asarray(mask, dtype=bool)]] = True
+    return keep.reshape(raw_index.shape)
 
 
 def _exit_angle_band_image(instrument: Any, wavelength: float, band: Sequence[float], shape: Tuple[int, int]) -> np.ndarray:
@@ -1137,6 +1088,8 @@ def prepare_tof_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np
     if getattr(args, 'simulate_mask_angle_range', False):
         # the detector pixels with a TOF bin of a slice in an unmasked Q bin
         _set_mask_angle_range(args, instrument, instrument.detector.coords.rotate_detector_image(used_pixels))
+    else:
+        args.direction_keep_pixels = None
 
     first = slices[0]
     return first.hist_nxs, first.hist_nxs_error, first.y_edges, first.z_edges, first.mask, first.hist_nxs_raw, first.hist_nxs_error_raw
@@ -1247,6 +1200,11 @@ def run_simulation_evaluation(
         process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
         result = process_particles_parallelly(particles, params, process_number)
 
+    if result.get('directions') and params.get('direction_keep_pixels') is not None and not getattr(args, '_skipped_directions_reported', False):
+        args._skipped_directions_reported = True
+        print(f"Directions aimed only at masked pixels, not simulated: {result['directions_skipped']} of {result['directions']} "
+              f"({100 * result['directions_skipped'] / result['directions']:.1f}%; --keep_masked_directions simulates them)")
+
     if tof_slices:
         return evaluate_wavelength_slices(grid_point, args, result, label_prefix, save_simulation_output)
 
@@ -1333,8 +1291,8 @@ def run_simulation_evaluation(
             hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs,
             hist_sim_masked, hist_sim_error_masked, edges[1], edges[2],
             args.q_min, args.q_max, y_plot_range, z_plot_range,
-            plot_path, f"Sim ({param_str})", intensity_min, split_view=getattr(args, 'split_view', False),
-            profile=profile
+            plot_path, f"Simulation: {format_parameter_label(grid_point)}", intensity_min,
+            split_view=getattr(args, 'split_view', False), profile=profile
         )
 
     sim_data = {
@@ -2148,7 +2106,8 @@ def main() -> None:
             save_view_masks_plot(
                 raw, raw_error, masked, masked_error, y_edges, z_edges,
                 args.q_min, args.q_max, y_plot_range, z_plot_range,
-                plot_path, intensity_min, profile=profile
+                plot_path, intensity_min, profile=profile,
+                masked_style=getattr(args, 'mask_view_style', 'grey')
             )
         return
 

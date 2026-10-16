@@ -83,7 +83,9 @@ instrument_defaults = {
             'size': [1.024, 1.024], #[m]
             'direct_beam_centre_offset': [0.0, 0.0], #[m]
             'pixels': [128, 256],
-            'resolution': [0.0, 0.004] #fwhm[m]
+            # FWHM [m]; along the tubes (y) 7 mm from four measured direct beams (2026-10-13: individual best values
+            # 6-8.5 mm, mg_beam_centre_correction --profile_resolutions); earlier 4 mm (one pixel) was too narrow
+            'resolution': [0.0, 0.007]
         },
     }
 }
