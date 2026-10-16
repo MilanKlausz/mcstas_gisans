@@ -73,3 +73,38 @@ Plan:
    Instrument.calculate_q_from_nexus_positions.
 5. mg_fit histogram path (per pixel and TOF bin) on the same graph; esssans binning / normalisation where it fits.
 Details: ESS_REUSE_REVIEW_local.md (owner's notes, not in the repository).
+
+## Feature branch (planned): event data compatible with ESS tools
+Separate branch from dev (after feature/tof-fit is merged), e.g. `feature/nexus-events`. Covers steps 1-3 of the plan
+above; nothing of it is started.
+
+0. First, decide whether it is worth it (gain vs cost), before writing code:
+   - Possible gains: the ESS functions for frame unwrapping / time-of-flight lookup tables (needed for ESS (SKADI)
+     and for CSNS frames at 25 Hz), detector geometry from NeXus files instead of our presets, the same reduction
+     for simulated and measured ESS data, standard tools (Mantid, plain scippnexus) able to open simulated files.
+   - Costs: Python >= 3.12 environments for the current releases (BornAgain + cluster container), dependencies
+     (sciline, essreduce, ...), weights that the standard loaders drop (own loader step needed anyway), keeping up
+     with ESS API changes (the packages moved to the scipp/ess monorepo in 2026).
+   - The gain comes mainly from the in-memory scipp objects the ESS functions work on (event DataArray with
+     event_time_offset / event_time_zero, pixel positions, source and sample positions), not from the file layout:
+     the on-disk format only matters for our own readers. Option A: write NeXus files (as planned above).
+     Option B: keep our own file format, and make every reader (simulation, raw SANS2D, D22, CSNS, ESS NeXus)
+     return the same in-memory structure, on which the scippneutron / essreduce functions are called directly.
+     Compare the two before choosing.
+1. Must stay general for TOF instruments outside ESS: ISIS (SANS2D: 10 Hz, no frame wrapping, tof = offset),
+   CSNS (25 Hz: frames to unwrap; time-zero convention to confirm), ESS (14 Hz, long pulse: lookup table).
+   Facility-specific readers / converters bring each format to the common structure; the reduction after that is
+   facility-independent (pulse period, source position and time-zero offset as parameters).
+2. Event times: event_time_zero (per pulse) + event_index (per pulse) + event_time_offset (per event, from the
+   pulse during which the neutron is detected), as in ESS files (ev44 stream: reference_time, reference_time_index,
+   time_of_flight = ns since reference_time). One simulated pulse: event_time_zero = [0], event_index = [0], offset
+   = McStas time. Folding into frames (optional, to look like measured data): frame k = floor(t / T),
+   offset = t - k T, events grouped by frame, event_time_zero = [0, T, 2T, ...], event_index from the counts per
+   frame. The same code supports McStas runs with several pulses (if the McStas time includes each pulse start
+   k T; check per source component, e.g. the ESS source with n_pulses) -- an option only, not for normal studies:
+   one folded pulse equals a steady multi-pulse measurement. Test: two identical pulses folded = 2 x one pulse.
+   Today multi-pulse McStas output is NOT supported (the McStas time is taken as the TOF since the pulse).
+3. Weights: documented extra field (e.g. event_weight) + our loader step setting variance = w^2; never let a
+   standard loader turn them into unit weights silently (test: sum of weights after loading).
+4. Time zero: record what t = 0 of the McStas source means (proton pulse at ISIS/CSNS sources?; ESS pulse start)
+   and the offset to the facility's T0, so the unwrapping of simulated and measured data uses the same convention.
