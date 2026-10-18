@@ -82,6 +82,13 @@ def create_fit_parser():
                            help='Optimization algorithm to use (default: nelder-mead).')
     fit_group.add_argument('--popsize', type=int, default=15,
                            help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
+    fit_group.add_argument('--de_continue', type=str, default=None, metavar='FIT_SUMMARY',
+                           help='Differential Evolution only: continue an earlier DE fit (e.g. one stopped by a job time limit) from its fit_summary.csv '
+                                '(or its output directory). Its evaluations are replayed with the update rules of scipy (immediate updating) to recover the '
+                                'population at the point where it stopped; the new fit starts from that population without simulating it again (its losses are '
+                                'taken from the summary). The earlier evaluations are copied into the new fit_summary.csv and the evaluation numbers continue. '
+                                'Use the same --fit parameters, bounds, --popsize and --seed as the earlier fit (the --seed keeps the simulations comparable). '
+                                '--max_evals counts the new evaluations only.')
     fit_group.add_argument('--max_evals', type=int, default=10,
                            help='Maximum number of objective function evaluations for the optimizer (default: 10).')
     fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=['poisson_deviance', 'reduced_chi2', 'log_residual'],

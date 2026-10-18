@@ -13,6 +13,13 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- `mg_fit --de_continue FIT_SUMMARY`: continue a Differential Evolution fit
+  that stopped before converging (e.g. at a batch-job time limit). The earlier
+  evaluations are replayed with scipy's update rules (immediate updating) to
+  recover the population where the fit stopped; the new fit starts from it
+  without simulating it again, copies the earlier evaluations into its
+  `fit_summary.csv` and continues the evaluation numbers. `--max_evals` counts
+  the new evaluations.
 - Instrument `csns_vsans` (CSNS VSANS, BL14, TOF), for the McStas model
   `CSNS_VSANS_GISANS.instr` derived from the CSNS normal-mode model: source to
   sample 22.1077 m, sample to detector 11.5 m; the detector is a placeholder

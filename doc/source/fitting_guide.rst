@@ -185,6 +185,17 @@ of its population is below ``--fatol``, or when ``--max_evals`` is used up, so
 ``--xatol`` has no effect there. ``--fit_integer name`` keeps a parameter
 integer (e.g. a number of layers).
 
+A Differential Evolution fit that was stopped before it converged (for example
+by the time limit of a batch job) can be continued with ``--de_continue``
+followed by its ``fit_summary.csv`` or output directory. The earlier evaluations
+are replayed with the update rules of scipy to recover the population at the
+point where the fit stopped, and the new fit starts from that population
+without simulating it again. Give the same fitted parameters, bounds,
+``--popsize`` and ``--seed`` as before and a new ``--output_dir``; the new
+``fit_summary.csv`` contains the earlier evaluations as well, with continued
+evaluation numbers, and ``--max_evals`` counts the new evaluations only. A fit
+can be continued several times, each time from the previous continuation.
+
 Joint fits of two measurements (``--nxs2``) with shared (``--fit_common``) and
 separate (``--fit``/``--fit2``) parameters are described in :doc:`main_workflow`.
 
