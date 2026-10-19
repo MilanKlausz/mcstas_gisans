@@ -22,9 +22,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   the new evaluations.
 - Instrument `csns_vsans` (CSNS VSANS, BL14, TOF), for the McStas model
   `CSNS_VSANS_GISANS.instr` derived from the CSNS normal-mode model: source to
-  sample 22.1077 m, sample to detector 11.5 m; the detector is a placeholder
-  flat 2D detector (0.5 x 0.5 m, 2 mm pixels) until the VSANS detector
-  geometry is implemented.
+  sample 22.1077 m, sample to detector 11.5 m; the detector is one bank of the
+  He-3 detector D3 (0.496 x 1.0 m, 62 vertical 8 mm tubes x 250 pixels, 8 mm
+  FWHM along the tubes) on the reflection side of a vertical sample, its inner
+  edge 24 mm from the direct beam (estimated from the smallest scattering angle
+  of the He-3 detectors, 0.12 deg).
 - `mg_plot --qy_bins START STOP NBINS` and `--qz_bins START STOP NBINS`: the Q
   bins [1/nm] of TOF event data (simulated or raw SANS2D), as `QxBins`/`QyBins`
   of ESS esssans. Default: as many bins as detector pixels over the Q extent of
