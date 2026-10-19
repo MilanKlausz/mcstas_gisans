@@ -11,6 +11,8 @@
       beam_spot
       compare_with_simulated_direct_beam
       create_argparser
+      det_resolution_fwhm
+      direct_beam_profiles_figure
       find_required_centre_offset
       image_statistics
       main

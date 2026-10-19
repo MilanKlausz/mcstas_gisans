@@ -9,6 +9,7 @@
    .. autosummary::
    
       build_plot_instrument
+      default_intensity_min
       get_datasets
       get_joint_samples
       get_overlay_plot_axes

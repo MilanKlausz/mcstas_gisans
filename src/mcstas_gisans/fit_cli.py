@@ -83,12 +83,12 @@ def create_fit_parser():
     fit_group.add_argument('--popsize', type=int, default=15,
                            help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
     fit_group.add_argument('--de_continue', type=str, default=None, metavar='FIT_SUMMARY',
-                           help='Differential Evolution only: continue an earlier DE fit (e.g. one stopped by a job time limit) from its fit_summary.csv '
-                                '(or its output directory). Its evaluations are replayed with the update rules of scipy (immediate updating) to recover the '
-                                'population at the point where it stopped; the new fit starts from that population without simulating it again (its losses are '
-                                'taken from the summary). The earlier evaluations are copied into the new fit_summary.csv and the evaluation numbers continue. '
-                                'Use the same --fit parameters, bounds, --popsize and --seed as the earlier fit (the --seed keeps the simulations comparable). '
-                                '--max_evals counts the new evaluations only.')
+                           help='Differential Evolution only: start a new DE fit (in its own --output_dir) from the population of another DE fit, given by its '
+                                'fit_summary.csv or output directory (e.g. a fit of an older mg_fit without fit_state.json). Its evaluations are replayed with the '
+                                'update rules of scipy (immediate updating) to recover the population at the point where it stopped; the new fit starts from that '
+                                'population without simulating it again, copies the earlier evaluations into its fit_summary.csv and continues their numbers. Use '
+                                'the same --fit parameters, bounds, --popsize and --seed as the earlier fit. --max_evals counts the new evaluations only. Not needed '
+                                'to continue an unfinished fit in the same --output_dir: that is automatic (see --overwrite).')
     fit_group.add_argument('--max_evals', type=int, default=10,
                            help='Maximum number of objective function evaluations for the optimizer (default: 10).')
     fit_group.add_argument('--loss_function', type=str, default='poisson_deviance', choices=['poisson_deviance', 'reduced_chi2', 'log_residual'],
@@ -99,6 +99,26 @@ def create_fit_parser():
                            help='Parameter convergence tolerance for Nelder-Mead and Powell (not used by Differential Evolution), relative to each parameter\'s scale: its bound range if bounded, otherwise the absolute initial value (default: 0.01, i.e. 1%%).')
     fit_group.add_argument('--fatol', type=float, default=0.05,
                            help='Absolute loss convergence tolerance. Nelder-Mead/Powell: change of the loss; Differential Evolution: spread (standard deviation) of the losses of the population (default: 0.05).')
+    fit_group.add_argument('--overwrite', action='store_true',
+                           help='Start the fit from scratch even if --output_dir holds an earlier fit: its fit_summary.csv, fit_evaluations.jsonl and '
+                                'fit_state.json are removed (the comparison plots are overwritten as they are made). Without --overwrite, mg_fit looks at '
+                                '--output_dir first: an unfinished fit with the same settings (e.g. stopped by a job time limit) is CONTINUED automatically '
+                                '(its evaluations are retraced from fit_evaluations.jsonl without simulation, then new ones follow; the result is that of an '
+                                'uninterrupted run), while a finished fit, an unfinished fit with other settings, or a fit_summary.csv without fit_state.json '
+                                'stop mg_fit with a message. The budgets (--max_evals, --polish_max_evals) and the parallel and plot options may change '
+                                'between the runs of one fit; without --seed, the seed of the fit is used.')
+    fit_group.add_argument('--polish', type=str, default=None, choices=['nelder-mead', 'powell'],
+                           help='Differential Evolution only: refine the best point of the DE with this local optimiser (in the same fit: same '
+                                '--output_dir and fit_summary.csv, phase column "polish"), with the integer parameters fixed at their DE values. DE '
+                                'stops when the losses of its population agree within --fatol, which can leave its best point a few standard errors '
+                                'from the bottom of the minimum; the polish finds it (global search, then local refinement). See --polish_max_evals, '
+                                '--polish_xatol, --polish_fatol.')
+    fit_group.add_argument('--polish_max_evals', type=int, default=100,
+                           help='Maximum number of evaluations of the --polish (default: 100).')
+    fit_group.add_argument('--polish_xatol', type=float, default=0.002,
+                           help='Parameter tolerance of the --polish, relative to the bound range of each parameter (default: 0.002).')
+    fit_group.add_argument('--polish_fatol', type=float, default=0.002,
+                           help='Loss tolerance of the --polish (absolute change of the loss per pixel; default: 0.002).')
     fit_group.add_argument('--gif', action='store_true',
                            help='Generate animated GIF showing the evolution of the fitting process.')
 

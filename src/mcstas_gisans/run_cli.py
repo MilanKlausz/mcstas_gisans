@@ -148,6 +148,7 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
                      f"(positive = beam rising towards the sample normal): use --instrument_beam_angle {-args.instrument_beam_declination_angle}")
     if args.parallel_processes is not None and args.parallel_processes < 1:
         parser.error("--parallel_processes must be at least 1.")
+    args.seed_given = args.seed is not None  # mg_fit: a continued fit without --seed uses the seed of the fit
     if args.seed is None:
         import numpy as np
         args.seed = int(np.random.SeedSequence().entropy % 2**63)

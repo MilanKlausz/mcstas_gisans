@@ -17,6 +17,7 @@
       evaluate_wavelength_slices
       fit_flat_background
       format_fit_value
+      format_parameter_label
       format_time
       has_qz_band
       load_and_precondition_particles
@@ -31,6 +32,7 @@
       profile_plot_data
       qz_band_indices
       qz_band_profile
+      raw_pixel_mask
       run_automated_fit
       run_parameter_scan
       run_simulation_evaluation

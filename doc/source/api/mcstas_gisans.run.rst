@@ -8,6 +8,7 @@
 
    .. autosummary::
    
+      directions_reaching_region
       get_result_intensities
       get_simulation
       get_simulation_specular

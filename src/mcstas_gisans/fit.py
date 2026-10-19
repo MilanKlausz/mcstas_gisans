@@ -50,6 +50,8 @@ def format_time(seconds: Optional[float]) -> str:
         return f"{seconds:.2f}s"
 
 from .fit_cli import create_fit_parser, parse_scan_arguments, parse_fit_arguments
+from . import fit_optimize, fit_restart
+from .fit_continue import known_population_objective, load_de_continuation, replay_de_population  # noqa: F401 (re-exported)
 
 def convert_val(value_str: str) -> Union[int, float, str]:
     """
@@ -808,6 +810,12 @@ def validate_fit_args(args: Any, parser: argparse.ArgumentParser) -> None:
         for name, (low, high) in zip(param_names, bounds):
             if low is None or high is None:
                 parser.error(f"Differential Evolution optimizer requires finite bounds for all fitted parameters. Please specify bounds in --fit/--fit2/--fit_common for '{name}' (e.g. --fit {name} <initial_guess> <min_bound> <max_bound>).")
+
+    if getattr(args, 'polish', None) and args.optimizer.lower() != 'differential-evolution':
+        parser.error("--polish refines the best point of a Differential Evolution fit: it requires --optimizer differential-evolution "
+                     "(Nelder-Mead and Powell are local optimisers themselves).")
+    if getattr(args, 'de_continue', None) and args.optimizer.lower() != 'differential-evolution':
+        parser.error("--de_continue requires --optimizer differential-evolution.")
 
 def prepare_experimental_data(args: Any) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -1664,103 +1672,6 @@ def create_fit_evolution_gif(
     )
     print(f"Created animated fit evolution GIF: {gif_path}")
 
-def replay_de_population(
-    evaluations: Dict[int, Tuple[np.ndarray, float]],
-    population_size: int
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Recover the population of a scipy Differential Evolution run from its evaluations, in the order made.
-
-    scipy (updating='immediate', one worker) evaluates the initial population (members 0 .. S-1, member 0
-    is x0), swaps the best member into position 0, and then makes one trial per member and generation:
-    evaluation k (1-based, k > S) is the trial of member (k - S - 1) mod S; it replaces the member if its
-    loss is lower or equal, and the best member is swapped into position 0 again whenever the trial is at
-    least as good as member 0.
-
-    Parameters
-    ----------
-    evaluations : dict
-        eval_index (1-based) -> (parameter vector, loss). Evaluations without an entry (out-of-bounds
-        points, penalised without a record) are never accepted.
-    population_size : int
-        The DE population size S.
-
-    Returns
-    -------
-    population : np.ndarray
-        Shape (S, N), in scipy's member order.
-    energies : np.ndarray
-        The losses of the members.
-    """
-    missing = [i for i in range(1, population_size + 1) if i not in evaluations]
-    if missing:
-        raise ValueError(f"The initial DE population is incomplete: no record of evaluation(s) {missing}")
-    population = np.array([evaluations[i][0] for i in range(1, population_size + 1)], dtype=float)
-    energies = np.array([evaluations[i][1] for i in range(1, population_size + 1)], dtype=float)
-
-    def promote_lowest_energy():
-        best = int(np.argmin(energies))
-        energies[[0, best]] = energies[[best, 0]]
-        population[[0, best], :] = population[[best, 0], :]
-
-    promote_lowest_energy()
-    for index in range(population_size + 1, max(evaluations) + 1):
-        if index not in evaluations:
-            continue
-        x, energy = evaluations[index]
-        candidate = (index - population_size - 1) % population_size
-        if energy <= energies[candidate]:
-            population[candidate] = x
-            energies[candidate] = energy
-            if energy <= energies[0]:
-                promote_lowest_energy()
-    return population, energies
-
-
-def load_de_continuation(
-    path: str,
-    param_names: List[str],
-    objective_key: str,
-    population_size: int
-) -> Dict[str, Any]:
-    """
-    Read the fit_summary.csv of an earlier DE fit (--de_continue) and recover its last population.
-
-    Returns a dict with 'population' and 'energies' (see replay_de_population), 'records' (the earlier
-    evaluations, numbers converted, in evaluation order) and 'last_eval_index'.
-    """
-    summary_path = os.path.join(path, "fit_summary.csv") if os.path.isdir(path) else path
-    with open(summary_path, newline='') as f:
-        rows = list(csv.DictReader(f))
-
-    def number(text: str) -> Any:
-        try:
-            value = float(text)
-        except (TypeError, ValueError):
-            return text
-        return int(value) if value.is_integer() and '.' not in text and 'e' not in text.lower() else value
-
-    # the evaluation rows only (a finished fit's summary also holds the printed results table and runtimes)
-    records = [{key: number(value) for key, value in row.items() if key is not None} for row in rows]
-    records = [r for r in records if isinstance(r.get('eval_index'), int)
-               and all(isinstance(r.get(name), (int, float)) for name in param_names)]
-    records.sort(key=lambda r: r['eval_index'])
-    absent = [name for name in param_names + [objective_key] if records and name not in records[0]]
-    if not records or absent:
-        raise ValueError(f"--de_continue {summary_path}: " + (f"columns {absent} missing (fit the same parameters with the "
-                                                              f"same loss)" if records else "no evaluations"))
-    evaluations = {}
-    for r in records:
-        if isinstance(r[objective_key], str):
-            r[objective_key] = float('nan')
-        loss = r[objective_key]
-        loss = 1e9 if np.isnan(loss) else float(loss)  # as returned to the optimizer
-        evaluations[int(r['eval_index'])] = (np.array([float(r[name]) for name in param_names]), loss)
-    population, energies = replay_de_population(evaluations, population_size)
-    return {'population': population, 'energies': energies, 'records': records,
-            'last_eval_index': max(evaluations), 'summary_path': summary_path}
-
-
 def run_automated_fit(
     args: Any,
     particles: Any,
@@ -1770,12 +1681,16 @@ def run_automated_fit(
     y_edges_nxs: np.ndarray,
     z_edges_nxs: np.ndarray,
     mask: np.ndarray,
-    mcpl_metadata: Optional[Dict[str, Any]] = None
+    mcpl_metadata: Optional[Dict[str, Any]] = None,
+    run: Optional[fit_restart.FitRun] = None
 ) -> None:
     """
-    Execute an automated parameter fit using scipy.optimize.
+    Execute an automated parameter fit using scipy.optimize (see fit_optimize), single-sample or joint.
 
-    Supports both single-sample fitting and joint dual-sample fitting.
+    The fit lives in --output_dir (fit_restart): an unfinished fit there with the same settings is continued (its
+    evaluations are retraced from fit_evaluations.jsonl without simulation), a finished one or one with other
+    settings is not touched, and --overwrite starts from scratch. Every evaluation is written to fit_summary.csv
+    and fit_evaluations.jsonl as soon as it is done.
 
     Parameters
     ----------
@@ -1785,18 +1700,15 @@ def run_automated_fit(
         Preconditioned simulation particles.
     particle_type : str
         Particle type identifier.
-    hist_nxs : np.ndarray
-        NeXus data histogram.
-    hist_nxs_error : np.ndarray
-        NeXus data errors.
-    y_edges_nxs : np.ndarray
-        NeXus y edges.
-    z_edges_nxs : np.ndarray
-        NeXus z edges.
+    hist_nxs, hist_nxs_error : np.ndarray
+        NeXus data histogram and its errors.
+    y_edges_nxs, z_edges_nxs : np.ndarray
+        NeXus Q edges.
     mask : np.ndarray
         Mask array.
+    run : fit_restart.FitRun, optional
+        The state of the output directory (prepared by main(); made here if not given).
     """
-    import scipy.optimize
     if args.gif:
         args.png = True
 
@@ -1830,48 +1742,67 @@ def run_automated_fit(
             for name in item:
                 fit_integers.add(name)
 
-    print(f"\nStarting automated optimization using {args.optimizer.upper()} optimizer...")
+    def is_integer(name: str) -> bool:
+        base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
+        return name in fit_integers or base_name in fit_integers
+    integer_mask = [is_integer(name) for name in param_names]
+
+    optimizer = args.optimizer.lower()
+    polish_method = getattr(args, 'polish', None)
+    if polish_method and optimizer != 'differential-evolution':
+        raise ValueError("--polish requires --optimizer differential-evolution")
+
+    print(f"\nStarting automated optimization using {args.optimizer.upper()} optimizer"
+          + (f", then a {polish_method} polish of its best point" if polish_method else '') + "...")
     print(f"Parameters to fit: {param_names}")
     if fit_integers:
-        print(f"Integer parameters: {sorted(list(fit_integers))}")
+        print(f"Integer parameters: {sorted(list(fit_integers))}" + (" (fixed at the DE best during the polish)" if polish_method else ''))
     print(f"Initial guess x0: {x0}")
     print(f"Bounds: {bounds}")
-    print(f"Max evaluations: {args.max_evals}")
+    print(f"Max evaluations: {args.max_evals}" + (f" (+ at most {args.polish_max_evals} for the polish)" if polish_method else ''))
     objective_key = objective_loss_key(args)
     print(f"Loss metric: {objective_key}" + (f" (of the Qy profile of {band_description(args)}, --fit_objective 1d)"
                                              if objective_key != args.loss_function else ''))
-    print(f"Convergence tolerances: xatol={args.xatol}, fatol={args.fatol}")
+    print(f"Convergence tolerances: xatol={args.xatol}, fatol={args.fatol}"
+          + (f"; polish: xatol={args.polish_xatol}, fatol={args.polish_fatol}" if polish_method else ''))
 
     continuation = None
     if getattr(args, 'de_continue', None):
-        if args.optimizer.lower() != 'differential-evolution':
+        if optimizer != 'differential-evolution':
             raise ValueError("--de_continue requires --optimizer differential-evolution")
         continuation = load_de_continuation(args.de_continue, param_names, objective_key,
-                                            max(5, args.popsize * len(param_names)))
-        print(f"Continuing the DE fit of {continuation['summary_path']}: {len(continuation['records'])} evaluations "
+                                            fit_optimize.de_population_size(len(param_names), args.popsize))
+        print(f"Starting from the population of the DE fit {continuation['summary_path']}: {len(continuation['records'])} evaluations "
               f"(last #{continuation['last_eval_index']}), recovered population of {len(continuation['energies'])}, "
               f"losses {np.min(continuation['energies']):.4f} .. {np.max(continuation['energies']):.4f} "
               f"(spread {np.std(continuation['energies']):.4f}); best so far #"
               f"{min(continuation['records'], key=lambda r: r[objective_key] if not isinstance(r[objective_key], str) else np.inf)['eval_index']}")
 
+    if run is None:
+        run = fit_restart.prepare_output_dir(args, getattr(args, '_settings', None) or fit_restart.settings_fingerprint(args))
+    run.install_signal_handlers()
+
     eval_offset = continuation['last_eval_index'] if continuation else 0  # evaluation numbers continue
     eval_counter = [eval_offset]
     records = list(continuation['records']) if continuation else []
+    phase = ['de' if optimizer == 'differential-evolution' else optimizer]
+    budget = {'de': args.max_evals, 'polish': getattr(args, 'polish_max_evals', None)}
     start_total_time = time.time()
     fit_background = getattr(args, 'fit_background', False)
     if fit_background:
         print("Flat background: fitted for each evaluation (--fit_background)")
 
-    def is_integer(name: str) -> bool:
-        base_name = name[3:] if name.startswith(('s1_', 's2_')) else name
-        return name in fit_integers or base_name in fit_integers
+    def point_string(display_point: Dict[str, Any]) -> str:
+        return ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
 
     def print_progress(message: str, eval_start_time: float) -> None:
         eval_duration = time.time() - eval_start_time
-        new_evals = eval_counter[0] - eval_offset
+        new_evals = max(1, run.new_evaluations)
         avg_iter_time = (time.time() - start_total_time) / new_evals
-        eta = avg_iter_time * max(0, args.max_evals - new_evals)
-        print(f"Fit Eval #{eval_counter[0]}/{args.max_evals + eval_offset}: {message} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | ETA: {format_time(eta)}")
+        total_budget = eval_offset + (budget['de'] or 0) + ((budget['polish'] or 0) if polish_method else 0)
+        eta = avg_iter_time * max(0, total_budget - eval_counter[0])
+        print(f"Fit Eval #{eval_counter[0]}/{total_budget}: {message} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | "
+              f"ETA: {format_time(eta)}" + (f" | phase {phase[0]}" if polish_method else ''))
 
     def objective_function(x):
         eval_start_time = time.time()
@@ -1882,9 +1813,24 @@ def run_automated_fit(
         display_point = dict(zip(param_names, values))
         grid_point_s1 = {name: values[idx] for name, idx in s1_map.items()}
 
+        # an interrupted fit retraces its evaluations from the cache (fit_restart)
+        cached = run.cache.next_cached(phase[0], x)
+        if cached is not None:
+            if cached['eval_index'] != eval_counter[0]:
+                print(f"WARNING: cached evaluation #{cached['eval_index']} answers request #{eval_counter[0]}")
+            if cached.get('record') is not None:
+                records.append(cached['record'])
+                save_summary_csv(records, args.output_dir, "fit_summary.csv")
+            run.record(cached, cached=True)
+            print(f"Fit Eval #{eval_counter[0]} (from the cache, phase {phase[0]}): {point_string(display_point)} --> {objective_key} = {cached['loss']:.4f}")
+            return cached['loss']
+        run.print_retrace_done()
+        entry = {'eval_index': eval_counter[0], 'phase': phase[0], 'x': [float(v) for v in x]}
+
         # Bounds penalty (the optimizers are given the bounds; this guards rounding and DE edge cases)
         for name, val, (low, high) in zip(param_names, values, bounds):
             if (low is not None and val < low) or (high is not None and val > high):
+                run.record(dict(entry, loss=1e9, record=None), cached=False)
                 print_progress(f"Bound constraint violated ({name}: {val} outside [{low}, {high}]). Penalty applied", eval_start_time)
                 return 1e9
 
@@ -1895,6 +1841,7 @@ def run_automated_fit(
             )
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
+            rec['phase'] = phase[0]
             if fit_background:
                 rec.update(background_entries(metrics))
             for key in loss_keys(metrics):
@@ -1918,6 +1865,7 @@ def run_automated_fit(
             # joint loss: sum of the per-sample (per-pixel normalised) metrics
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
+            rec['phase'] = phase[0]
             if fit_background:
                 rec['background_sample1'] = metrics1['background']
                 rec['background_sample2'] = metrics2['background']
@@ -1945,8 +1893,8 @@ def run_automated_fit(
 
         if np.isnan(loss):
             loss = 1e9
+        run.record(dict(entry, loss=float(loss), record=rec), cached=False)
 
-        param_str = ', '.join(f"{k}={v}" if isinstance(v, int) else f"{k}={format_fit_value(v)}" for k, v in display_point.items())
         background_str = ''
         if fit_background:
             background_keys = ['background'] if 'background' in rec else [key for key in rec if key.startswith('background_s')]
@@ -1954,114 +1902,56 @@ def run_automated_fit(
         # the same loss of the other comparison (image or Qy profile of the Qz band), for information
         other_key = args.loss_function if objective_key != args.loss_function else f"{args.loss_function}_1d"
         other_str = f" ({other_key} = {rec[other_key]:.4f})" if other_key in rec else ''
-        print_progress(f"{param_str} --> {objective_key} = {loss:.4f}{other_str}{background_str}", eval_start_time)
+        print_progress(f"{point_string(display_point)} --> {objective_key} = {loss:.4f}{other_str}{background_str}", eval_start_time)
         return loss
 
-    if args.optimizer.lower() == 'differential-evolution':
-        integrality = [is_integer(name) for name in param_names]
-        # DE evaluates the initial population (popsize * N) and then popsize * N per generation.
-        popsize = args.popsize
-        population = max(5, popsize * len(param_names))  # scipy uses at least 5 population members
-        if args.max_evals < population:
-            print(f"WARNING: --max_evals {args.max_evals} is smaller than the initial DE population ({population}); "
-                  f"the initial population alone will be evaluated.")
-        # a continued fit (--de_continue) starts from the recovered population, whose losses are known:
-        # its initial population costs no evaluation
-        de_maxiter = max(0, args.max_evals // population - (0 if continuation else 1))
-        # DE stops when the spread (standard deviation) of the losses of its population is below
-        # --fatol (absolute; tol=0 disables scipy's relative criterion). It has no parameter-space
-        # criterion, so --xatol does not apply to DE.
-        print(f"Differential Evolution: population {population}, at most {de_maxiter + (0 if continuation else 1)} new generations "
-              f"({(de_maxiter + (0 if continuation else 1)) * population} evaluations); stops when the population's loss spread < {args.fatol}")
-        # A Generator, because scipy seeds the legacy RandomState from an int seed, which must be
-        # below 2**32, while the default --seed is a random 63-bit number. A continued fit uses another
-        # stream of the same seed (the simulations keep --seed itself).
-        seed = getattr(args, 'seed', None)
-        de_rng = (np.random.default_rng([seed, eval_offset] if continuation else seed)) if seed is not None else None
-        de_objective = objective_function
-        if continuation:
-            # scipy evaluates the given population first, member by member: answer with the known losses
-            # (compared in the unit cube of the bounds, as scipy rescales the population)
-            low = np.array([b[0] for b in bounds], dtype=float)
-            span = np.array([b[1] - b[0] for b in bounds], dtype=float)
-            known = list(zip(continuation['population'], continuation['energies']))
-
-            def de_objective(x):
-                if known:
-                    x_known, energy = known.pop(0)
-                    if np.allclose((np.asarray(x, dtype=float) - low) / span, (x_known - low) / span, rtol=0, atol=1e-9):
-                        return energy
-                    print("WARNING: --de_continue: scipy's initial population differs from the recovered one; simulating it")
-                    known.clear()
-                return objective_function(x)
-
-        opt_res = scipy.optimize.differential_evolution(
-            de_objective,
-            bounds,
-            x0=None if continuation else x0,
-            init=continuation['population'] if continuation else 'latinhypercube',
-            maxiter=de_maxiter,
-            popsize=popsize,
-            tol=0.0,
-            atol=args.fatol,
-            integrality=integrality,
-            polish=False,
-            seed=de_rng
-        )
-        best_x = np.asarray(opt_res.x, dtype=float)
-    else:
-        # Nelder-Mead / Powell work in scaled coordinates u = (x - x0) / scale, with scale the bound
-        # range (or |x0|, or 1): all parameters are O(1), so --xatol is relative and tiny-valued
-        # parameters (e.g. SLDs ~1e-6) are handled like any other.
-        x0_arr = np.asarray(x0, dtype=float)
-        scale = np.array([
-            (high - low) if (low is not None and high is not None) else (abs(v) if v != 0 else 1.0)
-            for v, (low, high) in zip(x0_arr, bounds)
-        ])
-        to_x = lambda u: x0_arr + scale * np.asarray(u)
-        u_bounds = [((low - v) / sc_ if low is not None else None, (high - v) / sc_ if high is not None else None)
-                    for v, sc_, (low, high) in zip(x0_arr, scale, bounds)]
-        has_bounds = any(b is not None for pair in u_bounds for b in pair)
-        opt_method = 'nelder-mead' if args.optimizer.lower() == 'nelder-mead' else 'powell'
-        opt_options = {'maxiter': args.max_evals, 'maxfev': args.max_evals}
-        if opt_method == 'nelder-mead':
-            opt_options['xatol'] = args.xatol
-            opt_options['fatol'] = args.fatol
-            # initial simplex: 10% of the scale per parameter, at least one unit for integer parameters
-            steps = [max(0.1, 1.0 / sc_) if is_integer(name) else 0.1 for name, sc_ in zip(param_names, scale)]
-            simplex = [np.zeros(len(param_names))]
-            for i, step in enumerate(steps):
-                vertex = np.zeros(len(param_names))
-                lo, hi = u_bounds[i]
-                vertex[i] = step if (hi is None or step <= hi) else -step
-                simplex.append(vertex)
-            opt_options['initial_simplex'] = np.array(simplex)
+    phases = []  # (description, scipy result)
+    try:
+        if optimizer == 'differential-evolution':
+            de_objective = objective_function
+            if continuation:
+                de_objective = known_population_objective(objective_function, continuation['population'], continuation['energies'], bounds)
+            opt_res = fit_optimize.run_differential_evolution(
+                de_objective, bounds, x0, integer_mask, args.popsize, args.max_evals, args.fatol, getattr(args, 'seed', None),
+                init=continuation['population'] if continuation else None, stream=eval_offset)
+            phases.append(("differential evolution", opt_res))
+            if polish_method:
+                print(f"\n========== POLISH: {polish_method} from the DE best (loss {opt_res.fun:.4f}) ==========")
+                phase[0] = 'polish'
+                polish_res, _ = fit_optimize.polish(objective_function, opt_res.x, bounds, integer_mask, polish_method,
+                                                    args.polish_max_evals, args.polish_xatol, args.polish_fatol)
+                phases.append((f"polish ({polish_method})", polish_res))
         else:
-            opt_options['xtol'] = args.xatol
-            opt_options['ftol'] = args.fatol
-
-        opt_res = scipy.optimize.minimize(
-            lambda u: objective_function(to_x(u)), np.zeros(len(param_names)), method=opt_method,
-            options=opt_options, bounds=u_bounds if has_bounds else None
-        )
-        best_x = to_x(opt_res.x)
+            opt_res, _ = fit_optimize.run_local(objective_function, x0, bounds, optimizer, args.max_evals, args.xatol,
+                                                args.fatol, integer_mask)
+            phases.append((optimizer, opt_res))
+    except BaseException as err:
+        if not run._terminated:
+            run.finish('failed', f"{type(err).__name__}: {err}")
+        raise
 
     total_runtime = time.time() - start_total_time
-    total_evals = max(1, eval_counter[0])
-    avg_iter_runtime = total_runtime / total_evals
+    new_evals = max(1, run.new_evaluations)
+    valid = [r for r in records if not np.isnan(r[objective_key])]
+    best_rec = min(valid, key=lambda r: r[objective_key]) if valid else None
 
+    main_res = phases[0][1]
     fit_results_lines = [
-        f"Optimizer Success: {opt_res.success}",
-        f"Optimizer Message: {opt_res.message}",
-        f"Best Loss ({objective_key}): {opt_res.fun:.4f}",
-        "Optimal Parameters:"
+        f"Optimizer Success: {main_res.success}",
+        f"Optimizer Message: {main_res.message}",
     ]
-    best_params = dict(zip(param_names, best_x))
-    for k, v in best_params.items():
-        val_str = str(int(np.round(v))) if is_integer(k) else format_fit_value(v)
-        fit_results_lines.append(f"  {k} = {val_str}")
-    if fit_background and records:
-        best_rec = min(records, key=lambda r: (np.isnan(r[objective_key]), r[objective_key]))
+    for name, res in phases[1:]:
+        fit_results_lines += [f"Polish Success: {res.success}", f"Polish Message: {res.message}"]
+    for name, res in phases:
+        fit_results_lines.append(f"Phase {name}: best loss {res.fun:.4f}, {res.nfev} evaluations")
+    if best_rec is not None:
+        fit_results_lines.append(f"Best Loss ({objective_key}): {best_rec[objective_key]:.4f}")
+        fit_results_lines.append(f"Best Evaluation: #{best_rec['eval_index']}" + (f" (phase {best_rec['phase']})" if 'phase' in best_rec else ''))
+        fit_results_lines.append("Optimal Parameters:")
+        for k in param_names:
+            v = best_rec[k]
+            fit_results_lines.append(f"  {k} = {int(v) if is_integer(k) else format_fit_value(float(v))}")
+    if fit_background and best_rec is not None:
         if 'background' in best_rec:
             fit_results_lines.append(f"  background = {best_rec['background']:.4f} [counts per pixel] "
                                      f"(fitted flat background of the best evaluation, #{best_rec['eval_index']})")
@@ -2076,14 +1966,23 @@ def run_automated_fit(
 
     fit_results_lines.extend([
         "\n--- Runtime Statistics ---",
-        f"Total Runtime: {format_time(total_runtime)} ({total_runtime:.2f}s)",
-        f"Average Iteration Runtime: {avg_iter_runtime:.2f}s",
-        f"Total Evaluations Completed: {total_evals}"
+        f"Total Runtime (this run): {format_time(total_runtime)} ({total_runtime:.2f}s)",
+        f"Average Iteration Runtime (new evaluations): {total_runtime / new_evals:.2f}s",
+        f"Evaluations: {eval_counter[0]} ({run.new_evaluations} simulated in this run, {run.cached_used} retraced from the cache)"
     ])
 
     extra_summary_text = "\n".join(fit_results_lines)
 
     save_and_print_summary(records, args.output_dir, "fit_summary.csv", "Optimization", extra_summary_text=extra_summary_text, sort_key=objective_key)
+
+    result = {'message': str(phases[-1][1].message), 'objective': objective_key,
+              'phases': [{'name': name, 'success': bool(res.success), 'message': str(res.message), 'best_loss': float(res.fun),
+                          'evaluations': int(res.nfev), 'budget_exhausted': 'maximum number' in str(res.message).lower()}
+                         for name, res in phases]}
+    if best_rec is not None:
+        result.update(best_loss=float(best_rec[objective_key]), best_eval_index=int(best_rec['eval_index']),
+                      best_parameters={k: best_rec[k] for k in param_names})
+    run.finish('finished', result['message'], result)
 
     if args.gif:
         create_fit_evolution_gif(args.output_dir, is_joint=is_joint_fit)
@@ -2207,9 +2106,14 @@ def main() -> None:
     """
     parser = create_fit_parser()
     args = parse_run_args(parser)
+    args._settings = fit_restart.settings_fingerprint(args)  # before mg_fit adds derived attributes
     os.makedirs(args.output_dir, exist_ok=True)
 
     validate_fit_args(args, parser)
+
+    # a fit: decide what to do with --output_dir (new fit, continue an unfinished one, or stop) before loading anything
+    is_fit = bool(args.fit or args.fit2 or args.fit_common) and not args.mask_view
+    run = fit_restart.prepare_output_dir(args, args._settings) if is_fit else None
 
     hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw = prepare_experimental_data(args)
 
@@ -2249,7 +2153,7 @@ def main() -> None:
     set_outgoing_directions_from_sampling(args, particles, particle_type)  # once, for the final angle range
 
     if args.fit or args.fit2 or args.fit_common:
-        run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)
+        run_automated_fit(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata, run=run)
     else:
         run_parameter_scan(args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, mcpl_metadata)
 

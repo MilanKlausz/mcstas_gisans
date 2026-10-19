@@ -185,16 +185,103 @@ of its population is below ``--fatol``, or when ``--max_evals`` is used up, so
 ``--xatol`` has no effect there. ``--fit_integer name`` keeps a parameter
 integer (e.g. a number of layers).
 
-A Differential Evolution fit that was stopped before it converged (for example
-by the time limit of a batch job) can be continued with ``--de_continue``
-followed by its ``fit_summary.csv`` or output directory. The earlier evaluations
-are replayed with the update rules of scipy to recover the population at the
-point where the fit stopped, and the new fit starts from that population
-without simulating it again. Give the same fitted parameters, bounds,
-``--popsize`` and ``--seed`` as before and a new ``--output_dir``; the new
-``fit_summary.csv`` contains the earlier evaluations as well, with continued
-evaluation numbers, and ``--max_evals`` counts the new evaluations only. A fit
-can be continued several times, each time from the previous continuation.
+5.1 Global search, then local refinement (``--polish``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For a fit whose loss may have several minima, the recommended procedure is a
+global search followed by a local refinement of its best point:
+
+1. ``--optimizer differential-evolution`` with bounds wide enough to contain
+   the optimum. Differential Evolution finds the right minimum, but it stops
+   when the losses of its population agree within ``--fatol``. Its best point
+   can then still be a few standard errors from the bottom of that minimum,
+   especially in narrow valleys of correlated parameters: one standard error
+   corresponds to a change of the total deviance by 1, i.e. of the loss (per
+   pixel) by 1/(number of pixels), far below a useful ``--fatol``.
+2. ``--polish nelder-mead`` (or ``powell``) refines the best point of the
+   Differential Evolution in the same fit, with the integer parameters fixed at
+   their values there. It stops when the parameters change by less than
+   ``--polish_xatol`` (relative to the bound ranges, default 0.002) and the loss
+   by less than ``--polish_fatol`` (default 0.002), or after
+   ``--polish_max_evals`` evaluations (default 100). Its evaluations have
+   ``polish`` in the ``phase`` column of ``fit_summary.csv``.
+3. The uncertainties of the fitted parameters follow from the curvature of the
+   loss at the refined minimum. That point should not lie at a bound: a result
+   at a bound is not a minimum; widen the bound and continue.
+
+The local optimisers are derivative-free, because the loss comes from a Monte
+Carlo simulation: with a fixed ``--seed`` it is a smooth function of the
+parameters on the scale of physical parameter changes, but not on the scale of
+the tiny steps of finite-difference gradients (scipy's own polish of a
+Differential Evolution uses L-BFGS-B with such gradients and is therefore
+switched off). A polish costs some tens of evaluations, typically 15–30% of the
+Differential Evolution.
+
+5.2 Continuing a fit, or starting it again (``--overwrite``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An ``--output_dir`` holds one fit. Besides ``fit_summary.csv``, ``mg_fit``
+writes ``fit_state.json`` (the settings, the status and one entry per run of the
+fit) and ``fit_evaluations.jsonl`` (every evaluation in the order made), after
+every evaluation. When ``mg_fit`` starts, it looks at ``--output_dir`` and
+prints what it found and decided:
+
+- **no fit there**: a new fit starts;
+- **an unfinished fit with the same settings** (stopped by a job time limit,
+  ``scancel``, a node failure or an error): it is **continued** automatically.
+  The optimiser is started again exactly as before; the evaluations it requests
+  in the same order with the same parameters are answered from
+  ``fit_evaluations.jsonl`` instead of being simulated, and then the fit goes on
+  with new evaluations. The scipy optimisers are deterministic for given losses
+  (Differential Evolution with its seeded generator), so the result is the same
+  as that of an uninterrupted fit. The simulation itself need not be
+  deterministic for this: the stored losses are used. At most the evaluation
+  that was running when the fit stopped is lost;
+- **a finished fit**, **an unfinished fit with other settings**, or a
+  ``fit_summary.csv`` without ``fit_state.json`` (an older ``mg_fit``): ``mg_fit``
+  stops with a message listing the reason (and the differing settings), and
+  nothing is changed.
+
+Between the runs of one fit, only the budgets (``--max_evals``,
+``--polish_max_evals``; a larger budget lets a fit that ran out of evaluations
+go on), the parallel options and the plot options may change. File options
+(``--nxs``, the MCPL file, ``--model``) are compared by file name, so a fit can
+be continued on another machine. Without ``--seed``, the seed of the fit is
+used. If the optimiser nevertheless requests another point than the stored one
+(e.g. after an update of scipy), ``mg_fit`` prints a warning, discards the
+remaining stored evaluations and goes on with simulations from that point.
+
+``--overwrite`` starts the fit from scratch: the three files are removed (the
+comparison plots are overwritten as they are made). ``--de_continue`` starts a
+new Differential Evolution fit, in another ``--output_dir``, from the population
+of an existing fit (e.g. one of an older ``mg_fit``, whose evaluations are
+replayed with the update rules of scipy).
+
+5.3 Batch jobs that continue themselves
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Because a fit continues automatically in its ``--output_dir``, a fit longer than
+the time limit of a batch queue runs as a chain of jobs of one script. Each job
+submits its successor when it starts, with a dependency that is met only if the
+job ends abnormally (time limit, node failure); if the job finishes normally,
+the dependency can never be met and slurm removes the successor. A cap on the
+number of jobs ends the chain if the fit keeps failing. In a slurm script:
+
+.. code-block:: bash
+
+   #SBATCH --time=24:00:00
+   #SBATCH --open-mode=append        # the log of every job of the chain in one file
+   SEGMENT=${SEGMENT:-1}; MAX_SEGMENTS=${MAX_SEGMENTS:-5}
+   if [ "$SEGMENT" -lt "$MAX_SEGMENTS" ]; then
+     SCRIPT=$(scontrol show job "$SLURM_JOB_ID" | sed -n 's/^ *Command=//p')
+     sbatch --dependency=afternotok:$SLURM_JOB_ID --kill-on-invalid-dep=yes \
+            --export=ALL,SEGMENT=$((SEGMENT + 1)) "$SCRIPT"
+   fi
+   python -m mcstas_gisans.fit ... --output_dir <the same directory in every job>
+
+slurm sends ``SIGTERM`` at the time limit; ``mg_fit`` then records the status
+``interrupted`` in ``fit_state.json`` and exits. The successor uses the script
+file as it is when the successor is submitted (at the start of the job).
 
 Joint fits of two measurements (``--nxs2``) with shared (``--fit_common``) and
 separate (``--fit``/``--fit2``) parameters are described in :doc:`main_workflow`.
@@ -489,7 +576,14 @@ In ``--output_dir`` (default ``scan_results``):
 - ``fit_summary.csv`` / ``scan_summary.csv``: every evaluation with its
   parameters, all loss values (with ``--q_min`` < ``--q_max`` also those of the
   Qy profile, ``..._1d``, section 6.3) and, with ``--fit_background``, the
-  fitted background, sorted by the selected loss.
+  fitted background, sorted by the selected loss. In fits it is written after
+  every evaluation (in the order made; sorted at the end) and has a ``phase``
+  column (``de``, ``polish``, or the local optimiser).
+- Fits: ``fit_state.json`` (settings, status ``running``, ``interrupted``,
+  ``failed`` or ``finished``, one entry per run of the fit with host, slurm job
+  and the numbers of retraced and new evaluations, and the result) and
+  ``fit_evaluations.jsonl`` (every evaluation with the exact parameter vector of
+  the optimiser), used to continue the fit (section 5.2).
 - With ``--png``: a comparison plot of the measurement and the simulation for
   every evaluation (``fit_eval_<n>_<parameters>.png`` in fits,
   ``sim_<parameters>.png`` in scans). ``--gif`` turns the fit plots into an
@@ -499,8 +593,9 @@ In ``--output_dir`` (default ``scan_results``):
 
 The summary with the best parameters, the optimizer's status and the run time
 is also printed. "Maximum number of function evaluations has been exceeded"
-means the budget ran out before the tolerances were met; continue from the best
-parameters with a new fit if the loss was still decreasing.
+means the budget ran out before the tolerances were met; if the loss was still
+decreasing, run the same command again with a larger ``--max_evals`` (and
+``--polish_max_evals``) and the fit goes on where it stopped (section 5.2).
 
 8. Run time
 -----------

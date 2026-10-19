@@ -13,13 +13,25 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
-- `mg_fit --de_continue FIT_SUMMARY`: continue a Differential Evolution fit
-  that stopped before converging (e.g. at a batch-job time limit). The earlier
-  evaluations are replayed with scipy's update rules (immediate updating) to
-  recover the population where the fit stopped; the new fit starts from it
-  without simulating it again, copies the earlier evaluations into its
-  `fit_summary.csv` and continues the evaluation numbers. `--max_evals` counts
-  the new evaluations.
+- `mg_fit`: an `--output_dir` holds one fit, and an unfinished fit there (stopped by a job time limit,
+  `scancel`, a node failure or an error) is **continued automatically** by running the same command again: the
+  optimiser is started again, the evaluations it requests in the same order with the same parameters are answered
+  from the new `fit_evaluations.jsonl` instead of being simulated, then new ones follow (the result equals that of an
+  uninterrupted fit). A finished fit, an unfinished fit with other settings, or a `fit_summary.csv` without the new
+  `fit_state.json` stop `mg_fit` with a message instead of being overwritten; a fit that ran out of evaluations goes
+  on with a larger `--max_evals`/`--polish_max_evals`. `--overwrite` starts from scratch (the previous behaviour).
+  SIGTERM (slurm time limit) records the status `interrupted`. The fitting guide (5.3) shows slurm jobs that continue
+  themselves.
+- `mg_fit --polish nelder-mead|powell`: refine the best point of a Differential Evolution fit with a local,
+  derivative-free optimiser in the same fit (integer parameters fixed; `--polish_max_evals`, `--polish_xatol`,
+  `--polish_fatol`); `fit_summary.csv` has a `phase` column.
+- Modules `fit_restart` (state of the output directory, evaluation cache), `fit_optimize` (the optimisers and the
+  polish) and `fit_continue` (`--de_continue`), split from `fit`.
+- `mg_fit --de_continue FIT_SUMMARY`: start a new Differential Evolution fit (in its own `--output_dir`) from
+  the population of another one, e.g. a fit of an older `mg_fit` stopped before converging: its evaluations are
+  replayed with scipy's update rules (immediate updating) to recover the population where it stopped; the new fit
+  starts from it without simulating it again, copies the earlier evaluations into its `fit_summary.csv` and continues
+  the evaluation numbers. `--max_evals` counts the new evaluations.
 - Instrument `csns_vsans` (CSNS VSANS, BL14, TOF), for the McStas model
   `CSNS_VSANS_GISANS.instr` derived from the CSNS normal-mode model: source to
   sample 22.1077 m, sample to detector 11.5 m; the detector is a placeholder
