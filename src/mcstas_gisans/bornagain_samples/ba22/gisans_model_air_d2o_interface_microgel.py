@@ -6,6 +6,10 @@ constant 2*radius + lattice_a_2_radius_plus) partly immersed in D2O (z_pos: bott
 the interface). A fraction vf_si_np of the lattice sites holds a microgel sphere of SLD microgel_sld; the other
 sites hold a 'void' sphere of air above and D2O below the interface. For BornAgain 22 and 23 (ba.Sample).
 
+Optional split microgel (microgel_top_sld): the part of each microgel sphere above the interface gets its own SLD
+(a drier, D2O-poor cap in air), the submerged part keeps microgel_sld; built like the void sphere (two spherical
+segments split at the interface). Without it (default), the microgel is one homogeneous sphere, as before.
+
 Default parameter values: the best fit of the high-resolution microgel measurement at 30 mN/m (8 summed NeXus
 files, alpha 0.4341, specular_simulation, fitted background; differential evolution, second round, with
 lattice_size=7 and pos_var=60: evaluation 321, poisson_deviance 2.6344).
@@ -121,7 +125,8 @@ def get_sample(
     pos_var=60,
     lattice_size=7,
     surface_density=7.39008344563e-05,
-    microgel_sld=5.116e-6
+    microgel_sld=5.116e-6,
+    microgel_top_sld=None
 ):
     """
     Get the BornAgain sample of the microgel particles at the air/D2O interface.
@@ -146,7 +151,10 @@ def get_sample(
         No effect (kept for existing calls): the particle surface density is one particle per lattice
         cell (BornAgain 22/23 ignore the explicit density of a layout with a 2D lattice).
     microgel_sld : float
-        Scattering length density of the microgel spheres [1/A^2].
+        Scattering length density of the microgel spheres [1/A^2]; with microgel_top_sld, that of their submerged part.
+    microgel_top_sld : float, optional
+        Scattering length density [1/A^2] of the part of each microgel sphere above the interface (in air), e.g. a
+        drier, D2O-poor top of a partly emerged microgel. None (default): one homogeneous sphere of microgel_sld.
     """
     material_Air = ba.MaterialBySLD("Air", 0.0, 0.0)
     material_D2O = ba.MaterialBySLD("D2O", 6.35e-06, 0.0)
@@ -155,9 +163,15 @@ def get_sample(
 
     vf_void = 1.0 - vf_si_np
 
-    ff_sio2 = ba.Sphere(radius * nm)
-    particle_sio2 = ba.Particle(material_SiO2, ff_sio2)
-    particle_sio2.translate(R3(0 * nm, 0 * nm, z_pos * nm))
+    if microgel_top_sld is None:
+        ff_sio2 = ba.Sphere(radius * nm)
+        particle_sio2 = ba.Particle(material_SiO2, ff_sio2)
+        particle_sio2.translate(R3(0 * nm, 0 * nm, z_pos * nm))
+    else:
+        # the microgel split at the interface like the void: microgel_top_sld above, microgel_sld below
+        material_top = ba.MaterialBySLD("MicrogelTop", microgel_top_sld, 0.0)
+        particle_sio2, _ = build_interface_matched_void(radius=radius, z_pos=z_pos, material_air=material_top,
+                                                        material_d2o=material_SiO2)
 
     void_compound, h_sub = build_interface_matched_void(
         radius=radius,

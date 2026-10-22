@@ -13,6 +13,10 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- Built-in model `gisans_model_air_d2o_interface_microgel` (BornAgain 22/23 and 24): optional `microgel_top_sld`, the
+  SLD of the part of each microgel sphere above the interface (a drier, D2O-poor top of a partly emerged microgel);
+  the sphere is then split at the interface like the void sphere, with `microgel_sld` for the submerged part.
+  Default `None`: one homogeneous sphere, as before (identical samples).
 - `mg_fit`: an `--output_dir` holds one fit, and an unfinished fit there (stopped by a job time limit,
   `scancel`, a node failure or an error) is **continued automatically** by running the same command again: the
   optimiser is started again, the evaluations it requests in the same order with the same parameters are answered

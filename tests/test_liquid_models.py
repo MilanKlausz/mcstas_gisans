@@ -70,3 +70,34 @@ def test_liquid_model_builds_with_script_parameters(model, sample_arguments, fit
     assert set(kwargs) <= set(inspect.signature(sample.get_module().get_sample).parameters)
     intensities = _tiny_gisas(sample.get_module().get_sample(**kwargs))
     assert len(intensities) == 25 and max(intensities) > 0
+
+
+# the optional split microgel (microgel_top_sld): its own SLD for the part of the sphere above the interface
+SPLIT_GEOMETRY = dict(vf_si_np=0.8487, radius=73.90, lattice_a_2_radius_plus=98.67, lattice_size=4, pos_var=60)
+
+
+def _microgel(**params):
+    return _tiny_gisas(Sample(0.1, 0.1, MICROGEL_MODEL, None).get_module().get_sample(**params))
+
+
+def test_microgel_split_with_equal_slds_is_the_homogeneous_sphere():
+    """Two spherical segments split at the interface with the same SLD make the same sample as one sphere."""
+    geometry = dict(SPLIT_GEOMETRY, z_pos=-120.0)          # sphere top 27.8 nm above the interface
+    homogeneous = _microgel(**geometry, microgel_sld=4.449e-6)
+    split = _microgel(**geometry, microgel_sld=4.449e-6, microgel_top_sld=4.449e-6)
+    assert split == pytest.approx(homogeneous, rel=1e-9)
+
+
+def test_microgel_top_sld_matters_only_for_the_emerged_part():
+    submerged = dict(SPLIT_GEOMETRY, z_pos=-160.0)        # sphere top 12.2 nm below the interface: nothing emerges
+    assert _microgel(**submerged, microgel_sld=4.449e-6, microgel_top_sld=1.0e-6) == pytest.approx(
+        _microgel(**submerged, microgel_sld=4.449e-6), rel=1e-9)
+    emerged = dict(SPLIT_GEOMETRY, z_pos=-120.0)
+    assert _microgel(**emerged, microgel_sld=4.449e-6, microgel_top_sld=1.0e-6) != pytest.approx(
+        _microgel(**emerged, microgel_sld=4.449e-6), rel=1e-3)
+
+
+def test_microgel_top_sld_default_is_the_homogeneous_model():
+    defaults = {name: p.default for name, p in inspect.signature(
+        Sample(0.1, 0.1, MICROGEL_MODEL, None).get_module().get_sample).parameters.items()}
+    assert defaults['microgel_top_sld'] is None
