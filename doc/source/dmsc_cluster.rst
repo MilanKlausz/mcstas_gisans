@@ -199,6 +199,49 @@ Of course, running anything that is not supposed to finish in seconds should be 
 
 This is the simulation of ``examples/paper/run_d22_sim.sh`` (see ``examples/paper/README.md`` for the intensity factor and the detector offset), with the ``standard`` sampling preset. The parallel settings use the 112 hardware threads of a *quark* node: ``--parallel_processes`` splits the MCPL particles between processes, and ``--bornagain_number_of_threads`` limits the threads of BornAgain in each of them. Without it, every process would start as many BornAgain threads as the node has, which overloads the node. In fits on these nodes, 112 processes with 2 or 4 threads each were as fast as the best other settings, or faster (up to about 20% with a small detector region). Fits (``python -m mcstas_gisans.fit ...``) are submitted the same way.
 
+Using several nodes for one simulation or fit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``mg_run`` and ``mg_fit`` can process the neutrons of every simulation on several nodes of one job
+(``--cluster_nodes``). The process started by the batch script coordinates and runs ``--parallel_processes`` processes
+itself; on every other node, ``mg_cluster_worker`` (``python -m mcstas_gisans.cluster``) runs a pool of processes and
+connects to it over the network. The neutrons of a simulation are split into chunks (``--cluster_chunks_per_process``
+per process of all nodes), which the processes of all nodes pull as they become free. Every neutron gets its random
+numbers from its global index, so the result is the same as on one node with the same ``--seed``: the same loss,
+the same fit, and an unfinished fit can be continued with another number of nodes. If a worker node fails, its chunks
+are processed by the other nodes. The coordinator writes its address and a random key to ``--cluster_address_file``
+(a file on a shared file system, readable only by you), where the workers find it; it removes the file at the end.
+
+.. code-block:: bash
+
+   #!/bin/bash
+   #SBATCH --job-name=fit4nodes
+   #SBATCH --partition=quark
+   #SBATCH --nodes=4
+   #SBATCH --ntasks-per-node=1
+   #SBATCH --time=24:00:00
+   #SBATCH --exclusive
+
+   IMAGE="/path/to/bornagain_v23.0_scipp_apptainer.sif"
+   CODE="/path/to/mcstas_gisans/src"
+   DATA="/path/to/gisans"
+   ADDR="$HOME/.mcstas_gisans_cluster/address_${SLURM_JOB_ID}.json"
+   RUN="singularity exec --unsquash --bind $CODE --bind $DATA $IMAGE env PYTHONPATH=$CODE"
+
+   # one worker on every node except this one
+   srun --relative=1 --nodes=$((SLURM_NNODES-1)) --ntasks=$((SLURM_NNODES-1)) --ntasks-per-node=1 \
+     $RUN python -m mcstas_gisans.cluster --address_file $ADDR --processes 112 &
+
+   $RUN python -m mcstas_gisans.fit ... --parallel_processes 112 --bornagain_number_of_threads 4 \
+     --cluster_nodes $SLURM_NNODES --cluster_address_file $ADDR
+   wait
+
+The workers stop when the coordinator ends. Measured with a fit evaluation of the microgel model (D22 high
+resolution, 82x33 outgoing directions, 112 processes per *quark* node; 110.9 s on one node): 2 nodes 1.4-1.5x,
+4 nodes 3.4x, 8 nodes 6.5x faster (images 7x; 4 chunks per process, the default; 2 chunks per process: 6.0x, 8: no further gain). The coordinator needs little time of its own
+(the neutrons of a chunk and its detector histogram, sent as its non-zero pixels, are small). Not supported: TOF
+event files (time-of-flight instruments without ``mg_fit --wavelength_slice``).
+
 Creating plots would also be more convenient with a batch file (e.g., *submitPlot.batch*) with content like the following:
 
 .. code-block:: bash

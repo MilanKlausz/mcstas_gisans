@@ -560,6 +560,19 @@ def process_particles_parallelly(particles: Any, params: Dict[str, Any], process
     Spawn parallel processes to carry out the BornAgain simulation and subsequent
     calculation of the incident particles.
     """
+    from .cluster import get_coordinator
+    coordinator = get_coordinator()
+    if coordinator is not None:
+        if params['instrument'].is_tof_instrument and params.get('tof_bin_edges') is None:
+            raise ValueError("--cluster_nodes: TOF event files are not supported on several nodes (the temporary event "
+                             "files would stay on the worker nodes); use one node, or mg_fit with --wavelength_slice.")
+        # --cluster_chunks_per_process chunks per process of all nodes: the nodes pull chunks as their processes become free
+        n_chunks = max(1, min(len(particles), coordinator.chunks_per_process * coordinator.total_processes))
+        starts = np.linspace(0, len(particles), n_chunks + 1).astype(int)
+        # the parameters go to every node once (shared), the chunk tasks carry only the neutrons
+        results = coordinator.map(process_particles, [(particles[starts[i]:starts[i + 1]], int(starts[i])) for i in range(n_chunks)],
+                                  shared=params, shared_index=1)
+        return _merge_results(results, params)
     process_number = max(1, min(int(process_number), len(particles)))
     print(f"Number of parallel processes: {process_number} (number of physical CPU cores: {get_available_cores()})")
     if process_number == 1:
@@ -589,7 +602,11 @@ def process_particles_parallelly(particles: Any, params: Dict[str, Any], process
                                "or a signal); the run is stopped. Fewer --parallel_processes need less memory.") from e
         raise
     executor.shutdown(wait=True)
+    return _merge_results(results, params)
 
+
+def _merge_results(results: List[Dict[str, Any]], params: Dict[str, Any]) -> Dict[str, Any]:
+    """Sum the results of the chunks of process_particles_parallelly (in chunk order)."""
     is_tof = params['instrument'].is_tof_instrument
     pixel_hist = np.zeros((params['instrument'].detector.pixels_x_nexus, params['instrument'].detector.pixels_y_nexus))
     pixel_hist_weights_squared = np.zeros((params['instrument'].detector.pixels_x_nexus, params['instrument'].detector.pixels_y_nexus))
@@ -643,6 +660,8 @@ def main() -> None:
     print('Number of particles being processed: ', len(particles))
 
     params = pack_parameters(args, particle_type)
+    from .cluster import setup_from_args
+    setup_from_args(args)  # --cluster_nodes > 1: wait for the worker nodes
 
     if args.no_parallel:
         result = process_particles(particles, params)

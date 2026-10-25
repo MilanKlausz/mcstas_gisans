@@ -607,6 +607,8 @@ directions for a target noise per pixel (``quick``, the default, ``standard``,
 MCPL file automatically gets fewer directions per neutron. ``-p`` sets the number of
 parallel processes; with many processes use ``--bornagain_number_of_threads 1``.
 ``--simulate_mask_angle_range`` saves time when much of the detector is masked.
+On a cluster, ``--cluster_nodes`` spreads every simulation over several nodes of a job with the same results
+(about 6.5x faster on 8 nodes; see the DMSC cluster page).
 A scan with a few points is usually worth more than a long fit from a poor
 starting point.
 

@@ -2114,6 +2114,9 @@ def main() -> None:
     # a fit: decide what to do with --output_dir (new fit, continue an unfinished one, or stop) before loading anything
     is_fit = bool(args.fit or args.fit2 or args.fit_common) and not args.mask_view
     run = fit_restart.prepare_output_dir(args, args._settings) if is_fit else None
+    if not args.mask_view:
+        from .cluster import setup_from_args
+        setup_from_args(args)  # --cluster_nodes > 1: wait for the worker nodes
 
     hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask, hist_nxs_raw, hist_nxs_error_raw = prepare_experimental_data(args)
 

@@ -37,6 +37,12 @@ def create_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--no_gravity', default=False, action='store_true', help='Do not take into account gravity.')
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help='Enable verbose logging.')
 
+    clusterGroup = parser.add_argument_group('Several cluster nodes', 'Process the neutrons of every simulation on several nodes of a cluster job: this process coordinates and runs --parallel_processes processes itself, and every other node runs mg_cluster_worker (see the fitting guide). The results are identical to a single-node run with the same --seed.')
+    clusterGroup.add_argument('--cluster_nodes', type=int, default=1, help='Number of nodes, including this one (1: no other nodes). This process waits for --cluster_nodes - 1 mg_cluster_worker processes to connect.')
+    clusterGroup.add_argument('--cluster_address_file', default=None, help='File (on a file system shared by the nodes) where this process writes its address and a random key for the workers; give the same file to mg_cluster_worker --address_file. Default: ~/.mcstas_gisans_cluster/address_<Slurm job ID>.json.')
+    clusterGroup.add_argument('--cluster_timeout', type=float, default=600.0, help='Seconds to wait for the workers to connect.')
+    clusterGroup.add_argument('--cluster_chunks_per_process', type=int, default=4, help='The neutrons of a simulation are split into this many chunks per process of all nodes; the nodes pull them as their processes become free (more chunks: better balance, a little more overhead).')
+
     bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
     bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help='Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
     bornagainGroup.add_argument('-n', '--outgoing_directions', type=int, default=argparse.SUPPRESS, help=f'Number of outgoing directions (both horizontally and vertically) within the sampled angle range of the BornAgain simulation. Overrides the sampling preset (default: none, the grid is chosen by --sampling {DEFAULT_SAMPLING}).')
@@ -148,6 +154,10 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
                      f"(positive = beam rising towards the sample normal): use --instrument_beam_angle {-args.instrument_beam_declination_angle}")
     if args.parallel_processes is not None and args.parallel_processes < 1:
         parser.error("--parallel_processes must be at least 1.")
+    if getattr(args, 'cluster_nodes', 1) < 1:
+        parser.error("--cluster_nodes must be at least 1.")
+    if getattr(args, 'cluster_nodes', 1) > 1 and args.no_parallel:
+        parser.error("--cluster_nodes cannot be combined with --no_parallel.")
     args.seed_given = args.seed is not None  # mg_fit: a continued fit without --seed uses the seed of the fit
     if args.seed is None:
         import numpy as np

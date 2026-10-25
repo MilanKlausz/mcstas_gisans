@@ -13,6 +13,13 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- Processing on **several cluster nodes** (`mg_run` / `mg_fit --cluster_nodes N --cluster_address_file F`, new command
+  `mg_cluster_worker`, module `mcstas_gisans.cluster`): the neutrons of every simulation are split into chunks that
+  the processes of all nodes of a job pull as they become free (TCP between the nodes, authenticated with a random
+  key; the simulation parameters go to every node once per simulation). Every neutron is seeded by its global
+  index, so the results equal those of a single node with the same `--seed`; a fit continued on another number of
+  nodes goes on from its cache. A failing worker node's chunks are processed by the other nodes. Not supported:
+  TOF event files (TOF without `--wavelength_slice`). See the DMSC cluster page.
 - Built-in model `gisans_model_air_d2o_interface_microgel` (BornAgain 22/23 and 24): optional `microgel_top_sld`, the
   SLD of the part of each microgel sphere above the interface (a drier, D2O-poor top of a partly emerged microgel);
   the sphere is then split at the interface like the void sphere, with `microgel_sld` for the submerged part.
