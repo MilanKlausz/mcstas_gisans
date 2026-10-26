@@ -18,7 +18,7 @@ from .run_cli import parse_args as parse_run_args
 from .input_output import get_particles
 from .preconditioning import precondition
 from .parameters import pack_parameters, set_outgoing_directions_from_sampling, build_instrument, angle_window_extent, angle_window_margin
-from .run import process_particles, process_particles_parallelly
+from .run import process_batch_parallelly, process_particles, process_particles_parallelly
 from .hardware import get_available_cores
 from .nexus_reader import read_nexus_data, warn_if_duration_mismatch
 from .experiment_time import upscale_simple
@@ -1137,6 +1137,34 @@ def load_and_precondition_particles(args: Any) -> Tuple[Any, str, Any]:
     print(f"Loaded and preconditioned {len(particles)} particles.")
     return particles, particle_type, mcpl_metadata
 
+def simulation_params(grid_point: Dict[str, Any], args: Any, particle_type: str) -> Dict[str, Any]:
+    """The simulation parameters (pack_parameters) of a grid point: --sample_arguments with the grid point's values."""
+    sample_args_dict = {}
+    if args.sample_arguments:
+        for pair in args.sample_arguments.split(';'):
+            if '=' in pair:
+                k, v = pair.split('=', 1)
+                sample_args_dict[k.strip()] = convert_val(v.strip())
+
+    for k, v in grid_point.items():
+        sample_args_dict[k] = v
+
+    args.sample_arguments = ';'.join(f"{k}={v}" for k, v in sample_args_dict.items())
+    params = pack_parameters(args, particle_type)
+    if getattr(args, 'tof_slices', None):
+        params['tof_bin_edges'] = args.tof_bin_edges  # (pixel, TOF bin) histograms instead of events
+    return params
+
+
+def simulate_points(grid_points: List[Dict[str, Any]], args: Any, particles: Any, particle_type: str) -> List[Dict[str, Any]]:
+    """The simulations of several grid points at once (process_batch_parallelly), for run_simulation_evaluation(result=...)."""
+    params_list = [simulation_params(grid_point, args, particle_type) for grid_point in grid_points]
+    if args.no_parallel:
+        return [process_particles(particles, params) for params in params_list]
+    process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
+    return process_batch_parallelly(particles, params_list, process_number, getattr(args, 'chunks_per_process', 4))
+
+
 def run_simulation_evaluation(
     grid_point: Dict[str, Any],
     args: Any,
@@ -1149,7 +1177,8 @@ def run_simulation_evaluation(
     mask: np.ndarray,
     label_prefix: str = "sim",
     save_simulation_output: bool = False,
-    mcpl_metadata: Optional[Dict[str, Any]] = None
+    mcpl_metadata: Optional[Dict[str, Any]] = None,
+    result: Optional[Dict[str, Any]] = None
 ) -> Tuple[Dict[str, float], Dict[str, Any], Dict[str, Any]]:
     """
     Run a single simulation point evaluation and return fitness metrics.
@@ -1180,33 +1209,23 @@ def run_simulation_evaluation(
         Whether to save scipp results.
     mcpl_metadata : dict, optional
         MCPL source metadata (from `get_particles`) to embed when saving scipp results.
+    result : dict, optional
+        The simulation of this grid point, if it was made already (simulate_points, mg_fit --de_parallel).
 
     Returns
     -------
     tuple
         (metrics, record, sim_data); metrics as returned by calculate_fitness.
     """
-    sample_args_dict = {}
-    if args.sample_arguments:
-        for pair in args.sample_arguments.split(';'):
-            if '=' in pair:
-                k, v = pair.split('=', 1)
-                sample_args_dict[k.strip()] = convert_val(v.strip())
-
-    for k, v in grid_point.items():
-        sample_args_dict[k] = v
-
-    args.sample_arguments = ';'.join(f"{k}={v}" for k, v in sample_args_dict.items())
-    params = pack_parameters(args, particle_type)
+    params = simulation_params(grid_point, args, particle_type)
     tof_slices = getattr(args, 'tof_slices', None)
-    if tof_slices:
-        params['tof_bin_edges'] = args.tof_bin_edges  # (pixel, TOF bin) histograms instead of events
 
-    if args.no_parallel:
-        result = process_particles(particles, params)
-    else:
-        process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
-        result = process_particles_parallelly(particles, params, process_number)
+    if result is None:
+        if args.no_parallel:
+            result = process_particles(particles, params)
+        else:
+            process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
+            result = process_particles_parallelly(particles, params, process_number, getattr(args, 'chunks_per_process', 4))
 
     if result.get('directions') and params.get('direction_keep_pixels') is not None and not getattr(args, '_skipped_directions_reported', False):
         args._skipped_directions_reported = True
@@ -1766,6 +1785,14 @@ def run_automated_fit(
     print(f"Convergence tolerances: xatol={args.xatol}, fatol={args.fatol}"
           + (f"; polish: xatol={args.polish_xatol}, fatol={args.polish_fatol}" if polish_method else ''))
 
+    if getattr(args, 'de_parallel', False):
+        if optimizer != 'differential-evolution':
+            raise ValueError("--de_parallel requires --optimizer differential-evolution")
+        if getattr(args, 'de_continue', None):
+            raise ValueError("--de_parallel cannot be combined with --de_continue (its population is recovered with "
+                             "scipy's immediate updating)")
+        print("Differential Evolution: the members of every generation are simulated together (--de_parallel)")
+
     continuation = None
     if getattr(args, 'de_continue', None):
         if optimizer != 'differential-evolution':
@@ -1804,6 +1831,13 @@ def run_automated_fit(
         print(f"Fit Eval #{eval_counter[0]}/{total_budget}: {message} | Iter: {eval_duration:.2f}s | Avg: {avg_iter_time:.2f}s | "
               f"ETA: {format_time(eta)}" + (f" | phase {phase[0]}" if polish_method else ''))
 
+    # mg_fit --de_parallel: the simulations of a generation, made together by de_batch_map before scipy asks for the
+    # losses one by one (key: the parameter vector)
+    prefetched: Dict[bytes, Tuple[Dict[str, Any], Optional[Dict[str, Any]]]] = {}
+
+    def x_key(x) -> bytes:
+        return np.asarray(x, dtype=float).tobytes()
+
     def objective_function(x):
         eval_start_time = time.time()
         eval_counter[0] += 1
@@ -1834,10 +1868,11 @@ def run_automated_fit(
                 print_progress(f"Bound constraint violated ({name}: {val} outside [{low}, {high}]). Penalty applied", eval_start_time)
                 return 1e9
 
+        simulated = prefetched.pop(x_key(x), (None, None))
         if not is_joint_fit:
             metrics, _, _ = run_simulation_evaluation(
                 grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-                label_prefix=f"fit_eval_{eval_counter[0]}", mcpl_metadata=mcpl_metadata
+                label_prefix=f"fit_eval_{eval_counter[0]}", mcpl_metadata=mcpl_metadata, result=simulated[0]
             )
             rec = copy.deepcopy(display_point)
             rec['eval_index'] = eval_counter[0]
@@ -1854,11 +1889,11 @@ def run_automated_fit(
             args.png = False
             metrics1, _, sim_data1 = run_simulation_evaluation(
                 grid_point_s1, args, particles, particle_type, hist_nxs, hist_nxs_error, y_edges_nxs, z_edges_nxs, mask,
-                label_prefix=f"fit_eval_s1_{eval_counter[0]}", mcpl_metadata=mcpl_metadata
+                label_prefix=f"fit_eval_s1_{eval_counter[0]}", mcpl_metadata=mcpl_metadata, result=simulated[0]
             )
             metrics2, _, sim_data2 = run_simulation_evaluation(
                 grid_point_s2, args2, particles2, particle_type2, hist_nxs2, hist_nxs_error2, y_edges_nxs2, z_edges_nxs2, mask2,
-                label_prefix=f"fit_eval_s2_{eval_counter[0]}", mcpl_metadata=mcpl_metadata2
+                label_prefix=f"fit_eval_s2_{eval_counter[0]}", mcpl_metadata=mcpl_metadata2, result=simulated[1]
             )
             args.png = png_backup
 
@@ -1905,6 +1940,45 @@ def run_automated_fit(
         print_progress(f"{point_string(display_point)} --> {objective_key} = {loss:.4f}{other_str}{background_str}", eval_start_time)
         return loss
 
+    def points_to_simulate(points: List[np.ndarray]) -> List[np.ndarray]:
+        """The points of a generation that objective_function will simulate, in order: not answered from the cache
+        (the same look-ahead as EvaluationCache.next_cached) and within the bounds."""
+        entries, position = run.cache.entries, run.cache.position
+        selected = []
+        for x in points:
+            if position < len(entries):
+                entry = entries[position]
+                if entry['phase'] == phase[0] and entry['x'] == [float(v) for v in x]:
+                    position += 1
+                    continue
+                position = len(entries)  # the replay ends here (next_cached discards the rest)
+            values = [int(np.round(val)) if is_integer(name) else float(val) for name, val in zip(param_names, x)]
+            if any((low is not None and val < low) or (high is not None and val > high) for val, (low, high) in zip(values, bounds)):
+                continue
+            selected.append(x)
+        return selected
+
+    def de_batch_map(func, points):
+        """mg_fit --de_parallel: simulate the points of a generation together, then let scipy's func (the objective)
+        evaluate them one by one with these simulations."""
+        points = list(points)
+        prefetched.clear()
+        to_simulate = points_to_simulate(points)
+        if to_simulate:
+            t0 = time.time()
+            values = [[int(np.round(val)) if is_integer(name) else float(val) for name, val in zip(param_names, x)] for x in to_simulate]
+            results1 = simulate_points([{name: v[idx] for name, idx in s1_map.items()} for v in values], args, particles, particle_type)
+            results2 = (simulate_points([{name: v[idx] for name, idx in s2_map.items()} for v in values], args2, particles2, particle_type2)
+                        if is_joint_fit else [None] * len(values))
+            for x, r1, r2 in zip(to_simulate, results1, results2):
+                prefetched[x_key(x)] = (r1, r2)
+            elapsed = time.time() - t0
+            print(f"DE generation: {len(to_simulate)} of {len(points)} points simulated together in {elapsed:.1f} s "
+                  f"({elapsed / len(to_simulate):.2f} s per point)", flush=True)
+        losses = [func(x) for x in points]
+        prefetched.clear()
+        return losses
+
     phases = []  # (description, scipy result)
     try:
         if optimizer == 'differential-evolution':
@@ -1913,7 +1987,8 @@ def run_automated_fit(
                 de_objective = known_population_objective(objective_function, continuation['population'], continuation['energies'], bounds)
             opt_res = fit_optimize.run_differential_evolution(
                 de_objective, bounds, x0, integer_mask, args.popsize, args.max_evals, args.fatol, getattr(args, 'seed', None),
-                init=continuation['population'] if continuation else None, stream=eval_offset)
+                init=continuation['population'] if continuation else None, stream=eval_offset,
+                batch_map=de_batch_map if getattr(args, 'de_parallel', False) else None)
             phases.append(("differential evolution", opt_res))
             if polish_method:
                 print(f"\n========== POLISH: {polish_method} from the DE best (loss {opt_res.fun:.4f}) ==========")

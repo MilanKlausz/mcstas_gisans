@@ -205,12 +205,35 @@ Using several nodes for one simulation or fit
 ``mg_run`` and ``mg_fit`` can process the neutrons of every simulation on several nodes of one job
 (``--cluster_nodes``). The process started by the batch script coordinates and runs ``--parallel_processes`` processes
 itself; on every other node, ``mg_cluster_worker`` (``python -m mcstas_gisans.cluster``) runs a pool of processes and
-connects to it over the network. The neutrons of a simulation are split into chunks (``--cluster_chunks_per_process``
-per process of all nodes), which the processes of all nodes pull as they become free. Every neutron gets its random
+connects to it over the network. The neutrons of a simulation are split into chunks (``--chunks_per_process``
+per process of all nodes, default 4), which the processes of all nodes pull as they become free (on a single node
+the processes take the chunks the same way). Every neutron gets its random
 numbers from its global index, so the result is the same as on one node with the same ``--seed``: the same loss,
 the same fit, and an unfinished fit can be continued with another number of nodes. If a worker node fails, its chunks
 are processed by the other nodes. The coordinator writes its address and a random key to ``--cluster_address_file``
 (a file on a shared file system, readable only by you), where the workers find it; it removes the file at the end.
+
+With Differential Evolution, ``mg_fit --de_parallel`` simulates all members of a generation together (one pool of
+chunks for the whole generation), so that the nodes do not wait at the end of every evaluation. Measured on LUMI
+(6-parameter microgel fit, 18 members, 82x33 directions, the same first generation in both modes):
+
+=====  ==============  ===================
+nodes  default DE      ``--de_parallel``
+=====  ==============  ===================
+1      1108 s          1094 s
+4      352 s (3.1x)    329 s (3.4x)
+16     145 s (7.6x)    95 s (11.7x)
+32     170 s (6.5x)    53 s (20.8x)
+64     162 s (6.8x)    33 s (33.4x)
+=====  ==============  ===================
+
+One evaluation at a time stops gaining beyond about 16 nodes (there are not enough neutrons per evaluation to keep
+more processes busy, and every evaluation waits for its slowest chunk); a whole generation still scales on 64 nodes
+(52 % efficiency). Starting a job on many nodes (loading the data, connecting the workers) took about 1-1.5 min on
+64 nodes, which matters only for short jobs.
+
+``--de_parallel`` updates the population once per generation (scipy's "deferred" updating) instead of after every
+member, so its trial points, and the fit, differ from a fit without it; the losses of the same points are identical.
 
 .. code-block:: bash
 

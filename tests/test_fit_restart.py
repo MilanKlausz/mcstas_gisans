@@ -25,9 +25,18 @@ def _loss(p):
     return (p["radius"] - 52.3) ** 2 / 10 + (p["vf"] - 0.61) ** 2 * 50 + 0.2 * (p["size"] - 4) ** 2 + 0.1 * np.sin(p["radius"])
 
 
-def _mock(monkeypatch, calls, stop_after=None, action=None):
-    """The simulation: a deterministic loss; after stop_after simulations it stops (raises, or runs action)."""
+def _mock(monkeypatch, calls, stop_after=None, action=None, batches=None):
+    """The simulation: a deterministic loss; after stop_after simulations it stops (raises, or runs action).
+    simulate_points (--de_parallel) returns markers of its points, appended to `batches`; an evaluation given one
+    (result=) must be that of its own point."""
+    def simulate_points(grid_points, args_eval, particles, particle_type):
+        if batches is not None:
+            batches.append([dict(g) for g in grid_points])
+        return [{'grid_point': dict(g)} for g in grid_points]
+
     def evaluation(grid_point, args_eval, *args, **kwargs):
+        if kwargs.get('result') is not None:
+            assert kwargs['result']['grid_point'] == grid_point
         if stop_after is not None and len(calls) == stop_after:
             if action is not None:
                 action()
@@ -36,6 +45,7 @@ def _mock(monkeypatch, calls, stop_after=None, action=None):
         loss = _loss(grid_point)
         return {'poisson_deviance': loss, 'reduced_chi2': loss, 'log_residual': loss, 'mc_to_poisson_variance': 0.0}, {}, {}
     monkeypatch.setattr(fit, "run_simulation_evaluation", evaluation)
+    monkeypatch.setattr(fit, "simulate_points", simulate_points)
 
 
 def _args(output_dir, **kwargs):
@@ -72,6 +82,8 @@ CASES = {
     "de": dict(optimizer="differential-evolution"),
     "de+nelder-mead polish": dict(optimizer="differential-evolution", polish="nelder-mead"),
     "de+powell polish": dict(optimizer="differential-evolution", polish="powell"),
+    "de parallel": dict(optimizer="differential-evolution", de_parallel=True),
+    "de parallel+nelder-mead polish": dict(optimizer="differential-evolution", polish="nelder-mead", de_parallel=True),
     "nelder-mead": dict(optimizer="nelder-mead", max_evals=60),
     "powell": dict(optimizer="powell", max_evals=60),
 }
@@ -105,6 +117,45 @@ def test_interrupted_fit_continues_exactly_as_an_uninterrupted_one(monkeypatch, 
     assert state['status'] == 'finished'
     assert [s['cached_evaluations'] for s in state['segments']] == [0, stop]
     assert [s['new_evaluations'] for s in state['segments']] == [stop, total - stop]
+
+
+def test_de_parallel_simulates_each_generation_together_and_only_the_missing_points(monkeypatch, tmp_path):
+    """--de_parallel: the DE points are simulated generation by generation (simulate_points), every evaluation uses
+    the simulation of its own point, and a continued fit simulates exactly the evaluations that are missing."""
+    kwargs = dict(optimizer="differential-evolution", de_parallel=True)
+    reference_calls, reference_batches = [], []
+    _mock(monkeypatch, reference_calls, batches=reference_batches)
+    _run(_args(tmp_path / "reference", **kwargs))
+    total = len(reference_calls)
+    population = fit.fit_optimize.de_population_size(3, 2)
+    assert [len(b) for b in reference_batches] == [population] * (total // population)
+    assert [g for b in reference_batches for g in b] == reference_calls     # each point simulated once, in order
+
+    stop = population + 2                      # inside the second generation
+    _mock(monkeypatch, [], stop_after=stop)
+    with pytest.raises(_Stop):
+        _run(_args(tmp_path / "interrupted", **kwargs))
+    second, second_batches = [], []
+    _mock(monkeypatch, second, batches=second_batches)
+    _run(_args(tmp_path / "interrupted", **kwargs))
+    simulated = [g for b in second_batches for g in b]
+    assert simulated == second == reference_calls[stop:]                    # the cached ones are not simulated again
+    assert _points(_summary(tmp_path / "interrupted")) == _points(_summary(tmp_path / "reference"))
+
+
+def test_de_parallel_is_another_valid_de_path(monkeypatch, tmp_path):
+    """--de_parallel (deferred updating) gives other trial points than the default, and finds the minimum as well."""
+    _mock(monkeypatch, [])
+    _run(_args(tmp_path / "immediate", max_evals=240))
+    _mock(monkeypatch, [])
+    _run(_args(tmp_path / "deferred", max_evals=240, de_parallel=True))
+    immediate, deferred = _points(_summary(tmp_path / "immediate")), _points(_summary(tmp_path / "deferred"))
+    population = fit.fit_optimize.de_population_size(3, 2)
+    assert immediate[:population] == deferred[:population]                  # the same initial population
+    assert immediate != deferred
+    best = lambda points: min(points, key=lambda p: p[-1])
+    assert best(deferred)[3] == best(immediate)[3] == 4                    # the integer parameter
+    assert abs(best(deferred)[-1] - best(immediate)[-1]) < 0.2
 
 
 def test_polish_improves_on_the_de_best_and_keeps_the_integers(monkeypatch, tmp_path):

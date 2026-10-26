@@ -555,54 +555,97 @@ def process_particles(particles: Any, params: Dict[str, Any], start_index: int =
             os.remove(h5_temp_path)
         raise
 
-def process_particles_parallelly(particles: Any, params: Dict[str, Any], process_number: int) -> Dict[str, Any]:
+_WORKER_PARAMS: Optional[List[Dict[str, Any]]] = None
+
+
+def _set_worker_params(params_list: List[Dict[str, Any]]) -> None:
+    """Initializer of the worker processes: the parameters are sent once per process, not with every chunk."""
+    global _WORKER_PARAMS
+    _WORKER_PARAMS = params_list
+
+
+def _process_member_chunk_local(particles: Any, start_index: int, member: int) -> Dict[str, Any]:
+    return process_particles(particles, _WORKER_PARAMS[member], start_index)
+
+
+def _process_member_chunk(particles: Any, params_list: List[Dict[str, Any]], start_index: int, member: int) -> Dict[str, Any]:
+    """A chunk of the neutrons with the parameter set `member` of a batch (several nodes, cluster.Coordinator.map)."""
+    return process_particles(particles, params_list[member], start_index)
+
+
+def process_particles_parallelly(particles: Any, params: Dict[str, Any], process_number: int,
+                                 chunks_per_process: int = 4) -> Dict[str, Any]:
     """
     Spawn parallel processes to carry out the BornAgain simulation and subsequent
     calculation of the incident particles.
+
+    The neutrons are split into chunks_per_process chunks per process; a process takes the next chunk when it becomes
+    free, so that neutrons of different cost (e.g. different numbers of outgoing directions) are balanced. The result
+    does not depend on the chunking (every neutron is seeded by its global index).
+    """
+    from .cluster import get_coordinator
+    if get_coordinator() is None:
+        process_number = max(1, min(int(process_number), len(particles)))
+        print(f"Number of parallel processes: {process_number} (number of physical CPU cores: {get_available_cores()})")
+        if process_number == 1:
+            result = process_particles(particles, params)
+            if params['instrument'].is_tof_instrument:
+                temp_h5_path = result.pop('temp_h5_path')
+                result['temp_h5_paths'] = [temp_h5_path] if temp_h5_path else []
+            return result
+    return process_batch_parallelly(particles, [params], process_number, chunks_per_process)[0]
+
+
+def process_batch_parallelly(particles: Any, params_list: List[Dict[str, Any]], process_number: int,
+                             chunks_per_process: int = 4) -> List[Dict[str, Any]]:
+    """
+    Simulate the same neutrons with several parameter sets at once (e.g. the members of a generation of
+    differential evolution, mg_fit --de_parallel): the chunks of all parameter sets go to one pool of processes (of all
+    nodes with --cluster_nodes), about chunks_per_process chunks per process in total, so that no process waits for
+    the end of one parameter set before it starts the next. Returns one merged result per parameter set, each the same
+    as from process_particles_parallelly with that parameter set alone.
     """
     from .cluster import get_coordinator
     coordinator = get_coordinator()
+    n_members = len(params_list)
     if coordinator is not None:
-        if params['instrument'].is_tof_instrument and params.get('tof_bin_edges') is None:
+        if any(p['instrument'].is_tof_instrument and p.get('tof_bin_edges') is None for p in params_list):
             raise ValueError("--cluster_nodes: TOF event files are not supported on several nodes (the temporary event "
                              "files would stay on the worker nodes); use one node, or mg_fit with --wavelength_slice.")
-        # --cluster_chunks_per_process chunks per process of all nodes: the nodes pull chunks as their processes become free
-        n_chunks = max(1, min(len(particles), coordinator.chunks_per_process * coordinator.total_processes))
-        starts = np.linspace(0, len(particles), n_chunks + 1).astype(int)
-        # the parameters go to every node once (shared), the chunk tasks carry only the neutrons
-        results = coordinator.map(process_particles, [(particles[starts[i]:starts[i + 1]], int(starts[i])) for i in range(n_chunks)],
-                                  shared=params, shared_index=1)
-        return _merge_results(results, params)
-    process_number = max(1, min(int(process_number), len(particles)))
-    print(f"Number of parallel processes: {process_number} (number of physical CPU cores: {get_available_cores()})")
-    if process_number == 1:
-        result = process_particles(particles, params)
-        if params['instrument'].is_tof_instrument:
-            temp_h5_path = result.pop('temp_h5_path')
-            result['temp_h5_paths'] = [temp_h5_path] if temp_h5_path else []
-        return result
+        total_processes = coordinator.total_processes
+    else:
+        total_processes = process_number = max(1, int(process_number))
+    # chunks of every parameter set: chunks_per_process x (processes of all nodes) chunks in total
+    n_chunks = max(1, min(len(particles), -(-max(1, int(chunks_per_process)) * total_processes // n_members)))
+    starts = np.linspace(0, len(particles), n_chunks + 1).astype(int)
+    tasks = [(particles[starts[i]:starts[i + 1]], int(starts[i]), member) for member in range(n_members) for i in range(n_chunks)]
 
-    starts = np.linspace(0, len(particles), process_number + 1).astype(int)
-    tasks = [(particles[starts[i]:starts[i + 1]], params, int(starts[i])) for i in range(process_number)]
-    # A worker that raises passes its exception on (f.result()); a worker that is killed (e.g. by the
-    # OOM killer) breaks the pool, which raises BrokenProcessPool. (multiprocessing.Pool replaces a
-    # killed worker and waits forever for its lost task.)
-    executor = ProcessPoolExecutor(max_workers=process_number)
-    futures = [executor.submit(process_particles, *task) for task in tasks]
-    try:
-        results = [f.result() for f in futures]
-    except BaseException as e:
-        executor.shutdown(wait=True, cancel_futures=True)
-        for f in futures:  # temporary TOF event files of the workers that did finish
-            if f.done() and not f.cancelled() and f.exception() is None and f.result().get('temp_h5_path'):
-                if os.path.exists(f.result()['temp_h5_path']):
-                    os.remove(f.result()['temp_h5_path'])
-        if isinstance(e, BrokenProcessPool):
-            raise RuntimeError("A parallel process was terminated abruptly (e.g. killed by the out-of-memory killer "
-                               "or a signal); the run is stopped. Fewer --parallel_processes need less memory.") from e
-        raise
-    executor.shutdown(wait=True)
-    return _merge_results(results, params)
+    if coordinator is not None:
+        # the parameter sets go to every node once (shared), the chunk tasks carry only the neutrons
+        results = coordinator.map(_process_member_chunk, tasks, shared=params_list, shared_index=1)
+    elif process_number == 1:
+        results = [process_particles(chunk, params_list[member], start) for chunk, start, member in tasks]
+    else:
+        # A worker that raises passes its exception on (f.result()); a worker that is killed (e.g. by the
+        # OOM killer) breaks the pool, which raises BrokenProcessPool. (multiprocessing.Pool replaces a
+        # killed worker and waits forever for its lost task.)
+        executor = ProcessPoolExecutor(max_workers=min(process_number, len(tasks)), initializer=_set_worker_params,
+                                       initargs=(params_list,))
+        futures = [executor.submit(_process_member_chunk_local, *task) for task in tasks]
+        try:
+            results = [f.result() for f in futures]
+        except BaseException as e:
+            executor.shutdown(wait=True, cancel_futures=True)
+            for f in futures:  # temporary TOF event files of the workers that did finish
+                if f.done() and not f.cancelled() and f.exception() is None and f.result().get('temp_h5_path'):
+                    if os.path.exists(f.result()['temp_h5_path']):
+                        os.remove(f.result()['temp_h5_path'])
+            if isinstance(e, BrokenProcessPool):
+                raise RuntimeError("A parallel process was terminated abruptly (e.g. killed by the out-of-memory killer "
+                                   "or a signal); the run is stopped. Fewer --parallel_processes need less memory.") from e
+            raise
+        executor.shutdown(wait=True)
+    return [_merge_results(results[member * n_chunks:(member + 1) * n_chunks], params_list[member]) for member in range(n_members)]
 
 
 def _merge_results(results: List[Dict[str, Any]], params: Dict[str, Any]) -> Dict[str, Any]:
@@ -669,7 +712,7 @@ def main() -> None:
             result['temp_h5_paths'] = [result.pop('temp_h5_path')]
     else:
         process_number = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
-        result = process_particles_parallelly(particles, params, process_number)
+        result = process_particles_parallelly(particles, params, process_number, getattr(args, 'chunks_per_process', 4))
 
     save_simulation_results_as_scipp(savename, params, result, args, mcpl_metadata, getattr(args, 'temp_read_chunk_size', 1000000))
 

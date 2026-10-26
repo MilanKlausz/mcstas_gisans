@@ -75,6 +75,29 @@ def test_two_nodes_reproduce_the_single_process_run(tmp_path, localhost):
     assert not os.path.exists(address), "the address file (with the key) is removed at the end"
 
 
+def test_two_nodes_reproduce_a_batch_of_parameter_sets(tmp_path, localhost):
+    """process_batch_parallelly on two nodes (mg_fit --de_parallel): every parameter set gets its single-process result."""
+    from mcstas_gisans import cluster
+    from mcstas_gisans.run import process_batch_parallelly, process_particles
+    particles, params = _particles_and_params()
+    _, params_b = _prepare_run([a.replace("radius=51", "radius=40") for a in COMMON_ARGV] + ["-i", "d22", "--wavelength_selected", "6.0"])
+    address = str(tmp_path / 'address.json')
+    worker = _start_worker(address, 2)
+    try:
+        coordinator = cluster.start_coordinator(2, address, local_processes=2, timeout=60)
+        batch = process_batch_parallelly(particles, [params, params_b], process_number=2)
+        assert all(n.done > 0 for n in coordinator.nodes), "both nodes must have processed chunks"
+    finally:
+        cluster.stop_coordinator()
+        out, code = _finish(worker)
+    for result, p in zip(batch, [params, params_b]):
+        sequential = process_particles(particles, p)
+        np.testing.assert_allclose(result['pixelHist'], sequential['pixelHist'], rtol=1e-12, atol=0)
+        np.testing.assert_allclose(result['pixelHistWeightsSquared'], sequential['pixelHistWeightsSquared'], rtol=1e-12, atol=0)
+    assert not np.allclose(batch[0]['pixelHist'], batch[1]['pixelHist'])
+    assert code == 0, out
+
+
 def test_a_failing_worker_node_is_replaced_by_the_others(tmp_path, localhost):
     """The worker process dies (os._exit) at its third chunk: its unfinished chunks are processed by the coordinator."""
     from mcstas_gisans import cluster

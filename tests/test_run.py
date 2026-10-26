@@ -171,6 +171,22 @@ def test_parallel_run_is_identical_to_sequential_with_same_seed(process_number):
     np.testing.assert_allclose(parallel['pixelHistWeightsSquared'], sequential['pixelHistWeightsSquared'], rtol=1e-12, atol=0)
 
 
+@pytest.mark.parametrize("process_number,chunks_per_process", [(1, 4), (3, 1), (5, 4)])
+def test_batch_of_parameter_sets_is_identical_to_separate_runs(process_number, chunks_per_process):
+    """process_batch_parallelly (mg_fit --de_parallel): several parameter sets in one pool of chunks give, for each
+    set, exactly its separate sequential result (no chunk lost, duplicated or given the parameters of another set)."""
+    from mcstas_gisans.run import process_batch_parallelly, process_particles
+    particles, params = _prepare_run(COMMON_ARGV + ["-i", "d22", "--wavelength_selected", "6.0"])
+    _, params_b = _prepare_run([a.replace("radius=51", "radius=40") for a in COMMON_ARGV] + ["-i", "d22", "--wavelength_selected", "6.0"])
+    particles = particles[:301]
+    batch = process_batch_parallelly(particles, [params, params_b, params], process_number, chunks_per_process)
+    for result, p in zip(batch, [params, params_b, params]):
+        sequential = process_particles(particles, p)
+        np.testing.assert_allclose(result['pixelHist'], sequential['pixelHist'], rtol=1e-12, atol=0)
+        np.testing.assert_allclose(result['pixelHistWeightsSquared'], sequential['pixelHistWeightsSquared'], rtol=1e-12, atol=0)
+    assert not np.allclose(batch[0]['pixelHist'], batch[1]['pixelHist'])     # the two parameter sets differ
+
+
 def _read_events(paths):
     import h5py
     cols = {c: [] for c in ('detector_id', 'tof', 'weight')}
