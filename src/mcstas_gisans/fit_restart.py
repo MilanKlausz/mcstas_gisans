@@ -43,7 +43,7 @@ NON_RESULT_OPTIONS = {
     'output_dir', 'max_evals', 'polish_max_evals', 'parallel_processes', 'no_parallel', 'bornagain_number_of_threads',
     'verbose', 'png', 'gif', 'split_view', 'y_plot_range', 'z_plot_range', 'intensity_min', 'mask_view',
     'mask_view_style', 'overwrite', 'seed_given', 'cluster_nodes', 'cluster_address_file', 'cluster_timeout',
-    'cluster_chunks_per_process',
+    'cluster_chunks_per_process', 'chunks_per_process',
 }
 # File options compared by file name only (a fit continued on another machine has other paths)
 PATH_OPTIONS = {'filename', 'filename2', 'nxs', 'nxs2', 'model', 'model2', 'intensity_factor_spectrum'}

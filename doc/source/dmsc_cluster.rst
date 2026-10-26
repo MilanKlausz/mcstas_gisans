@@ -205,8 +205,9 @@ Using several nodes for one simulation or fit
 ``mg_run`` and ``mg_fit`` can process the neutrons of every simulation on several nodes of one job
 (``--cluster_nodes``). The process started by the batch script coordinates and runs ``--parallel_processes`` processes
 itself; on every other node, ``mg_cluster_worker`` (``python -m mcstas_gisans.cluster``) runs a pool of processes and
-connects to it over the network. The neutrons of a simulation are split into chunks (``--cluster_chunks_per_process``
-per process of all nodes), which the processes of all nodes pull as they become free. Every neutron gets its random
+connects to it over the network. The neutrons of a simulation are split into chunks (``--chunks_per_process``
+per process of all nodes, default 4), which the processes of all nodes pull as they become free (on a single node
+the processes take the chunks the same way). Every neutron gets its random
 numbers from its global index, so the result is the same as on one node with the same ``--seed``: the same loss,
 the same fit, and an unfinished fit can be continued with another number of nodes. If a worker node fails, its chunks
 are processed by the other nodes. The coordinator writes its address and a random key to ``--cluster_address_file``

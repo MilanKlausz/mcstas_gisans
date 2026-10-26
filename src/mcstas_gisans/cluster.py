@@ -341,7 +341,7 @@ def setup_from_args(args: Any) -> Optional[Coordinator]:
     from .hardware import get_available_cores
     local = args.parallel_processes if args.parallel_processes else max(1, get_available_cores() - 1)
     return start_coordinator(n_nodes, getattr(args, 'cluster_address_file', None), local,
-                             getattr(args, 'cluster_timeout', 600.0), getattr(args, 'cluster_chunks_per_process', 4))
+                             getattr(args, 'cluster_timeout', 600.0), getattr(args, 'chunks_per_process', 4))
 
 
 # ---------------------------------------------------------------------------------------------------------------- worker
