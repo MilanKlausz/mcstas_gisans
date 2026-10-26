@@ -35,6 +35,20 @@
    "plain": 208580.55502508674
   }
  },
+ "gisans_model_air_d2o_interface_microgel_friedegg": {
+  "ba22": {
+   "avg_materials": 6831186.007272633,
+   "bornagain": "23.0",
+   "plain": 2493085.5419017253
+  }
+ },
+ "gisans_model_air_d2o_interface_microgel_polymer": {
+  "ba22": {
+   "avg_materials": 7450091.14432603,
+   "bornagain": "23.0",
+   "plain": 2820968.279137411
+  }
+ },
  "hexagonal_spheres": {
   "ba21": {
    "avg_materials": 143767027.08847466,

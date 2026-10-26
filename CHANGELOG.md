@@ -13,6 +13,11 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
 *Removed*).
 
 ### Added
+- Experimental built-in models for pNIPAM microgels at the air/D2O surface with the polymer amount per microgel
+  conserved (BornAgain 22/23): `gisans_model_air_d2o_interface_microgel_polymer` (the microgel model with its SLD
+  derived from a fixed `polymer_volume` and the radius) and `gisans_model_air_d2o_interface_microgel_friedegg`
+  (in addition a thin polymer layer below the surface around each core: `disk_thickness`, `disk_radius_fraction`,
+  `disk_polymer_fraction`).
 - Processing on **several cluster nodes** (`mg_run` / `mg_fit --cluster_nodes N --cluster_address_file F`, new command
   `mg_cluster_worker`, module `mcstas_gisans.cluster`): the neutrons of every simulation are split into chunks that
   the processes of all nodes of a job pull as they become free (TCP between the nodes, authenticated with a random
