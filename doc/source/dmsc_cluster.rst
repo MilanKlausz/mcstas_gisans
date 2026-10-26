@@ -223,7 +223,14 @@ nodes  default DE      ``--de_parallel``
 1      1108 s          1094 s
 4      352 s (3.1x)    329 s (3.4x)
 16     145 s (7.6x)    95 s (11.7x)
+32     170 s (6.5x)    53 s (20.8x)
+64     162 s (6.8x)    33 s (33.4x)
 =====  ==============  ===================
+
+One evaluation at a time stops gaining beyond about 16 nodes (there are not enough neutrons per evaluation to keep
+more processes busy, and every evaluation waits for its slowest chunk); a whole generation still scales on 64 nodes
+(52 % efficiency). Starting a job on many nodes (loading the data, connecting the workers) took about 1-1.5 min on
+64 nodes, which matters only for short jobs.
 
 ``--de_parallel`` updates the population once per generation (scipy's "deferred" updating) instead of after every
 member, so its trial points, and the fit, differ from a fit without it; the losses of the same points are identical.

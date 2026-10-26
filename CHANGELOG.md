@@ -24,7 +24,8 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   together (scipy's "deferred" updating), their neutrons in one pool of chunks on all processes and nodes, so many
   nodes stay busy. Its trial points differ from the default ("immediate" updating), so it is a different, equally
   valid DE path; a fit is continued with the same setting. Measured on LUMI (6-parameter microgel fit, the same
-  first generation): 16 nodes 11.7x faster than one node with `--de_parallel` against 7.6x without.
+  first generation): 16 nodes 11.7x faster than one node with `--de_parallel` against 7.6x without, 64 nodes 33x
+  (without it, no gain beyond about 16 nodes).
 - `--chunks_per_process` (default 4; earlier name `--cluster_chunks_per_process`): the neutrons are split into
   chunks that the processes take as they become free, on one node too (results unchanged).
 - Built-in model `gisans_model_air_d2o_interface_microgel` (BornAgain 22/23 and 24): optional `microgel_top_sld`, the

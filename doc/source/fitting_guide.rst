@@ -610,7 +610,8 @@ parallel processes; with many processes use ``--bornagain_number_of_threads 1``.
 On a cluster, ``--cluster_nodes`` spreads every simulation over several nodes of a job with the same results
 (about 6.5x faster on 8 nodes; see the DMSC cluster page). With Differential Evolution, ``--de_parallel``
 simulates all members of a generation together, which keeps many nodes busy: on LUMI, 16 nodes were 11.7x faster
-than one node with it and 7.6x without. It changes the trial points (scipy's "deferred" instead of "immediate"
+than one node with it and 7.6x without, and 64 nodes 33x faster (one evaluation at a time does not gain beyond
+about 16 nodes). It changes the trial points (scipy's "deferred" instead of "immediate"
 updating), so it gives a different, equally valid fit; a fit is continued with the same setting.
 A scan with a few points is usually worth more than a long fit from a poor
 starting point.
