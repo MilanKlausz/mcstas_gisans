@@ -20,6 +20,13 @@ results and scripts made with 2.0.0 must be revisited (see *Changed* and
   index, so the results equal those of a single node with the same `--seed`; a fit continued on another number of
   nodes goes on from its cache. A failing worker node's chunks are processed by the other nodes. Not supported:
   TOF event files (TOF without `--wavelength_slice`). See the DMSC cluster page.
+- `mg_fit --de_parallel`: population-parallel Differential Evolution. All members of a generation are simulated
+  together (scipy's "deferred" updating), their neutrons in one pool of chunks on all processes and nodes, so many
+  nodes stay busy. Its trial points differ from the default ("immediate" updating), so it is a different, equally
+  valid DE path; a fit is continued with the same setting. Measured on LUMI (6-parameter microgel fit, the same
+  first generation): 16 nodes 11.7x faster than one node with `--de_parallel` against 7.6x without.
+- `--chunks_per_process` (default 4; earlier name `--cluster_chunks_per_process`): the neutrons are split into
+  chunks that the processes take as they become free, on one node too (results unchanged).
 - Built-in model `gisans_model_air_d2o_interface_microgel` (BornAgain 22/23 and 24): optional `microgel_top_sld`, the
   SLD of the part of each microgel sphere above the interface (a drier, D2O-poor top of a partly emerged microgel);
   the sphere is then split at the interface like the void sphere, with `microgel_sld` for the submerged part.

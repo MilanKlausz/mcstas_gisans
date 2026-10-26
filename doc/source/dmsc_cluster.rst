@@ -213,6 +213,21 @@ the same fit, and an unfinished fit can be continued with another number of node
 are processed by the other nodes. The coordinator writes its address and a random key to ``--cluster_address_file``
 (a file on a shared file system, readable only by you), where the workers find it; it removes the file at the end.
 
+With Differential Evolution, ``mg_fit --de_parallel`` simulates all members of a generation together (one pool of
+chunks for the whole generation), so that the nodes do not wait at the end of every evaluation. Measured on LUMI
+(6-parameter microgel fit, 18 members, 82x33 directions, the same first generation in both modes):
+
+=====  ==============  ===================
+nodes  default DE      ``--de_parallel``
+=====  ==============  ===================
+1      1108 s          1094 s
+4      352 s (3.1x)    329 s (3.4x)
+16     145 s (7.6x)    95 s (11.7x)
+=====  ==============  ===================
+
+``--de_parallel`` updates the population once per generation (scipy's "deferred" updating) instead of after every
+member, so its trial points, and the fit, differ from a fit without it; the losses of the same points are identical.
+
 .. code-block:: bash
 
    #!/bin/bash
