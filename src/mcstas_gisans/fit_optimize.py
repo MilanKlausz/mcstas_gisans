@@ -27,7 +27,8 @@ def de_population_size(n_parameters: int, popsize: int) -> int:
 
 def run_differential_evolution(objective: Callable, bounds: Bounds, x0: Sequence[float], integrality: List[bool],
                                popsize: int, max_evals: int, fatol: float, seed: Optional[int],
-                               init: Optional[np.ndarray] = None, stream: int = 0) -> Any:
+                               init: Optional[np.ndarray] = None, stream: int = 0,
+                               batch_map: Optional[Callable] = None) -> Any:
     """
     Differential evolution within the bounds, started with x0 in the initial population (or from the population
     init, see fit_continue). It evaluates the initial population and then one generation of popsize x
@@ -35,6 +36,10 @@ def run_differential_evolution(objective: Callable, bounds: Bounds, x0: Sequence
     its population is below fatol (absolute; tol=0 disables scipy's relative criterion), or after the generations
     that fit into max_evals. It has no parameter-space criterion. The generator is seeded with seed (and stream,
     for a start from another fit's population), so the sequence of trial points is reproducible.
+
+    batch_map (mg_fit --de_parallel): a map-like callable batch_map(func, points) that evaluates the trial points of a
+    generation together; scipy then updates the population once per generation ("deferred" updating) instead of after
+    every trial point ("immediate", the default), which gives other, equally reproducible trial points.
     """
     import scipy.optimize
     population = de_population_size(len(bounds), popsize)
@@ -51,7 +56,8 @@ def run_differential_evolution(objective: Callable, bounds: Bounds, x0: Sequence
     rng = (np.random.default_rng([seed, stream] if init is not None else seed)) if seed is not None else None
     return scipy.optimize.differential_evolution(
         objective, bounds, x0=None if init is not None else x0, init=init if init is not None else 'latinhypercube',
-        maxiter=maxiter, popsize=popsize, tol=0.0, atol=fatol, integrality=integrality, polish=False, seed=rng)
+        maxiter=maxiter, popsize=popsize, tol=0.0, atol=fatol, integrality=integrality, polish=False, seed=rng,
+        **({'updating': 'deferred', 'workers': batch_map} if batch_map is not None else {}))
 
 
 def run_local(objective: Callable, x0: Sequence[float], bounds: Bounds, method: str, max_evals: int, xatol: float,

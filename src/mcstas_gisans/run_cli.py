@@ -31,11 +31,17 @@ def create_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--intensity_factor', default=1.0, type=float, help='A multiplication factor to modify the beam intensity. (Applied to the Monte Carlo weight of each particle in the input file.)')
     parser.add_argument('-i','--instrument', required=True, type=str.lower, choices=list(instrument_defaults.keys()), help='Instrument (defined in instrument_defaults.py).')
     parser.add_argument('-p','--parallel_processes', required=False, type=int, help='Number of processes to be used for parallel processing.')
+    parser.add_argument('--chunks_per_process', '--cluster_chunks_per_process', dest='chunks_per_process', type=int, default=4, help='The neutrons of a simulation are split into this many chunks per parallel process (of all nodes with --cluster_nodes); the processes take the next chunk when they become free, which balances neutrons of different cost (more chunks: better balance, a little more overhead). Does not change the results. (--cluster_chunks_per_process is the earlier name.)')
     parser.add_argument('--no_parallel', default=False, action='store_true', help='Do not use multiprocessing (single process; useful for profiling). Results are identical to a parallel run with the same --seed.')
     parser.add_argument('--seed', type=int, default=None, help='Random seed for the Monte Carlo sampling (outgoing-direction jitter, detector resolution). Results are reproducible and independent of the number of parallel processes for a given seed. Default: a random seed, which is printed and stored in the output file. mg_fit uses the same seed for every evaluation.')
     parser.add_argument('--wavelength_selected', type=float, help='Wavelength (mean) in Angstrom selected by the monochromator. Only used for non-time-of-flight instruments.')
     parser.add_argument('--no_gravity', default=False, action='store_true', help='Do not take into account gravity.')
     parser.add_argument('-v', '--verbose', default=False, action='store_true', help='Enable verbose logging.')
+
+    clusterGroup = parser.add_argument_group('Several cluster nodes', 'Process the neutrons of every simulation on several nodes of a cluster job: this process coordinates and runs --parallel_processes processes itself, and every other node runs mg_cluster_worker (see the fitting guide). The results are identical to a single-node run with the same --seed.')
+    clusterGroup.add_argument('--cluster_nodes', type=int, default=1, help='Number of nodes, including this one (1: no other nodes). This process waits for --cluster_nodes - 1 mg_cluster_worker processes to connect.')
+    clusterGroup.add_argument('--cluster_address_file', default=None, help='File (on a file system shared by the nodes) where this process writes its address and a random key for the workers; give the same file to mg_cluster_worker --address_file. Default: ~/.mcstas_gisans_cluster/address_<Slurm job ID>.json.')
+    clusterGroup.add_argument('--cluster_timeout', type=float, default=600.0, help='Seconds to wait for the workers to connect.')
 
     bornagainGroup = parser.add_argument_group('BornAgain', 'Control the BornAgain simulation options.')
     bornagainGroup.add_argument('-a', '--alpha', default=0.24, type=float, help='Incident angle on the sample. [deg] (Could be thought of as a sample rotation, but it is actually achieved by an incident beam coordinate transformation.)')
@@ -148,6 +154,12 @@ def parse_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
                      f"(positive = beam rising towards the sample normal): use --instrument_beam_angle {-args.instrument_beam_declination_angle}")
     if args.parallel_processes is not None and args.parallel_processes < 1:
         parser.error("--parallel_processes must be at least 1.")
+    if args.chunks_per_process < 1:
+        parser.error("--chunks_per_process must be at least 1.")
+    if getattr(args, 'cluster_nodes', 1) < 1:
+        parser.error("--cluster_nodes must be at least 1.")
+    if getattr(args, 'cluster_nodes', 1) > 1 and args.no_parallel:
+        parser.error("--cluster_nodes cannot be combined with --no_parallel.")
     args.seed_given = args.seed is not None  # mg_fit: a continued fit without --seed uses the seed of the fit
     if args.seed is None:
         import numpy as np

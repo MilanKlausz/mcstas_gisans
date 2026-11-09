@@ -82,6 +82,12 @@ def create_fit_parser():
                            help='Optimization algorithm to use (default: nelder-mead).')
     fit_group.add_argument('--popsize', type=int, default=15,
                            help='Population size multiplier for Differential Evolution (default: 15). The total population is popsize * number_of_parameters. A smaller value reduces evaluations per generation but reduces search diversity.')
+    fit_group.add_argument('--de_parallel', action='store_true', default=False,
+                           help='Differential Evolution: simulate all members of a generation at once (scipy\'s "deferred" updating), their neutrons '
+                                'in one pool of chunks on all processes (and nodes, --cluster_nodes): no process waits for the end of one member '
+                                'before the next starts, and many nodes stay busy. The population is updated once per generation instead of after '
+                                'every member (scipy\'s default "immediate" updating), so the trial points, and with them the fit, differ from a fit '
+                                'without this option (both are equally valid DE variants). A fit is continued with the same setting. Not with --de_continue.')
     fit_group.add_argument('--de_continue', type=str, default=None, metavar='FIT_SUMMARY',
                            help='Differential Evolution only: start a new DE fit (in its own --output_dir) from the population of another DE fit, given by its '
                                 'fit_summary.csv or output directory (e.g. a fit of an older mg_fit without fit_state.json). Its evaluations are replayed with the '

@@ -47,5 +47,6 @@ mg_plot = "mcstas_gisans.plot:main"
 mg_fit_monitor = "mcstas_gisans.fit_monitor:main"
 mg_beam_centre_correction = "mcstas_gisans.beam_centre_correction:main"
 mg_fit = "mcstas_gisans.fit:main"
+mg_cluster_worker = "mcstas_gisans.cluster:worker_main"
 
 

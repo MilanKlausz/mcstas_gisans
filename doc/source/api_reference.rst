@@ -17,6 +17,7 @@ Core Modules
    mcstas_gisans.fit_optimize
    mcstas_gisans.fit_restart
    mcstas_gisans.fit_continue
+   mcstas_gisans.cluster
    mcstas_gisans.instrument
    mcstas_gisans.sample
 
