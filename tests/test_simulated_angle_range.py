@@ -320,7 +320,9 @@ def test_skipped_direction_rectangles_mask_exactly_those_bins():
     import bornagain as ba
     from bornagain import deg, angstrom
     from mcstas_gisans import run
-    from mcstas_gisans.bornagain_samples.ba22.gisans_model_air_d2o_interface import get_sample
+    from mcstas_gisans.sample import Sample
+    # the implementation for the installed BornAgain version (ba22/ for 22-23, ba24/ for 24)
+    get_sample = Sample(0.1, 0.1, 'gisans_model_air_d2o_interface', None).get_module().get_sample
     rng = np.random.default_rng(2)
     n_h, n_v, angle_range = 13, 9, [-1.1, 1.3, 0.3, 1.2]
     skip = rng.random((n_h, n_v)) < 0.4
