@@ -60,17 +60,22 @@ instrument_defaults = {
         },
     },
     'csns_vsans': { #CSNS VSANS (BL14), TOF. McStas model CSNS_VSANS_GISANS.instr (csns_vsans_local), from the CSNS
-        # normal-mode model VSANS_Normal_Mode2.5mColli.instr; band 1.96-6.73 AA with its chopper settings
+        # normal-mode model VSANS_Normal_Mode2.5mColli.instr; normal mode 2.2-6.7 AA or frame skipping 2.2-11.3 AA;
+        # GISANS mode with four-blade slits (12.114, 20.3131, ~21.7 m from the moderator)
         # moderator (z=0, t=0) to armSample along the beam axis: sample aperture A2 at 22.0077 m + 0.1 m
         'nominal_source_sample_distance' : 22.1077, #[m]
-        'sample_detector_distance' : 11.5, #[m] as the detector of the McStas model (11.5 m after the sample)
+        'sample_detector_distance' : 11.5, #[m] D3 (fixed at 11.5 m in experiments)
         'tof_instrument' : True, # no mcpl_monitor_name / t0 monitor: use --no_mcpl_filtering and --no_t0_correction
-        'detector': { # PLACEHOLDER flat 2D detector until the VSANS detector geometry is implemented: 0.5 x 0.5 m,
-            # 2 mm pixels, centred 150 mm above the direct beam (direct beam, specular and lattice peaks at 6 AA on it)
-            'size': [0.5, 0.5], #[m]
-            'direct_beam_centre_offset': [0.0, 0.15], #[m]
-            'pixels': [250, 250],
-            'resolution': [0.0, 0.0] #fwhm[m], unknown
+        'detector': { # ONE bank of D3 (He-3 tubes): D3 has only left and right banks of 500 x 1000 mm (Zuo et al.,
+            # J. Appl. Cryst. 2024), here the bank on the reflection side of a vertical sample (--sample_orientation 2,
+            # NeXus +x): 62 vertical 8 mm tubes x 250 pixels of 4 mm (pixel length along the tubes assumed),
+            # 8 mm FWHM resolution along the tubes. Inner edge 24 mm from the direct beam: the smallest scattering angle
+            # of the He-3 detectors, 0.12 deg, at 11.5 m (an estimate; the banks move apart, to about +-90 mm, when D4
+            # is used); centred on the beam height. Override with --instrument_detector_centre_offset (x = 0.248 + gap).
+            'size': [0.496, 1.0], #[m]
+            'direct_beam_centre_offset': [0.272, 0.0], #[m] 0.248 (half width) + 0.024 (gap)
+            'pixels': [62, 250],
+            'resolution': [0.0, 0.008] #fwhm[m]
         },
     },
     'd22': { #ILL
